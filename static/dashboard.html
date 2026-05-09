@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Geospatial Tracker</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="dashboard-layout">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="logo-dot">🌍</div>
+        <span>GeoTracker</span>
+      </div>
+      <div class="topbar-sep"></div>
+      <select id="project-switcher" class="project-switcher">
+        <option value="">Loading projects...</option>
+      </select>
+      <div class="topbar-right">
+        <!-- QC badge -->
+        <div class="qc-badge" id="qc-badge" onclick="toggleQCModal()">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span>QC Flags:</span>
+          <span class="qc-badge-count" id="qc-total">0</span>
+        </div>
+        <!-- Admin link -->
+        <a href="/admin" class="btn btn-secondary btn-sm" id="admin-link" style="display:none">
+          <i class="bi bi-gear"></i> Admin
+        </a>
+        <!-- User -->
+        <div class="user-menu" onclick="handleLogout()">
+          <div class="user-avatar"><i class="bi bi-person"></i></div>
+          <span id="topbar-username">User</span>
+          <i class="bi bi-box-arrow-right" title="Logout"></i>
+        </div>
+      </div>
+    </header>
+
+    <!-- Left navigation panel -->
+    <aside class="left-panel">
+      <div class="nav-header">
+        <span class="nav-header-title" id="nav-level-title">LGAs</span>
+        <button class="btn-icon" id="nav-back-btn" onclick="navBack()" style="display:none" title="Go back">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+      </div>
+
+      <div class="nav-search">
+        <div class="nav-search-wrap">
+          <i class="bi bi-search"></i>
+          <input type="text" id="nav-search" placeholder="Search..." oninput="filterNavItems()">
+        </div>
+      </div>
+
+      <div class="nav-section" id="nav-list">
+        <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">
+          Select a project to load data
+        </div>
+      </div>
+
+      <!-- Summary footer -->
+      <div style="border-top:1px solid var(--border);padding:10px 14px;">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Summary</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text-muted)">Visited</span>
+          <span id="summary-visited" style="color:var(--primary-light);font-weight:600">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text-muted)">Completeness</span>
+          <span id="summary-completeness" style="color:var(--primary-light);font-weight:600">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <span style="color:var(--text-muted)">Total Points</span>
+          <span id="summary-points" style="font-weight:600">—</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Map area -->
+    <main class="map-area">
+      <div id="map"></div>
+
+      <!-- Layer chips (top-left) -->
+      <div class="map-overlay map-overlay-tl">
+        <div class="layer-chips" id="layer-chips">
+          <div class="layer-chip active" data-layer="lga" onclick="toggleLayer('lga', this)">
+            <div class="layer-chip-dot" style="background:#3b82f6;border:2px solid #1d4ed8"></div>
+            <span class="layer-chip-name">LGA Boundaries</span>
+            <i class="bi bi-eye layer-chip-eye"></i>
+          </div>
+          <div class="layer-chip" data-layer="ward" onclick="toggleLayer('ward', this)">
+            <div class="layer-chip-dot" style="background:#8b5cf6;border:2px solid #6d28d9"></div>
+            <span class="layer-chip-name">Ward Boundaries</span>
+            <i class="bi bi-eye layer-chip-eye"></i>
+          </div>
+          <div class="layer-chip" data-layer="settlement" onclick="toggleLayer('settlement', this)">
+            <div class="layer-chip-dot" style="background:#22c55e;border:2px solid #15803d"></div>
+            <span class="layer-chip-name">Settlements</span>
+            <i class="bi bi-eye layer-chip-eye"></i>
+          </div>
+          <div class="layer-chip" data-layer="grid" onclick="toggleLayer('grid', this)">
+            <div class="layer-chip-dot" style="background:#f59e0b;border:2px solid #b45309"></div>
+            <span class="layer-chip-name">Grid Cells</span>
+            <i class="bi bi-eye layer-chip-eye"></i>
+          </div>
+          <div class="layer-chip" data-layer="points" onclick="toggleLayer('points', this)">
+            <div class="layer-chip-dot" style="background:#ef4444;border:2px solid #b91c1c"></div>
+            <span class="layer-chip-name">GPS Points</span>
+            <i class="bi bi-eye layer-chip-eye"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coverage/Completeness pie buttons (bottom-right) -->
+      <div class="map-overlay map-overlay-br" style="bottom:50px">
+        <div class="coverage-btns">
+          <div class="coverage-btn" onclick="togglePieModal('coverage')" title="Visitation Coverage">
+            🥧
+            <div class="coverage-btn-tooltip">Coverage %</div>
+          </div>
+          <div class="coverage-btn" onclick="togglePieModal('completeness')" title="Grid Completeness">
+            📊
+            <div class="coverage-btn-tooltip">Completeness %</div>
+          </div>
+          <div class="coverage-btn" onclick="toggleTimeline()" title="Coverage Timeline">
+            📈
+            <div class="coverage-btn-tooltip">Timeline</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Basemap switcher (top-right) -->
+      <div class="map-overlay map-overlay-tr">
+        <div class="basemap-switcher">
+          <button class="basemap-btn active" onclick="setBasemap('osm', this)">🗺 Street</button>
+          <button class="basemap-btn" onclick="setBasemap('satellite', this)">🛰 Satellite</button>
+          <button class="basemap-btn" onclick="setBasemap('terrain', this)">🏔 Terrain</button>
+        </div>
+      </div>
+
+      <!-- Zoom badge (bottom-left) -->
+      <div class="map-overlay map-overlay-bl">
+        <div class="zoom-badge">Zoom: <span id="zoom-level">—</span></div>
+      </div>
+
+      <!-- QC modal -->
+      <div class="qc-modal hidden" id="qc-modal">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted)">QC Flags</span>
+          <button class="btn-icon" onclick="toggleQCModal()"><i class="bi bi-x"></i></button>
+        </div>
+        <div class="qc-row">
+          <span class="qc-row-label">Out of Bound</span>
+          <span class="qc-row-value red" id="qc-out-of-bound">0</span>
+        </div>
+        <div class="qc-row">
+          <span class="qc-row-label">Time Violations</span>
+          <span class="qc-row-value red" id="qc-time-violations">0</span>
+        </div>
+        <div class="qc-row">
+          <span class="qc-row-label">Stacked Points</span>
+          <span class="qc-row-value red" id="qc-stacked">0</span>
+        </div>
+        <div class="qc-row">
+          <span class="qc-row-label">Total Flags</span>
+          <span class="qc-row-value" id="qc-total-modal">0</span>
+        </div>
+      </div>
+
+      <!-- Pie modal -->
+      <div class="pie-modal hidden" id="pie-modal">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="pie-modal-title" id="pie-modal-title">Coverage</span>
+          <button class="btn-icon" onclick="closePieModal()"><i class="bi bi-x"></i></button>
+        </div>
+        <canvas id="pie-chart" width="220" height="220"></canvas>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-muted);text-align:center" id="pie-subtitle"></div>
+      </div>
+
+      <!-- Bottom timeline panel -->
+      <div class="bottom-panel" id="bottom-panel">
+        <div class="bottom-panel-header">
+          <span style="font-size:13px;font-weight:600">Coverage Over Time</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px">
+              <input type="checkbox" id="forecast-toggle" onchange="toggleForecast()">
+              Show Forecast
+            </label>
+            <button class="btn-icon" onclick="toggleTimeline()"><i class="bi bi-x"></i></button>
+          </div>
+        </div>
+        <div class="bottom-panel-content">
+          <canvas id="timeline-chart"></canvas>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

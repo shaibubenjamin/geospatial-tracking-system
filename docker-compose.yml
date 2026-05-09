@@ -1,0 +1,55 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    container_name: geo_tracker_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: geospatial_tracker
+      POSTGRES_USER: geouser
+      POSTGRES_PASSWORD: geopass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geouser -d geospatial_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: geo_tracker_api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://geouser:geopass@db:5432/geospatial_tracker
+      DATABASE_URL_SYNC: postgresql://geouser:geopass@db:5432/geospatial_tracker
+      SECRET_KEY: change-this-in-production-use-a-long-random-string
+      ACCESS_TOKEN_EXPIRE_MINUTES: 480
+      ALGORITHM: HS256
+      ENVIRONMENT: production
+    volumes:
+      - .:/app
+      - uploads:/app/uploads
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+
+  redis:
+    image: redis:7-alpine
+    container_name: geo_tracker_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  uploads:
+  redisdata:

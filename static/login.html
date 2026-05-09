@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Geospatial Tracker</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">🌍</div>
+      <h1>Geospatial Tracker</h1>
+      <p>Coverage &amp; Data Quality Monitoring System</p>
+    </div>
+
+    <div id="login-error" class="login-error hidden"></div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input
+          type="text"
+          id="username"
+          class="form-control"
+          placeholder="Enter username"
+          autocomplete="username"
+          required
+        >
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <div style="position:relative">
+          <input
+            type="password"
+            id="password"
+            class="form-control"
+            placeholder="Enter password"
+            autocomplete="current-password"
+            required
+            style="padding-right:40px"
+          >
+          <button type="button" id="toggle-pw"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);
+                   background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+      </div>
+      <button type="submit" class="login-btn" id="login-btn">
+        <span id="login-btn-text">Sign In</span>
+        <span id="login-spinner" class="hidden">...</span>
+      </button>
+    </form>
+
+    <p style="text-align:center;margin-top:20px;font-size:12px;color:var(--text-muted)">
+      Default credentials: <strong>admin / admin123</strong><br>
+      Change your password after first login.
+    </p>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script>
+    const API = '';
+
+    document.getElementById('toggle-pw').addEventListener('click', () => {
+      const pw = document.getElementById('password');
+      const icon = document.querySelector('#toggle-pw i');
+      if (pw.type === 'password') {
+        pw.type = 'text';
+        icon.className = 'bi bi-eye-slash';
+      } else {
+        pw.type = 'password';
+        icon.className = 'bi bi-eye';
+      }
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('login-error');
+      const btn = document.getElementById('login-btn');
+      errEl.classList.add('hidden');
+      btn.disabled = true;
+      document.getElementById('login-btn-text').textContent = 'Signing in...';
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch(`${API}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errEl.textContent = data.detail || 'Login failed';
+          errEl.classList.remove('hidden');
+          return;
+        }
+
+        localStorage.setItem('token', data.access_token);
+        localStorage.setItem('username', data.username);
+        localStorage.setItem('is_admin', data.is_admin);
+        window.location.href = '/dashboard';
+      } catch (err) {
+        errEl.textContent = 'Network error — is the server running?';
+        errEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        document.getElementById('login-btn-text').textContent = 'Sign In';
+      }
+    });
+
+    // Redirect if already logged in
+    if (localStorage.getItem('token')) {
+      window.location.href = '/dashboard';
+    }
+  </script>
+</body>
+</html>
