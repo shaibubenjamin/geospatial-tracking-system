@@ -1,34 +1,35 @@
 /* =====================================================================
-   dashboard.js — MapLibre GL JS + drill-down navigation + charts
+   dashboard.js  —  Geospatial Tracking System
+   Layout: full-width map on top, resizable bottom data table
+   Drill-down: LGA → Ward → Settlement (GPS points at settlement)
    ===================================================================== */
 
+// ── State ──────────────────────────────────────────────────────────────────
 const API = '';
-let token = localStorage.getItem('token');
-let currentProjectId = null;
-let currentLGACode = null;
-let currentWardCode = null;
-let currentSettlementCode = null;
-let navLevel = 'lga'; // lga | ward | settlement
-let navData = { lga: [], ward: [], settlement: [] };
-let projectList = [];
+let token        = localStorage.getItem('token');
+let currentPid   = null;   // project id
+let navLevel     = 'lga';  // 'lga' | 'ward' | 'settlement'
+let navData      = { lga: [], ward: [], settlement: [] };
+let currentLGA   = null;   // { lgacode, lga_name }
+let currentWard  = null;   // { wardcode, ward_name }
+let currentSett  = null;   // { unique_cod, settlement_name }
 let projectSummary = {};
-let pieChart = null;
-let timelineChart = null;
-let layerVisibility = { lga: true, ward: false, settlement: false, grid: false, points: false };
+let pieChart     = null;
+let toolbarOpen  = false;
+let layerPanelOpen = false;
+let layerVis     = { lga: true, ward: true, settlement: true, points: true };
+let sortCol      = null;
+let sortDir      = 1;
 
-// ─── Auth guard ──────────────────────────────────────────────────────────────
-if (!token) { window.location.href = '/'; }
+// ── Auth guard ─────────────────────────────────────────────────────────────
+if (!token) window.location.href = '/';
 document.getElementById('topbar-username').textContent = localStorage.getItem('username') || 'User';
 if (localStorage.getItem('is_admin') === 'true') {
   document.getElementById('admin-link').style.display = 'inline-flex';
 }
+function handleLogout() { localStorage.clear(); window.location.href = '/'; }
 
-function handleLogout() {
-  localStorage.clear();
-  window.location.href = '/';
-}
-
-// ─── API helper ──────────────────────────────────────────────────────────────
+// ── API helper ─────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -42,7 +43,7 @@ async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
-// ─── Toast ───────────────────────────────────────────────────────────────────
+// ── Toast ──────────────────────────────────────────────────────────────────
 function showToast(msg, type = 'info') {
   const tc = document.getElementById('toast-container');
   const el = document.createElement('div');
@@ -52,7 +53,7 @@ function showToast(msg, type = 'info') {
   setTimeout(() => el.remove(), 3500);
 }
 
-// ─── MapLibre Setup ──────────────────────────────────────────────────────────
+// ── MapLibre ───────────────────────────────────────────────────────────────
 const BASEMAPS = {
   osm:       'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -64,20 +65,16 @@ const map = new maplibregl.Map({
   style: {
     version: 8,
     sources: {
-      'osm-tiles': {
-        type: 'raster',
-        tiles: [BASEMAPS.osm],
-        tileSize: 256,
-        attribution: '© OpenStreetMap contributors',
-      },
+      'osm-tiles': { type: 'raster', tiles: [BASEMAPS.osm], tileSize: 256, attribution: '© OpenStreetMap' },
     },
     layers: [{ id: 'osm', type: 'raster', source: 'osm-tiles' }],
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   },
-  center: [5.25, 13.0], // Sokoto
+  center: [5.25, 13.05],
   zoom: 7,
 });
 
-map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
 map.on('zoom', () => {
@@ -90,529 +87,662 @@ map.on('load', () => {
   loadProjects();
 });
 
-// ─── Basemap switcher ────────────────────────────────────────────────────────
+// ── Basemap ────────────────────────────────────────────────────────────────
 function setBasemap(key, el) {
-  document.querySelectorAll('.basemap-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
+  document.querySelectorAll('.st-btn[id^="bm-"]').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
   map.getSource('osm-tiles').setTiles([BASEMAPS[key]]);
 }
+document.getElementById('bm-street').classList.add('active');
 
-// ─── Map sources/layers init ─────────────────────────────────────────────────
+// ── Map sources + layers ───────────────────────────────────────────────────
+const EMPTY_FC = { type: 'FeatureCollection', features: [] };
+
 function initMapSources() {
-  const emptyGeoJSON = { type: 'FeatureCollection', features: [] };
+  // ── LGA (visible at low zoom 0-10) ──────────────────────────────
+  map.addSource('lga-src', { type: 'geojson', data: EMPTY_FC });
+  map.addLayer({
+    id: 'lga-fill', type: 'fill', source: 'lga-src', maxzoom: 10,
+    paint: {
+      'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'visitation_pct'], 0],
+        0, '#1e3a5f', 30, '#1e40af', 60, '#2563eb', 80, '#3b82f6', 100, '#93c5fd'],
+      'fill-opacity': 0.35,
+    },
+  });
+  map.addLayer({
+    id: 'lga-line', type: 'line', source: 'lga-src', maxzoom: 10,
+    paint: { 'line-color': '#3b82f6', 'line-width': 1.8 },
+  });
+  map.addLayer({
+    id: 'lga-label', type: 'symbol', source: 'lga-src', minzoom: 5, maxzoom: 9,
+    layout: {
+      'text-field': ['concat', ['get', 'lga_name'], '\n', ['to-string', ['coalesce', ['get', 'visitation_pct'], 0]], '%'],
+      'text-size': 11, 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+    },
+    paint: { 'text-color': '#fff', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 },
+  });
 
-  // LGA
-  map.addSource('lga-src', { type: 'geojson', data: emptyGeoJSON });
-  map.addLayer({ id: 'lga-fill', type: 'fill', source: 'lga-src',
-    paint: { 'fill-color': ['interpolate', ['linear'],
-      ['coalesce', ['get', 'visitation_pct'], 0], 0, '#1e40af', 50, '#3b82f6', 100, '#93c5fd'],
-      'fill-opacity': 0.25 } });
-  map.addLayer({ id: 'lga-line', type: 'line', source: 'lga-src',
-    paint: { 'line-color': '#3b82f6', 'line-width': 2 } });
-  map.addLayer({ id: 'lga-label', type: 'symbol', source: 'lga-src',
-    layout: { 'text-field': ['get', 'lga_name'], 'text-size': 11,
-      'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'] },
-    paint: { 'text-color': '#fff', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 } });
+  // ── Ward (visible at mid zoom 7-13) ─────────────────────────────
+  map.addSource('ward-src', { type: 'geojson', data: EMPTY_FC });
+  map.addLayer({
+    id: 'ward-fill', type: 'fill', source: 'ward-src', minzoom: 8, maxzoom: 13,
+    paint: {
+      'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'visitation_pct'], 0],
+        0, '#3b0764', 30, '#5b21b6', 60, '#7c3aed', 80, '#8b5cf6', 100, '#a78bfa'],
+      'fill-opacity': 0.3,
+    },
+  });
+  map.addLayer({
+    id: 'ward-line', type: 'line', source: 'ward-src', minzoom: 8, maxzoom: 13,
+    paint: { 'line-color': '#8b5cf6', 'line-width': 1.2 },
+  });
+  map.addLayer({
+    id: 'ward-label', type: 'symbol', source: 'ward-src', minzoom: 9, maxzoom: 12,
+    layout: {
+      'text-field': ['get', 'ward_name'], 'text-size': 10,
+      'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+    },
+    paint: { 'text-color': '#d8b4fe', 'text-halo-color': '#0f172a', 'text-halo-width': 1.2 },
+  });
 
-  // Ward
-  map.addSource('ward-src', { type: 'geojson', data: emptyGeoJSON });
-  map.addLayer({ id: 'ward-fill', type: 'fill', source: 'ward-src',
-    paint: { 'fill-color': ['interpolate', ['linear'],
-      ['coalesce', ['get', 'visitation_pct'], 0], 0, '#4c1d95', 50, '#7c3aed', 100, '#a78bfa'],
-      'fill-opacity': 0.3 } });
-  map.addLayer({ id: 'ward-line', type: 'line', source: 'ward-src',
-    paint: { 'line-color': '#8b5cf6', 'line-width': 1.5 } });
-  map.addLayer({ id: 'ward-label', type: 'symbol', source: 'ward-src',
-    minzoom: 9,
-    layout: { 'text-field': ['get', 'ward_name'], 'text-size': 10,
-      'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'] },
-    paint: { 'text-color': '#e9d5ff', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 } });
+  // ── Settlement (visible at high zoom 10+) ───────────────────────
+  map.addSource('settlement-src', { type: 'geojson', data: EMPTY_FC });
+  map.addLayer({
+    id: 'settlement-fill', type: 'fill', source: 'settlement-src', minzoom: 10,
+    paint: {
+      'fill-color': ['case', ['get', 'is_visited'], '#16a34a', '#dc2626'],
+      'fill-opacity': 0.45,
+    },
+  });
+  map.addLayer({
+    id: 'settlement-line', type: 'line', source: 'settlement-src', minzoom: 10,
+    paint: {
+      'line-color': ['case', ['get', 'is_visited'], '#22c55e', '#ef4444'],
+      'line-width': 1.0,
+    },
+  });
+  map.addLayer({
+    id: 'settlement-label', type: 'symbol', source: 'settlement-src', minzoom: 12,
+    layout: {
+      'text-field': ['get', 'settlement_name'], 'text-size': 9,
+      'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+    },
+    paint: { 'text-color': '#fff', 'text-halo-color': '#0f172a', 'text-halo-width': 1 },
+  });
 
-  // Settlement
-  map.addSource('settlement-src', { type: 'geojson', data: emptyGeoJSON });
-  map.addLayer({ id: 'settlement-fill', type: 'fill', source: 'settlement-src',
-    paint: { 'fill-color': ['case', ['get', 'is_visited'], '#16a34a', '#dc2626'],
-      'fill-opacity': 0.5 } });
-  map.addLayer({ id: 'settlement-line', type: 'line', source: 'settlement-src',
-    paint: { 'line-color': ['case', ['get', 'is_visited'], '#22c55e', '#ef4444'], 'line-width': 1.2 } });
+  // ── GPS Points (visible at zoom 11+) ────────────────────────────
+  map.addSource('points-src', { type: 'geojson', data: EMPTY_FC });
+  map.addLayer({
+    id: 'points-circle', type: 'circle', source: 'points-src', minzoom: 11,
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 14, 5],
+      'circle-color': '#ef4444', 'circle-opacity': 0.8,
+      'circle-stroke-color': '#fff', 'circle-stroke-width': 0.8,
+    },
+  });
 
-  // Grid
-  map.addSource('grid-src', { type: 'geojson', data: emptyGeoJSON });
-  map.addLayer({ id: 'grid-fill', type: 'fill', source: 'grid-src',
-    paint: { 'fill-color': ['case', ['get', 'has_point'], '#d97706', '#374151'],
-      'fill-opacity': 0.6 } });
-  map.addLayer({ id: 'grid-line', type: 'line', source: 'grid-src',
-    paint: { 'line-color': '#f59e0b', 'line-width': 0.8 } });
-
-  // Points
-  map.addSource('points-src', { type: 'geojson', data: emptyGeoJSON });
-  map.addLayer({ id: 'points-circle', type: 'circle', source: 'points-src',
-    paint: { 'circle-radius': 4, 'circle-color': '#ef4444',
-      'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
-
-  // Apply initial visibility
   applyLayerVisibility();
-
-  // Click handlers
-  addClickHandlers();
+  addMapClickHandlers();
 }
 
-// ─── Layer visibility ────────────────────────────────────────────────────────
-function toggleLayer(layerName, el) {
-  layerVisibility[layerName] = !layerVisibility[layerName];
-  el.classList.toggle('active', layerVisibility[layerName]);
-  const icon = el.querySelector('.layer-chip-eye');
-  icon.className = layerVisibility[layerName] ? 'bi bi-eye layer-chip-eye' : 'bi bi-eye-slash layer-chip-eye';
+// ── Layer visibility ───────────────────────────────────────────────────────
+function toggleLayer(name) {
+  layerVis[name] = !layerVis[name];
+  const eye = document.getElementById(`eye-${name}`);
+  if (eye) {
+    eye.className = layerVis[name] ? 'bi bi-eye lp-eye' : 'bi bi-eye-slash lp-eye off';
+  }
   applyLayerVisibility();
 }
 
 function applyLayerVisibility() {
-  const vis = layerVisibility;
-  const toggle = (ids, show) => ids.forEach(id => {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', show ? 'visible' : 'none');
+  const show = (ids, on) => ids.forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   });
-  toggle(['lga-fill', 'lga-line', 'lga-label'], vis.lga);
-  toggle(['ward-fill', 'ward-line', 'ward-label'], vis.ward);
-  toggle(['settlement-fill', 'settlement-line'], vis.settlement);
-  toggle(['grid-fill', 'grid-line'], vis.grid);
-  toggle(['points-circle'], vis.points);
+  show(['lga-fill', 'lga-line', 'lga-label'], layerVis.lga);
+  show(['ward-fill', 'ward-line', 'ward-label'], layerVis.ward);
+  show(['settlement-fill', 'settlement-line', 'settlement-label'], layerVis.settlement);
+  show(['points-circle'], layerVis.points);
 }
 
-// ─── Click handlers for map features ────────────────────────────────────────
-let popup = new maplibregl.Popup({ closeButton: true, maxWidth: '280px' });
+// ── Click handlers on map features ────────────────────────────────────────
+const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '270px' });
 
-function addClickHandlers() {
+function addMapClickHandlers() {
   map.on('click', 'lga-fill', (e) => {
     const p = e.features[0].properties;
-    const html = `
-      <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:8px 0">
+    popup.setLngLat(e.lngLat).setHTML(`
+      <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:4px 0">
         <strong style="font-size:14px">${p.lga_name}</strong><br>
-        <span style="color:#94a3b8">Visited: ${p.visited_settlements}/${p.total_settlements} settlements</span><br>
-        <span style="color:#22c55e">Visitation: ${p.visitation_pct}%</span><br>
-        <span style="color:#94a3b8">Points: ${p.point_count}</span>
-      </div>`;
-    popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        <span style="color:#94a3b8">Visitation: <span style="color:#22c55e">${p.visitation_pct}%</span></span><br>
+        <span style="color:#94a3b8">Settlements: ${p.visited_settlements}/${p.total_settlements}</span><br>
+        <button onclick="onMapLGAClick('${p.lgacode}','${p.lga_name}')"
+          style="margin-top:6px;background:#1d4ed8;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">
+          Drill into wards →</button>
+      </div>`).addTo(map);
   });
 
   map.on('click', 'ward-fill', (e) => {
     const p = e.features[0].properties;
-    const html = `
-      <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:8px 0">
-        <strong style="font-size:14px">${p.ward_name}</strong><br>
+    popup.setLngLat(e.lngLat).setHTML(`
+      <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:4px 0">
+        <strong>${p.ward_name}</strong><br>
         <span style="color:#94a3b8">${p.lga_name}</span><br>
-        <span style="color:#a78bfa">Visited: ${p.visited_settlements}/${p.total_settlements} settlements</span><br>
-        <span style="color:#22c55e">Visitation: ${p.visitation_pct}%</span>
-      </div>`;
-    popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        <span style="color:#a78bfa">Visitation: ${p.visitation_pct}%</span><br>
+        <button onclick="onMapWardClick('${p.wardcode}','${p.ward_name}')"
+          style="margin-top:6px;background:#6d28d9;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">
+          Drill into settlements →</button>
+      </div>`).addTo(map);
   });
 
   map.on('click', 'settlement-fill', (e) => {
     const p = e.features[0].properties;
-    const pct = p.completeness_pct ? p.completeness_pct.toFixed(1) : '0.0';
-    const html = `
-      <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:8px 0">
-        <strong style="font-size:14px">${p.settlement_name || 'Settlement'}</strong><br>
-        <span style="color:#94a3b8">${p.ward_name} → ${p.lga_name}</span><br>
+    popup.setLngLat(e.lngLat).setHTML(`
+      <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:4px 0">
+        <strong>${p.settlement_name || 'Settlement'}</strong><br>
+        <span style="color:#94a3b8">${p.ward_name} › ${p.lga_name}</span><br>
         <span style="${p.is_visited ? 'color:#22c55e' : 'color:#ef4444'}">
-          ${p.is_visited ? '✓ Visited' : '✗ Not Visited'}
-        </span><br>
-        <span style="color:#fbbf24">Grids: ${p.visited_grids}/${p.total_grids} (${pct}%)</span><br>
+          ${p.is_visited ? '✓ Visited' : '✗ Not Visited'}</span><br>
+        <span style="color:#fbbf24">Completeness: ${Number(p.completeness_pct || 0).toFixed(1)}%</span><br>
         <span style="color:#94a3b8">Points: ${p.point_count}</span><br>
-        <button onclick="drillToSettlement('${p.unique_cod}')"
-          style="margin-top:6px;background:#16a34a;color:#fff;border:none;padding:4px 8px;
-                 border-radius:4px;cursor:pointer;font-size:12px">
-          Drill Down →
-        </button>
-      </div>`;
-    popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
-  });
-
-  map.on('click', 'grid-fill', (e) => {
-    const p = e.features[0].properties;
-    const html = `
-      <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:8px 0">
-        <strong>Grid Cell</strong><br>
-        <span style="color:#94a3b8">${p.settlement_name}</span><br>
-        <span style="${p.has_point ? 'color:#22c55e' : 'color:#ef4444'}">
-          ${p.has_point ? '✓ Point within 20m' : '✗ No point collected'}
-        </span>
-      </div>`;
-    popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        <button onclick="onMapSettClick('${p.unique_cod}','${(p.settlement_name||'').replace(/'/g,'')}')"
+          style="margin-top:6px;background:#15803d;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">
+          Show GPS points →</button>
+      </div>`).addTo(map);
   });
 
   map.on('click', 'points-circle', (e) => {
     const p = e.features[0].properties;
-    const html = `
-      <div style="font-size:12px;color:#f1f5f9;background:#1e293b;padding:8px 0">
+    popup.setLngLat(e.lngLat).setHTML(`
+      <div style="font-size:12px;color:#f1f5f9;background:#1e293b;padding:4px 0">
         <strong>GPS Point</strong><br>
-        <span style="color:#94a3b8">Lat: ${p.latitude}, Lon: ${p.longitude}</span><br>
-        ${p.research_assistant ? `<span>RA: ${p.research_assistant}</span><br>` : ''}
-        ${p.collection_date ? `<span>Date: ${p.collection_date}</span><br>` : ''}
-        ${p.ward_name ? `<span style="color:#94a3b8">Ward: ${p.ward_name}</span>` : ''}
-      </div>`;
-    popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        <span style="color:#94a3b8">${p.settlement_name || ''}</span><br>
+        <span>Lat ${Number(p.latitude).toFixed(5)}, Lon ${Number(p.longitude).toFixed(5)}</span>
+        ${p.collection_date ? `<br><span style="color:#94a3b8">${p.collection_date}</span>` : ''}
+      </div>`).addTo(map);
   });
 
-  // Cursor changes
-  ['lga-fill', 'ward-fill', 'settlement-fill', 'grid-fill', 'points-circle'].forEach(l => {
+  ['lga-fill','ward-fill','settlement-fill','points-circle'].forEach(l => {
     map.on('mouseenter', l, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', l, () => { map.getCanvas().style.cursor = ''; });
   });
 }
 
-// ─── Projects ────────────────────────────────────────────────────────────────
-async function loadProjects() {
-  const projects = await apiFetch('/api/projects');
-  if (!projects) return;
-  projectList = projects;
+// Map click drill-down helpers
+function onMapLGAClick(lgacode, lganame) {
+  popup.remove();
+  drillLGA({ lgacode, lga_name: lganame });
+}
+function onMapWardClick(wardcode, wardname) {
+  popup.remove();
+  const item = navData.ward.find(w => w.wardcode === wardcode) || { wardcode, ward_name: wardname };
+  drillWard(item);
+}
+function onMapSettClick(unique_cod, sett_name) {
+  popup.remove();
+  const item = navData.settlement.find(s => s.unique_cod === unique_cod) || { unique_cod, settlement_name: sett_name };
+  drillSettlement(item);
+}
 
-  const sel = document.getElementById('project-switcher');
-  sel.innerHTML = '<option value="">Select project...</option>';
-  projects.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name;
-    if (p.is_active) opt.selected = true;
-    sel.appendChild(opt);
-  });
+// ── Toolbar / Layer panel ──────────────────────────────────────────────────
+function toggleToolbar() {
+  toolbarOpen = !toolbarOpen;
+  document.getElementById('side-toolbar').classList.toggle('open', toolbarOpen);
+  document.getElementById('toolbar-toggle').classList.toggle('active', toolbarOpen);
+  if (!toolbarOpen && layerPanelOpen) toggleLayerPanel();
+}
 
-  sel.addEventListener('change', () => {
-    const pid = parseInt(sel.value);
-    if (pid) selectProject(pid);
-  });
+function toggleLayerPanel() {
+  layerPanelOpen = !layerPanelOpen;
+  document.getElementById('layer-panel').classList.toggle('hidden', !layerPanelOpen);
+  document.getElementById('st-layers').classList.toggle('active', layerPanelOpen);
+}
 
-  const active = projects.find(p => p.is_active) || projects[0];
-  if (active) {
-    sel.value = active.id;
-    selectProject(active.id);
+function toggleModal(id) {
+  document.getElementById(id).classList.toggle('hidden');
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+    document.getElementById('btn-fs').querySelector('i').className = 'bi bi-fullscreen-exit';
+  } else {
+    document.exitFullscreen();
+    document.getElementById('btn-fs').querySelector('i').className = 'bi bi-fullscreen';
   }
 }
 
+function refreshData() {
+  if (!currentPid) return;
+  selectProject(currentPid);
+  showToast('Refreshing data…');
+}
+
+// ── Drag-to-resize ─────────────────────────────────────────────────────────
+(function initDrag() {
+  const handle = document.getElementById('drag-handle');
+  const panel  = document.getElementById('bt-panel');
+  let dragging = false, startY = 0, startH = 0;
+
+  handle.addEventListener('mousedown', (e) => {
+    dragging = true;
+    startY   = e.clientY;
+    startH   = panel.getBoundingClientRect().height;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ns-resize';
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const delta = startY - e.clientY;
+    const newH  = Math.max(80, Math.min(window.innerHeight * 0.6, startH + delta));
+    panel.style.height = newH + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+  });
+
+  // Touch support
+  handle.addEventListener('touchstart', (e) => {
+    dragging = true; startY = e.touches[0].clientY;
+    startH = panel.getBoundingClientRect().height;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const delta = startY - e.touches[0].clientY;
+    const newH  = Math.max(80, Math.min(window.innerHeight * 0.6, startH + delta));
+    panel.style.height = newH + 'px';
+  }, { passive: true });
+  document.addEventListener('touchend', () => { dragging = false; });
+})();
+
+// ── Projects ───────────────────────────────────────────────────────────────
+async function loadProjects() {
+  const projects = await apiFetch('/api/projects');
+  if (!projects) return;
+  const sel = document.getElementById('project-switcher');
+  sel.innerHTML = '<option value="">Select project…</option>';
+  projects.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    if (p.is_active) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', () => { if (sel.value) selectProject(parseInt(sel.value)); });
+  const active = projects.find(p => p.is_active) || projects[0];
+  if (active) { sel.value = active.id; selectProject(active.id); }
+}
+
 async function selectProject(pid) {
-  currentProjectId = pid;
-  currentLGACode = null;
-  currentWardCode = null;
-  currentSettlementCode = null;
-  navLevel = 'lga';
-  clearMapData();
+  currentPid = pid;
+  resetDrillState();
+  clearMapSources();
   await Promise.all([
-    loadLGANav(),
     loadLGABoundaries(),
+    loadWardBoundaries(null),
+    loadLGAMetrics(),
     loadProjectSummary(),
     loadQCSummary(),
   ]);
 }
 
-// ─── Navigation ──────────────────────────────────────────────────────────────
-async function loadLGANav() {
-  const data = await apiFetch(`/api/projects/${currentProjectId}/analytics/lgas`);
-  if (!data) return;
-  navData.lga = data;
+function resetDrillState() {
+  currentLGA = currentWard = currentSett = null;
   navLevel = 'lga';
-  renderNav(data, 'lga');
-}
-
-async function loadWardNav(lgacode) {
-  currentLGACode = lgacode;
-  const data = await apiFetch(`/api/projects/${currentProjectId}/analytics/wards?lgacode=${lgacode}`);
-  if (!data) return;
-  navData.ward = data;
-  navLevel = 'ward';
-  renderNav(data, 'ward');
-}
-
-async function loadSettlementNav(wardcode) {
-  currentWardCode = wardcode;
-  const data = await apiFetch(`/api/projects/${currentProjectId}/analytics/settlements?wardcode=${wardcode}`);
-  if (!data) return;
-  navData.settlement = data;
-  navLevel = 'settlement';
-  renderNav(data, 'settlement');
-}
-
-function renderNav(items, level) {
-  const list = document.getElementById('nav-list');
-  const title = document.getElementById('nav-level-title');
-  const backBtn = document.getElementById('nav-back-btn');
-  const search = document.getElementById('nav-search');
-  search.value = '';
-
-  const levelNames = { lga: 'LGAs', ward: 'Wards', settlement: 'Settlements' };
-  title.textContent = levelNames[level] || level;
-  backBtn.style.display = level === 'lga' ? 'none' : 'inline-flex';
-
-  list.innerHTML = '';
-  if (!items.length) {
-    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No data found</div>';
-    return;
-  }
-
-  items.forEach(item => {
-    const pct = level === 'settlement'
-      ? (item.completeness_pct || 0)
-      : (item.visitation_pct || 0);
-    const pctColor = pct >= 80 ? 'visited' : pct >= 40 ? 'partial' : '';
-    const label = level === 'lga' ? item.lga_name
-                : level === 'ward' ? item.ward_name
-                : item.settlement_name || item.unique_cod;
-
-    const div = document.createElement('div');
-    div.className = 'nav-item';
-    div.dataset.name = (label || '').toLowerCase();
-    div.innerHTML = `
-      <div style="flex:1;min-width:0">
-        <div class="nav-item-name">${label || 'Unknown'}</div>
-        <div class="nav-item-bar">
-          <div class="nav-item-bar-fill" style="width:${Math.min(pct,100)}%"></div>
-        </div>
-      </div>
-      <span class="nav-item-pct ${pctColor}">${pct.toFixed(0)}%</span>
-    `;
-
-    div.addEventListener('click', () => onNavItemClick(item, level));
-    list.appendChild(div);
+  navData  = { lga: [], ward: [], settlement: [] };
+  ['tab-ward','tab-sett'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
   });
+  updateBreadcrumb();
 }
 
-function filterNavItems() {
-  const query = document.getElementById('nav-search').value.toLowerCase();
-  document.querySelectorAll('#nav-list .nav-item').forEach(el => {
-    el.style.display = el.dataset.name.includes(query) ? '' : 'none';
-  });
+function resetToProject() {
+  if (!currentPid) return;
+  resetDrillState();
+  clearSource('settlement-src');
+  clearSource('points-src');
+  renderTable(navData.lga, 'lga');
+  map.flyTo({ center: [5.25, 13.05], zoom: 7, duration: 800 });
 }
 
-async function onNavItemClick(item, level) {
-  // Highlight
-  document.querySelectorAll('#nav-list .nav-item').forEach(e => e.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-
-  if (level === 'lga') {
-    currentLGACode = item.lgacode;
-    await Promise.all([
-      loadWardNav(item.lgacode),
-      loadWardBoundaries(item.lgacode),
-      loadSettlementBoundaries(item.lgacode, null),
-    ]);
-    zoomToLGA(item.lgacode);
-  } else if (level === 'ward') {
-    currentWardCode = item.wardcode;
-    await Promise.all([
-      loadSettlementNav(item.wardcode),
-      loadSettlementBoundaries(null, item.wardcode),
-      loadGridBoundaries(null, item.wardcode),
-    ]);
-    zoomToWard(item.wardcode);
-  } else if (level === 'settlement') {
-    currentSettlementCode = item.unique_cod;
-    await Promise.all([
-      loadGridBoundaries(item.unique_cod, null),
-      loadPoints(item.unique_cod, null, null),
-    ]);
-    zoomToSettlement(item.unique_cod);
-  }
-}
-
-function navBack() {
-  if (navLevel === 'settlement') {
-    navLevel = 'ward';
-    renderNav(navData.ward, 'ward');
-    clearSource('grid-src');
-    clearSource('points-src');
-  } else if (navLevel === 'ward') {
-    navLevel = 'lga';
-    renderNav(navData.lga, 'lga');
-    clearSource('ward-src');
-    clearSource('settlement-src');
-  }
-}
-
-function drillToSettlement(unique_cod) {
-  popup.remove();
-  const item = navData.settlement.find(s => s.unique_cod === unique_cod);
-  if (item) {
-    currentSettlementCode = unique_cod;
-    loadGridBoundaries(unique_cod, null);
-    loadPoints(unique_cod, null, null);
-    zoomToSettlement(unique_cod);
-  }
-}
-
-// ─── Boundary loading ────────────────────────────────────────────────────────
+// ── Boundaries ─────────────────────────────────────────────────────────────
 async function loadLGABoundaries() {
-  const data = await apiFetch(`/api/projects/${currentProjectId}/boundaries/lga/geojson`);
-  if (!data) return;
-  map.getSource('lga-src').setData(data);
+  const d = await apiFetch(`/api/projects/${currentPid}/boundaries/lga/geojson`);
+  if (d) map.getSource('lga-src').setData(d);
 }
 
 async function loadWardBoundaries(lgacode) {
   const q = lgacode ? `?lgacode=${lgacode}` : '';
-  const data = await apiFetch(`/api/projects/${currentProjectId}/boundaries/ward/geojson${q}`);
-  if (!data) return;
-  map.getSource('ward-src').setData(data);
-  if (!layerVisibility.ward) {
-    layerVisibility.ward = true;
-    const chip = document.querySelector('.layer-chip[data-layer="ward"]');
-    if (chip) { chip.classList.add('active'); chip.querySelector('.layer-chip-eye').className = 'bi bi-eye layer-chip-eye'; }
-    applyLayerVisibility();
-  }
+  const d = await apiFetch(`/api/projects/${currentPid}/boundaries/ward/geojson${q}`);
+  if (d) map.getSource('ward-src').setData(d);
 }
 
 async function loadSettlementBoundaries(lgacode, wardcode) {
   let q = '';
-  if (lgacode) q = `?lgacode=${lgacode}`;
   if (wardcode) q = `?wardcode=${wardcode}`;
-  const data = await apiFetch(`/api/projects/${currentProjectId}/boundaries/settlement/geojson${q}`);
-  if (!data) return;
-  map.getSource('settlement-src').setData(data);
-  if (!layerVisibility.settlement) {
-    layerVisibility.settlement = true;
-    const chip = document.querySelector('.layer-chip[data-layer="settlement"]');
-    if (chip) { chip.classList.add('active'); chip.querySelector('.layer-chip-eye').className = 'bi bi-eye layer-chip-eye'; }
-    applyLayerVisibility();
-  }
-}
-
-async function loadGridBoundaries(unique_cod, wardcode) {
-  if (!unique_cod && !wardcode) return;
-  const q = unique_cod ? `?unique_cod=${unique_cod}` : `?unique_cod=${wardcode}`;
-  // Grid endpoint needs unique_cod
-  if (!unique_cod) return;
-  const data = await apiFetch(`/api/projects/${currentProjectId}/boundaries/grid/geojson?unique_cod=${unique_cod}`);
-  if (!data) return;
-  map.getSource('grid-src').setData(data);
-  if (!layerVisibility.grid) {
-    layerVisibility.grid = true;
-    const chip = document.querySelector('.layer-chip[data-layer="grid"]');
-    if (chip) { chip.classList.add('active'); chip.querySelector('.layer-chip-eye').className = 'bi bi-eye layer-chip-eye'; }
-    applyLayerVisibility();
-  }
-}
-
-async function loadPoints(unique_cod, wardcode, lgacode) {
-  let q = '';
-  if (unique_cod) q = `?unique_cod=${unique_cod}`;
-  else if (wardcode) q = `?wardcode=${wardcode}`;
   else if (lgacode) q = `?lgacode=${lgacode}`;
-  const data = await apiFetch(`/api/projects/${currentProjectId}/analytics/points/geojson${q}`);
-  if (!data) return;
-  map.getSource('points-src').setData(data);
-  if (!layerVisibility.points) {
-    layerVisibility.points = true;
-    const chip = document.querySelector('.layer-chip[data-layer="points"]');
-    if (chip) { chip.classList.add('active'); chip.querySelector('.layer-chip-eye').className = 'bi bi-eye layer-chip-eye'; }
-    applyLayerVisibility();
+  const d = await apiFetch(`/api/projects/${currentPid}/boundaries/settlement/geojson${q}`);
+  if (d) map.getSource('settlement-src').setData(d);
+}
+
+async function loadPoints(unique_cod) {
+  const d = await apiFetch(`/api/projects/${currentPid}/analytics/points/geojson?unique_cod=${encodeURIComponent(unique_cod)}&limit=5000`);
+  if (d) map.getSource('points-src').setData(d);
+}
+
+// ── Metrics (table data) ───────────────────────────────────────────────────
+async function loadLGAMetrics() {
+  const d = await apiFetch(`/api/projects/${currentPid}/analytics/lgas`);
+  if (!d) return;
+  navData.lga = d;
+  navLevel = 'lga';
+  renderTable(d, 'lga');
+}
+
+async function loadWardMetrics(lgacode) {
+  const d = await apiFetch(`/api/projects/${currentPid}/analytics/wards?lgacode=${lgacode}`);
+  if (!d) return;
+  navData.ward = d;
+  navLevel = 'ward';
+  renderTable(d, 'ward');
+  const tab = document.getElementById('tab-ward');
+  if (tab) tab.disabled = false;
+}
+
+async function loadSettlementMetrics(wardcode) {
+  const d = await apiFetch(`/api/projects/${currentPid}/analytics/settlements?wardcode=${wardcode}`);
+  if (!d) return;
+  navData.settlement = d;
+  navLevel = 'settlement';
+  renderTable(d, 'settlement');
+  const tab = document.getElementById('tab-sett');
+  if (tab) tab.disabled = false;
+}
+
+// ── Drill-down logic ───────────────────────────────────────────────────────
+async function drillLGA(item) {
+  currentLGA  = item;
+  currentWard = currentSett = null;
+  clearSource('settlement-src');
+  clearSource('points-src');
+  updateBreadcrumb();
+  zoomToLGA(item.lgacode);
+  await Promise.all([
+    loadWardMetrics(item.lgacode),
+    loadSettlementBoundaries(item.lgacode, null),
+  ]);
+}
+
+async function drillWard(item) {
+  currentWard = item;
+  currentSett = null;
+  clearSource('points-src');
+  updateBreadcrumb();
+  zoomToWard(item.wardcode);
+  await Promise.all([
+    loadSettlementMetrics(item.wardcode),
+    loadSettlementBoundaries(null, item.wardcode),
+  ]);
+}
+
+async function drillSettlement(item) {
+  currentSett = item;
+  updateBreadcrumb();
+  zoomToSettlement(item.unique_cod);
+  await loadPoints(item.unique_cod);
+  // Zoom map to show points level
+  if (map.getZoom() < 12) map.flyTo({ zoom: 13, duration: 600 });
+}
+
+// ── Tab switcher ───────────────────────────────────────────────────────────
+function switchTab(level) {
+  const data = navData[level];
+  if (!data?.length) return;
+  navLevel = level;
+  renderTable(data, level);
+  document.querySelectorAll('.bt-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.level === level));
+}
+
+// ── Bottom table rendering ─────────────────────────────────────────────────
+const COLS = {
+  lga: [
+    { key: 'lga_name',        label: 'LGA',           w: '140px' },
+    { key: 'total_settlements',label: 'Settlements',   w: '90px', align: 'right' },
+    { key: 'visited_settlements',label: 'Visited',     w: '70px', align: 'right' },
+    { key: 'visitation_pct',  label: 'Visitation %',  w: '140px', bar: true },
+    { key: 'total_grids',     label: 'Total Grids',   w: '90px', align: 'right' },
+    { key: 'visited_grids',   label: 'Visited Grids', w: '90px', align: 'right' },
+    { key: 'completeness_pct',label: 'Completeness %',w: '140px', bar: true },
+    { key: 'point_count',     label: 'GPS Points',    w: '90px', align: 'right' },
+  ],
+  ward: [
+    { key: 'ward_name',       label: 'Ward',          w: '150px' },
+    { key: 'lga_name',        label: 'LGA',           w: '120px' },
+    { key: 'total_settlements',label: 'Settlements',  w: '90px', align: 'right' },
+    { key: 'visited_settlements',label: 'Visited',    w: '70px', align: 'right' },
+    { key: 'visitation_pct',  label: 'Visitation %',  w: '140px', bar: true },
+    { key: 'completeness_pct',label: 'Completeness %',w: '140px', bar: true },
+    { key: 'point_count',     label: 'GPS Points',    w: '90px', align: 'right' },
+  ],
+  settlement: [
+    { key: 'settlement_name', label: 'Settlement',    w: '180px' },
+    { key: 'ward_name',       label: 'Ward',          w: '130px' },
+    { key: 'lga_name',        label: 'LGA',           w: '110px' },
+    { key: 'is_visited',      label: 'Status',        w: '80px' },
+    { key: 'total_grids',     label: 'Grids',         w: '70px', align: 'right' },
+    { key: 'completeness_pct',label: 'Completeness %',w: '140px', bar: true },
+    { key: 'point_count',     label: 'GPS Points',    w: '90px', align: 'right' },
+  ],
+};
+
+function renderTable(items, level) {
+  const cols  = COLS[level];
+  const thead = document.getElementById('bt-thead');
+
+  // Update active tab
+  document.querySelectorAll('.bt-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.level === level));
+
+  // Headers
+  thead.innerHTML = '<tr>' + cols.map(c => `
+    <th style="min-width:${c.w}" onclick="sortTable('${c.key}','${level}')">
+      ${c.label}<span class="sort-icon">⇅</span>
+    </th>`).join('') + '</tr>';
+
+  renderRows(items, level);
+  document.getElementById('bt-search').value = '';
+  document.getElementById('bt-count').textContent = `${items.length} rows`;
+  updateFooterSummary(items, level);
+}
+
+function renderRows(items, level) {
+  const cols  = COLS[level];
+  const tbody = document.getElementById('bt-tbody');
+
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="${cols.length}" class="bt-empty">No data found</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map((row, i) => {
+    const cells = cols.map(c => {
+      const val = row[c.key];
+      if (c.bar) {
+        const pct = Math.min(100, Math.max(0, Number(val) || 0));
+        const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+        return `<td>
+          <div class="tbl-bar-wrap">
+            <div class="tbl-bar"><div class="tbl-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span style="font-size:11px;color:${color};font-weight:600;min-width:34px">${pct.toFixed(1)}%</span>
+          </div>
+        </td>`;
+      }
+      if (c.key === 'is_visited') {
+        return `<td><span class="vis-badge ${val ? 'yes' : 'no'}">${val ? '✓ Visited' : '✗ Not visited'}</span></td>`;
+      }
+      const display = val != null ? (typeof val === 'number' ? val.toLocaleString() : val) : '—';
+      const align   = c.align === 'right' ? 'text-align:right' : '';
+      return `<td style="${align}">${display}</td>`;
+    }).join('');
+
+    return `<tr data-idx="${i}" onclick="onRowClick(${i},'${level}')" >${cells}</tr>`;
+  }).join('');
+}
+
+function onRowClick(idx, level) {
+  document.querySelectorAll('#bt-tbody tr').forEach(r => r.classList.remove('selected'));
+  document.querySelector(`#bt-tbody tr[data-idx="${idx}"]`)?.classList.add('selected');
+  const item = navData[level][idx];
+  if (!item) return;
+  if (level === 'lga')        drillLGA(item);
+  else if (level === 'ward')  drillWard(item);
+  else if (level === 'settlement') drillSettlement(item);
+}
+
+function filterTable() {
+  const q = document.getElementById('bt-search').value.toLowerCase();
+  document.querySelectorAll('#bt-tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function sortTable(key, level) {
+  const data = navData[level];
+  if (sortCol === key) sortDir = -sortDir;
+  else { sortCol = key; sortDir = 1; }
+  data.sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (av == null) return 1; if (bv == null) return -1;
+    return typeof av === 'string'
+      ? av.localeCompare(bv) * sortDir
+      : (av - bv) * sortDir;
+  });
+  renderRows(data, level);
+}
+
+function updateFooterSummary(items, level) {
+  const el = document.getElementById('bt-footer');
+  if (!items.length) { el.textContent = 'No records'; return; }
+  if (level === 'lga') {
+    const visited = items.filter(r => r.visitation_pct >= 50).length;
+    const avgPct  = (items.reduce((s, r) => s + (r.visitation_pct || 0), 0) / items.length).toFixed(1);
+    el.textContent = `${items.length} LGAs  •  ${visited} ≥50% visited  •  Avg visitation ${avgPct}%`;
+  } else if (level === 'ward') {
+    const avgPct = (items.reduce((s, r) => s + (r.visitation_pct || 0), 0) / items.length).toFixed(1);
+    el.textContent = `${items.length} wards in ${currentLGA?.lga_name || ''}  •  Avg visitation ${avgPct}%`;
+  } else {
+    const visited = items.filter(r => r.is_visited).length;
+    const pct     = ((visited / items.length) * 100).toFixed(1);
+    el.textContent = `${items.length} settlements  •  ${visited} visited (${pct}%)  •  ${currentWard?.ward_name || ''}`;
   }
 }
 
-// ─── Zoom helpers ─────────────────────────────────────────────────────────────
-function zoomToFeatures(source) {
-  const data = map.getSource(source)?._data;
-  if (!data || !data.features?.length) return;
-  const bounds = new maplibregl.LngLatBounds();
-  data.features.forEach(f => {
-    const geom = f.geometry;
-    if (!geom) return;
-    if (geom.type === 'MultiPolygon') {
-      geom.coordinates.forEach(poly => poly.forEach(ring => ring.forEach(c => bounds.extend(c))));
-    } else if (geom.type === 'Polygon') {
-      geom.coordinates.forEach(ring => ring.forEach(c => bounds.extend(c)));
-    } else if (geom.type === 'Point') {
-      bounds.extend(geom.coordinates);
-    }
-  });
-  if (!bounds.isEmpty()) {
-    map.fitBounds(bounds, { padding: 40, maxZoom: 14 });
+// ── Breadcrumb ─────────────────────────────────────────────────────────────
+function updateBreadcrumb() {
+  const el = document.getElementById('tb-breadcrumb');
+  let html = `<span class="bc-seg" onclick="resetToProject()"><i class="bi bi-house-fill"></i> Sokoto</span>`;
+  if (currentLGA) {
+    html += `<span class="bc-arrow">›</span>
+             <span class="bc-seg" onclick="switchTab('lga')">${currentLGA.lga_name}</span>`;
   }
+  if (currentWard) {
+    html += `<span class="bc-arrow">›</span>
+             <span class="bc-seg" onclick="switchTab('ward')">${currentWard.ward_name}</span>`;
+  }
+  if (currentSett) {
+    html += `<span class="bc-arrow">›</span>
+             <span class="bc-seg current">${currentSett.settlement_name || currentSett.unique_cod}</span>`;
+  }
+  el.innerHTML = html;
+}
+
+// ── Zoom helpers ───────────────────────────────────────────────────────────
+function boundsFromFeature(feat) {
+  const bounds = new maplibregl.LngLatBounds();
+  const geom   = feat?.geometry;
+  if (!geom) return null;
+  const push = coords => {
+    if (Array.isArray(coords[0])) coords.forEach(push);
+    else bounds.extend(coords);
+  };
+  if (geom.type === 'MultiPolygon') geom.coordinates.forEach(p => p.forEach(push));
+  else if (geom.type === 'Polygon')  geom.coordinates.forEach(push);
+  return bounds.isEmpty() ? null : bounds;
 }
 
 function zoomToLGA(lgacode) {
-  const data = map.getSource('lga-src')?._data;
-  if (!data?.features?.length) return;
-  const feature = data.features.find(f => f.properties.lgacode === lgacode);
-  if (!feature) return;
-  const bounds = new maplibregl.LngLatBounds();
-  const geom = feature.geometry;
-  if (geom.type === 'MultiPolygon') {
-    geom.coordinates.forEach(poly => poly.forEach(ring => ring.forEach(c => bounds.extend(c))));
-  } else if (geom.type === 'Polygon') {
-    geom.coordinates.forEach(ring => ring.forEach(c => bounds.extend(c)));
-  }
-  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60 });
+  const src  = map.getSource('lga-src')?._data;
+  const feat = src?.features?.find(f => f.properties.lgacode === lgacode);
+  const bounds = boundsFromFeature(feat);
+  if (bounds) map.fitBounds(bounds, { padding: 60, maxZoom: 10 });
 }
 
 function zoomToWard(wardcode) {
-  const data = map.getSource('ward-src')?._data;
-  if (!data?.features?.length) return;
-  const feature = data.features.find(f => f.properties.wardcode === wardcode);
-  if (!feature) { zoomToFeatures('ward-src'); return; }
-  const bounds = new maplibregl.LngLatBounds();
-  const geom = feature.geometry;
-  if (geom.type === 'MultiPolygon') {
-    geom.coordinates.forEach(poly => poly.forEach(ring => ring.forEach(c => bounds.extend(c))));
-  } else if (geom.type === 'Polygon') {
-    geom.coordinates.forEach(ring => ring.forEach(c => bounds.extend(c)));
+  const src  = map.getSource('ward-src')?._data;
+  const feat = src?.features?.find(f => f.properties.wardcode === wardcode);
+  const bounds = boundsFromFeature(feat);
+  if (bounds) map.fitBounds(bounds, { padding: 60, maxZoom: 12 });
+  else {
+    const all = map.getSource('ward-src')?._data;
+    if (all?.features?.length) {
+      const b = new maplibregl.LngLatBounds();
+      all.features.forEach(f => boundsFromFeature(f) && b.extend(boundsFromFeature(f)));
+      if (!b.isEmpty()) map.fitBounds(b, { padding: 60 });
+    }
   }
-  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60 });
 }
 
 function zoomToSettlement(unique_cod) {
-  const data = map.getSource('settlement-src')?._data;
-  if (!data?.features?.length) return;
-  const feature = data.features.find(f => f.properties.unique_cod === unique_cod);
-  if (!feature) { zoomToFeatures('settlement-src'); return; }
-  const bounds = new maplibregl.LngLatBounds();
-  const geom = feature.geometry;
-  if (geom.type === 'MultiPolygon') {
-    geom.coordinates.forEach(poly => poly.forEach(ring => ring.forEach(c => bounds.extend(c))));
-  }
-  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 80, maxZoom: 16 });
+  const src  = map.getSource('settlement-src')?._data;
+  const feat = src?.features?.find(f => f.properties.unique_cod === unique_cod);
+  const bounds = boundsFromFeature(feat);
+  if (bounds) map.fitBounds(bounds, { padding: 80, maxZoom: 15 });
 }
 
-// ─── Clear helpers ────────────────────────────────────────────────────────────
-function clearSource(sourceId) {
-  const src = map.getSource(sourceId);
-  if (src) src.setData({ type: 'FeatureCollection', features: [] });
+// ── Clear helpers ──────────────────────────────────────────────────────────
+function clearSource(id) {
+  const src = map.getSource(id);
+  if (src) src.setData(EMPTY_FC);
+}
+function clearMapSources() {
+  ['lga-src','ward-src','settlement-src','points-src'].forEach(clearSource);
 }
 
-function clearMapData() {
-  ['lga-src', 'ward-src', 'settlement-src', 'grid-src', 'points-src'].forEach(clearSource);
-}
-
-// ─── Summary panel ────────────────────────────────────────────────────────────
+// ── Project summary / KPIs ─────────────────────────────────────────────────
 async function loadProjectSummary() {
-  const data = await apiFetch(`/api/projects/${currentProjectId}/analytics/summary`);
-  if (!data) return;
-  projectSummary = data;
-  document.getElementById('summary-visited').textContent =
-    `${data.visited_settlements}/${data.total_settlements} (${data.visitation_pct}%)`;
-  document.getElementById('summary-completeness').textContent =
-    `${data.completeness_pct}%`;
-  document.getElementById('summary-points').textContent =
-    data.total_points.toLocaleString();
+  const d = await apiFetch(`/api/projects/${currentPid}/analytics/summary`);
+  if (!d) return;
+  projectSummary = d;
+  document.getElementById('kpi-visited').textContent =
+    `${d.visited_settlements}/${d.total_settlements}`;
+  document.getElementById('kpi-comp').textContent =
+    (d.completeness_pct || 0).toFixed(1);
+  document.getElementById('kpi-points').textContent =
+    (d.total_points || 0).toLocaleString();
 }
 
-// ─── QC ──────────────────────────────────────────────────────────────────────
+// ── QC ─────────────────────────────────────────────────────────────────────
 async function loadQCSummary() {
-  const data = await apiFetch(`/api/projects/${currentProjectId}/qc/summary`);
-  if (!data) return;
-  document.getElementById('qc-total').textContent = data.total_flags;
-  document.getElementById('qc-out-of-bound').textContent = data.out_of_bound;
-  document.getElementById('qc-time-violations').textContent = data.time_violations;
-  document.getElementById('qc-stacked').textContent = data.stacked_points;
-  document.getElementById('qc-total-modal').textContent = data.total_flags;
+  const d = await apiFetch(`/api/projects/${currentPid}/qc/summary`);
+  if (!d) return;
+  document.getElementById('qc-total').textContent = d.total_flags || 0;
+  document.getElementById('qc-oob').textContent   = d.out_of_bound || 0;
+  document.getElementById('qc-tv').textContent    = d.time_violations || 0;
+  document.getElementById('qc-sp').textContent    = d.stacked_points || 0;
+  document.getElementById('qc-ttl').textContent   = d.total_flags || 0;
 }
 
-function toggleQCModal() {
-  document.getElementById('qc-modal').classList.toggle('hidden');
-}
-
-// ─── Pie charts ──────────────────────────────────────────────────────────────
+// ── Pie charts ─────────────────────────────────────────────────────────────
 let currentPieType = null;
 
 function togglePieModal(type) {
   const modal = document.getElementById('pie-modal');
   if (currentPieType === type && !modal.classList.contains('hidden')) {
-    closePieModal();
+    modal.classList.add('hidden');
+    currentPieType = null;
     return;
   }
   currentPieType = type;
@@ -620,163 +750,67 @@ function togglePieModal(type) {
   renderPieChart(type);
 }
 
-function closePieModal() {
-  document.getElementById('pie-modal').classList.add('hidden');
-  currentPieType = null;
-}
-
 function renderPieChart(type) {
-  const canvas = document.getElementById('pie-chart');
-  const ctx = canvas.getContext('2d');
+  const ctx = document.getElementById('pie-chart').getContext('2d');
   if (pieChart) { pieChart.destroy(); pieChart = null; }
 
   let visited, total, title, subtitle;
   if (type === 'coverage') {
-    visited = projectSummary.visited_settlements || 0;
-    total = projectSummary.total_settlements || 0;
-    title = 'Settlement Visitation';
+    visited  = projectSummary.visited_settlements || 0;
+    total    = projectSummary.total_settlements || 1;
+    title    = 'Settlement Visitation';
     subtitle = `${visited} of ${total} settlements visited`;
   } else {
-    visited = projectSummary.visited_grids || 0;
-    total = projectSummary.total_grids || 0;
-    title = 'Grid Completeness';
+    visited  = projectSummary.visited_grids || 0;
+    total    = projectSummary.total_grids || 1;
+    title    = 'Grid Completeness';
     subtitle = `${visited} of ${total} grids covered`;
   }
-
-  document.getElementById('pie-modal-title').textContent = title;
+  document.getElementById('pie-title').textContent    = title;
   document.getElementById('pie-subtitle').textContent = subtitle;
 
-  const unvisited = Math.max(0, total - visited);
   pieChart = new Chart(ctx, {
     type: 'doughnut',
     data: {
       labels: ['Visited', 'Not Visited'],
-      datasets: [{
-        data: [visited, unvisited],
-        backgroundColor: ['#16a34a', '#dc2626'],
-        borderColor: ['#15803d', '#b91c1c'],
-        borderWidth: 2,
-      }],
+      datasets: [{ data: [visited, Math.max(0, total - visited)],
+        backgroundColor: ['#16a34a','#dc2626'],
+        borderColor: ['#14532d','#991b1b'], borderWidth: 2 }],
     },
     options: {
-      responsive: false,
+      responsive: false, cutout: '65%',
       plugins: {
-        legend: { position: 'bottom', labels: { color: '#f1f5f9', font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => {
-              const val = ctx.raw;
-              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-              return ` ${ctx.label}: ${val} (${pct}%)`;
-            },
-          },
-        },
+        legend: { position: 'bottom', labels: { color: '#f1f5f9', font: { size: 11 }, padding: 12 } },
+        tooltip: { callbacks: {
+          label: ctx => {
+            const pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+            return ` ${ctx.label}: ${ctx.raw.toLocaleString()} (${pct}%)`;
+          }
+        }},
       },
     },
   });
 }
 
-// ─── Timeline chart ──────────────────────────────────────────────────────────
-async function toggleTimeline() {
-  const panel = document.getElementById('bottom-panel');
-  if (panel.classList.contains('open')) {
-    panel.classList.remove('open');
-    return;
-  }
-  panel.classList.add('open');
-  await renderTimeline();
-}
+// ── CSV Export ─────────────────────────────────────────────────────────────
+function exportTableCSV() {
+  const items = navData[navLevel];
+  const cols  = COLS[navLevel];
+  if (!items?.length) { showToast('No data to export', 'warn'); return; }
 
-async function renderTimeline() {
-  if (!currentProjectId) return;
-  const data = await apiFetch(`/api/projects/${currentProjectId}/analytics/timeline`);
-  if (!data?.length) return;
-
-  const canvas = document.getElementById('timeline-chart');
-  const ctx = canvas.getContext('2d');
-  if (timelineChart) { timelineChart.destroy(); timelineChart = null; }
-
-  const labels = data.map(d => d.date);
-  const points = data.map(d => d.cumulative_points);
-
-  timelineChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Cumulative Points',
-        data: points,
-        borderColor: '#16a34a',
-        backgroundColor: 'rgba(22,163,74,0.15)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 2,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          ticks: { color: '#94a3b8', maxTicksLimit: 10 },
-          grid: { color: 'rgba(51,65,85,0.5)' },
-        },
-        y: {
-          ticks: { color: '#94a3b8' },
-          grid: { color: 'rgba(51,65,85,0.5)' },
-        },
-      },
-      plugins: {
-        legend: { labels: { color: '#f1f5f9' } },
-      },
-    },
-  });
-}
-
-function toggleForecast() {
-  if (!timelineChart) return;
-  const checked = document.getElementById('forecast-toggle').checked;
-  if (checked) addForecastLine();
-  else removeForecastLine();
-}
-
-function addForecastLine() {
-  if (!timelineChart?.data?.datasets) return;
-  const existing = timelineChart.data.datasets[0].data;
-  if (!existing.length) return;
-  const n = existing.length;
-  const lastVal = existing[n - 1];
-  const avg = n > 1 ? (lastVal - existing[0]) / n : lastVal;
-  const forecastData = [null, ...existing.map(() => null)];
-  const futurePts = 14;
-  const futureVals = Array.from({ length: futurePts }, (_, i) =>
-    Math.round(lastVal + avg * (i + 1))
+  const header = cols.map(c => `"${c.label}"`).join(',');
+  const rows   = items.map(row =>
+    cols.map(c => {
+      const v = row[c.key];
+      if (v == null) return '';
+      if (typeof v === 'string' && v.includes(',')) return `"${v}"`;
+      return v;
+    }).join(',')
   );
-  const labels = timelineChart.data.labels;
-  const lastDate = new Date(labels[labels.length - 1]);
-  const futureLabels = Array.from({ length: futurePts }, (_, i) => {
-    const d = new Date(lastDate);
-    d.setDate(d.getDate() + i + 1);
-    return d.toISOString().slice(0, 10);
-  });
-
-  timelineChart.data.labels = [...labels, ...futureLabels];
-  timelineChart.data.datasets[0].data = [...existing, ...Array(futurePts).fill(null)];
-  timelineChart.data.datasets.push({
-    label: 'Forecast',
-    data: [...Array(n).fill(null), ...futureVals],
-    borderColor: '#f59e0b',
-    borderDash: [5, 5],
-    backgroundColor: 'transparent',
-    pointRadius: 2,
-  });
-  timelineChart.update();
-}
-
-function removeForecastLine() {
-  if (!timelineChart?.data?.datasets) return;
-  if (timelineChart.data.datasets.length > 1) {
-    timelineChart.data.datasets.pop();
-    timelineChart.update();
-  }
+  const csv  = [header, ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `geotracker_${navLevel}_${Date.now()}.csv`;
+  a.click(); URL.revokeObjectURL(url);
 }
