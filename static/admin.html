@@ -50,6 +50,9 @@
       <div class="admin-nav-item" onclick="showSection('users', this)">
         <i class="bi bi-people"></i> Users
       </div>
+      <div class="admin-nav-item" onclick="showSection('mda', this)">
+        <i class="bi bi-capsule"></i> MDA Data
+      </div>
     </aside>
 
     <!-- Main content -->
@@ -266,6 +269,76 @@
         </div>
       </div>
 
+      <!-- ── MDA Data ── -->
+      <div class="admin-section" id="section-mda">
+        <div class="admin-section-title">
+          <i class="bi bi-capsule"></i> MDA Data Upload
+        </div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div class="card" style="flex:1;min-width:320px">
+            <div class="card-header">Upload MDA Excel Workbook</div>
+            <p class="text-sm text-muted mb-8">
+              Accepts the CommCare MDA export (.xlsx) with sheets:
+              <code style="color:var(--primary-light)">Forms</code> and
+              <code style="color:var(--primary-light)">Repeat- group_indv</code>
+            </p>
+            <p class="text-sm mb-8" style="color:#f87171;display:flex;align-items:center;gap:6px">
+              <i class="bi bi-exclamation-triangle"></i>
+              This will <strong>delete all existing MDA records</strong> before importing the new file.
+            </p>
+            <div class="upload-zone" id="mda-admin-zone"
+                 onclick="document.getElementById('mda-admin-file').click()"
+                 ondragover="handleDragOver(event)"
+                 ondrop="handleMDADrop(event)">
+              <i class="bi bi-file-earmark-spreadsheet"></i>
+              <div class="mt-8">Drop MDA .xlsx here or click to browse</div>
+              <div class="text-muted text-sm mt-8" id="mda-admin-filename">No file selected</div>
+            </div>
+            <input type="file" id="mda-admin-file" accept=".xlsx" style="display:none"
+                   onchange="onMDAFileSelected(this)">
+
+            <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+              <button class="btn btn-primary" onclick="uploadMDAAdmin()" id="mda-upload-btn" disabled>
+                <i class="bi bi-cloud-upload"></i> Upload MDA Data
+              </button>
+              <a href="/quality" class="btn btn-secondary" target="_blank">
+                <i class="bi bi-shield-check"></i> View QC Dashboard
+              </a>
+            </div>
+
+            <div class="mt-8" id="mda-admin-progress" style="display:none">
+              <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+                <div id="mda-admin-fill" style="height:100%;background:var(--primary-light);width:0%;transition:width 0.3s"></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1;min-width:280px">
+            <div class="card" id="mda-status-card" style="display:none">
+              <div class="card-header">Last Upload Summary</div>
+              <div class="text-sm mt-8">
+                <div style="margin-bottom:8px;color:var(--text-muted)">
+                  <i class="bi bi-clock" style="color:var(--primary-light)"></i>
+                  Uploaded at: <strong id="mda-stat-date">—</strong>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+                  <div style="background:var(--bg-dark);border-radius:8px;padding:12px;text-align:center">
+                    <div style="font-size:28px;font-weight:800;color:#38bdf8" id="mda-stat-hh">—</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Households</div>
+                  </div>
+                  <div style="background:var(--bg-dark);border-radius:8px;padding:12px;text-align:center">
+                    <div style="font-size:28px;font-weight:800;color:#fbbf24" id="mda-stat-indv">—</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Individuals</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="mda-upload-result" class="mt-8"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Users ── -->
       <div class="admin-section" id="section-users">
         <div class="admin-section-title">
@@ -302,5 +375,117 @@
 
   <div id="toast-container"></div>
   <script src="/static/js/admin.js"></script>
+  <script>
+  /* ── MDA Admin Section ─────────────────────────────────────────────── */
+  let mdaAdminFile = null;
+
+  function handleMDADrop(e) {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f) setMDAFile(f);
+  }
+
+  function onMDAFileSelected(input) {
+    if (input.files[0]) setMDAFile(input.files[0]);
+  }
+
+  function setMDAFile(f) {
+    if (!f.name.toLowerCase().endsWith('.xlsx')) {
+      showToast('Please select an .xlsx file', 'error');
+      return;
+    }
+    mdaAdminFile = f;
+    document.getElementById('mda-admin-filename').textContent =
+      f.name + ' (' + (f.size / 1024).toFixed(0) + ' KB)';
+    document.getElementById('mda-upload-btn').disabled = false;
+  }
+
+  async function uploadMDAAdmin() {
+    if (!mdaAdminFile) return;
+    const btn  = document.getElementById('mda-upload-btn');
+    const prog = document.getElementById('mda-admin-progress');
+    const fill = document.getElementById('mda-admin-fill');
+    const result = document.getElementById('mda-upload-result');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Uploading…';
+    prog.style.display = 'block';
+    fill.style.width = '20%';
+    result.innerHTML = '';
+
+    const fd = new FormData();
+    fd.append('file', mdaAdminFile);
+
+    try {
+      fill.style.width = '50%';
+      const res = await fetch('/api/mda/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      });
+      fill.style.width = '90%';
+
+      if (res.status === 401) { handleLogout(); return; }
+      const data = await res.json();
+
+      if (!res.ok) {
+        result.innerHTML = `<div class="text-sm" style="color:#f87171;margin-top:8px"><i class="bi bi-x-circle"></i> ${data.detail || 'Upload failed'}</div>`;
+        showToast(data.detail || 'Upload failed', 'error');
+      } else {
+        fill.style.width = '100%';
+        const qc = data.qc_flags || {};
+        result.innerHTML = `
+          <div class="text-sm" style="color:#4ade80;margin-top:8px">
+            <i class="bi bi-check-circle"></i> Upload successful!
+          </div>
+          <div class="text-sm mt-8" style="color:var(--text-muted)">
+            <strong style="color:var(--text)">${data.households}</strong> households &bull;
+            <strong style="color:var(--text)">${data.individuals}</strong> individuals loaded.
+            <br>
+            QC flags: ${qc.duplicates || 0} duplicates &bull;
+            ${qc.fast_forms || 0} fast forms &bull;
+            ${qc.refusals || 0} refusals
+          </div>
+        `;
+
+        // Show status card
+        document.getElementById('mda-status-card').style.display = 'block';
+        document.getElementById('mda-stat-date').textContent = new Date().toLocaleString();
+        document.getElementById('mda-stat-hh').textContent = data.households.toLocaleString();
+        document.getElementById('mda-stat-indv').textContent = data.individuals.toLocaleString();
+
+        showToast(`MDA upload complete: ${data.households} households`, 'info');
+      }
+    } catch (err) {
+      result.innerHTML = `<div class="text-sm" style="color:#f87171;margin-top:8px"><i class="bi bi-x-circle"></i> Network error during upload</div>`;
+      showToast('Network error during upload', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload"></i> Upload MDA Data';
+      setTimeout(() => { prog.style.display = 'none'; fill.style.width = '0%'; }, 800);
+    }
+  }
+
+  /* Load MDA summary on section open */
+  async function loadMDASummary() {
+    const summary = await apiFetch('/api/mda/qc/summary');
+    if (!summary || !summary.total_forms) return;
+    document.getElementById('mda-status-card').style.display = 'block';
+    document.getElementById('mda-stat-date').textContent = summary.data_as_of
+      ? new Date(summary.data_as_of).toLocaleString() : '—';
+    document.getElementById('mda-stat-hh').textContent = summary.total_forms.toLocaleString();
+    document.getElementById('mda-stat-indv').textContent =
+      summary.total_individuals != null ? summary.total_individuals.toLocaleString() : '—';
+  }
+
+  /* Patch showSection to load MDA summary when entering that section */
+  const _origShowSection = typeof showSection === 'function' ? showSection : null;
+  if (_origShowSection) {
+    window.showSection = function(name, el) {
+      _origShowSection(name, el);
+      if (name === 'mda') loadMDASummary();
+    };
+  }
+  </script>
 </body>
 </html>
