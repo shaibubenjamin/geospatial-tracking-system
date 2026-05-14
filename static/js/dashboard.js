@@ -1,25 +1,24 @@
 /* =====================================================================
    dashboard.js  —  Geospatial Tracking System
-   Layout: full-width map on top, resizable bottom data table
-   Drill-down: LGA → Ward → Settlement (GPS points at settlement)
+   Layout: left panel (280px) + full-height map
+   Drill-down: LGA → Ward → Settlement (GPS points at settlement level)
    ===================================================================== */
 
 // ── State ──────────────────────────────────────────────────────────────────
 const API = '';
-let token        = localStorage.getItem('token');
-let currentPid   = null;   // project id
-let navLevel     = 'lga';  // 'lga' | 'ward' | 'settlement'
-let navData      = { lga: [], ward: [], settlement: [] };
-let currentLGA   = null;   // { lgacode, lga_name }
-let currentWard  = null;   // { wardcode, ward_name }
-let currentSett  = null;   // { unique_cod, settlement_name }
+let token          = localStorage.getItem('token');
+let currentPid     = null;   // project id
+let navLevel       = 'lga';  // 'lga' | 'ward' | 'settlement'
+let navData        = { lga: [], ward: [], settlement: [] };
+let currentLGA     = null;   // { lgacode, lga_name }
+let currentWard    = null;   // { wardcode, ward_name }
+let currentSett    = null;   // { unique_cod, settlement_name }
 let projectSummary = {};
-let pieChart     = null;
-let toolbarOpen  = false;
+let pieChart       = null;
+let toolbarOpen    = false;
 let layerPanelOpen = false;
-let layerVis     = { lga: true, ward: true, settlement: true, points: true };
-let sortCol      = null;
-let sortDir      = 1;
+let layerVis       = { lga: true, ward: true, settlement: true, points: true };
+let activeNavIdx   = -1;
 
 // ── Auth guard ─────────────────────────────────────────────────────────────
 if (!token) window.location.href = '/';
@@ -93,48 +92,31 @@ function setBasemap(key, el) {
   if (el) el.classList.add('active');
   map.getSource('osm-tiles').setTiles([BASEMAPS[key]]);
 }
-document.getElementById('bm-street').classList.add('active');
 
 // ── Map sources + layers ───────────────────────────────────────────────────
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
 function initMapSources() {
-  // ── LGA (visible at low zoom 0-10) ──────────────────────────────
+  // ── LGA — lines only, no fill (transparent) ─────────────────────
   map.addSource('lga-src', { type: 'geojson', data: EMPTY_FC });
   map.addLayer({
-    id: 'lga-fill', type: 'fill', source: 'lga-src', maxzoom: 10,
-    paint: {
-      'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'visitation_pct'], 0],
-        0, '#1e3a5f', 30, '#1e40af', 60, '#2563eb', 80, '#3b82f6', 100, '#93c5fd'],
-      'fill-opacity': 0.35,
-    },
-  });
-  map.addLayer({
     id: 'lga-line', type: 'line', source: 'lga-src', maxzoom: 10,
-    paint: { 'line-color': '#3b82f6', 'line-width': 1.8 },
+    paint: { 'line-color': '#3b82f6', 'line-width': 2.0, 'line-opacity': 0.85 },
   });
   map.addLayer({
     id: 'lga-label', type: 'symbol', source: 'lga-src', minzoom: 5, maxzoom: 9,
     layout: {
-      'text-field': ['concat', ['get', 'lga_name'], '\n', ['to-string', ['coalesce', ['get', 'visitation_pct'], 0]], '%'],
+      'text-field': ['get', 'lga_name'],
       'text-size': 11, 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
     },
-    paint: { 'text-color': '#fff', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 },
+    paint: { 'text-color': '#93c5fd', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 },
   });
 
-  // ── Ward (visible at mid zoom 7-13) ─────────────────────────────
+  // ── Ward — lines only, no fill (transparent) ─────────────────────
   map.addSource('ward-src', { type: 'geojson', data: EMPTY_FC });
   map.addLayer({
-    id: 'ward-fill', type: 'fill', source: 'ward-src', minzoom: 8, maxzoom: 13,
-    paint: {
-      'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'visitation_pct'], 0],
-        0, '#3b0764', 30, '#5b21b6', 60, '#7c3aed', 80, '#8b5cf6', 100, '#a78bfa'],
-      'fill-opacity': 0.3,
-    },
-  });
-  map.addLayer({
     id: 'ward-line', type: 'line', source: 'ward-src', minzoom: 8, maxzoom: 13,
-    paint: { 'line-color': '#8b5cf6', 'line-width': 1.2 },
+    paint: { 'line-color': '#a78bfa', 'line-width': 1.2, 'line-opacity': 0.75 },
   });
   map.addLayer({
     id: 'ward-label', type: 'symbol', source: 'ward-src', minzoom: 9, maxzoom: 12,
@@ -145,7 +127,7 @@ function initMapSources() {
     paint: { 'text-color': '#d8b4fe', 'text-halo-color': '#0f172a', 'text-halo-width': 1.2 },
   });
 
-  // ── Settlement (visible at high zoom 10+) ───────────────────────
+  // ── Settlement (visible at zoom 10+) ─────────────────────────────
   map.addSource('settlement-src', { type: 'geojson', data: EMPTY_FC });
   map.addLayer({
     id: 'settlement-fill', type: 'fill', source: 'settlement-src', minzoom: 10,
@@ -170,7 +152,7 @@ function initMapSources() {
     paint: { 'text-color': '#fff', 'text-halo-color': '#0f172a', 'text-halo-width': 1 },
   });
 
-  // ── GPS Points (visible at zoom 11+) ────────────────────────────
+  // ── GPS Points (visible at zoom 11+) ─────────────────────────────
   map.addSource('points-src', { type: 'geojson', data: EMPTY_FC });
   map.addLayer({
     id: 'points-circle', type: 'circle', source: 'points-src', minzoom: 11,
@@ -199,17 +181,17 @@ function applyLayerVisibility() {
   const show = (ids, on) => ids.forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   });
-  show(['lga-fill', 'lga-line', 'lga-label'], layerVis.lga);
-  show(['ward-fill', 'ward-line', 'ward-label'], layerVis.ward);
+  show(['lga-line', 'lga-label'], layerVis.lga);
+  show(['ward-line', 'ward-label'], layerVis.ward);
   show(['settlement-fill', 'settlement-line', 'settlement-label'], layerVis.settlement);
   show(['points-circle'], layerVis.points);
 }
 
-// ── Click handlers on map features ────────────────────────────────────────
+// ── Map click handlers ─────────────────────────────────────────────────────
 const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '270px' });
 
 function addMapClickHandlers() {
-  map.on('click', 'lga-fill', (e) => {
+  map.on('click', 'lga-line', (e) => {
     const p = e.features[0].properties;
     popup.setLngLat(e.lngLat).setHTML(`
       <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:4px 0">
@@ -222,7 +204,7 @@ function addMapClickHandlers() {
       </div>`).addTo(map);
   });
 
-  map.on('click', 'ward-fill', (e) => {
+  map.on('click', 'ward-line', (e) => {
     const p = e.features[0].properties;
     popup.setLngLat(e.lngLat).setHTML(`
       <div style="font-size:13px;color:#f1f5f9;background:#1e293b;padding:4px 0">
@@ -243,7 +225,6 @@ function addMapClickHandlers() {
         <span style="color:#94a3b8">${p.ward_name} › ${p.lga_name}</span><br>
         <span style="${p.is_visited ? 'color:#22c55e' : 'color:#ef4444'}">
           ${p.is_visited ? '✓ Visited' : '✗ Not Visited'}</span><br>
-        <span style="color:#fbbf24">Completeness: ${Number(p.completeness_pct || 0).toFixed(1)}%</span><br>
         <span style="color:#94a3b8">Points: ${p.point_count}</span><br>
         <button onclick="onMapSettClick('${p.unique_cod}','${(p.settlement_name||'').replace(/'/g,'')}')"
           style="margin-top:6px;background:#15803d;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">
@@ -262,13 +243,13 @@ function addMapClickHandlers() {
       </div>`).addTo(map);
   });
 
-  ['lga-fill','ward-fill','settlement-fill','points-circle'].forEach(l => {
+  ['lga-line','ward-line','settlement-fill','points-circle'].forEach(l => {
     map.on('mouseenter', l, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', l, () => { map.getCanvas().style.cursor = ''; });
   });
 }
 
-// Map click drill-down helpers
+// Map click drill-down helpers (called from popup HTML)
 function onMapLGAClick(lgacode, lganame) {
   popup.remove();
   drillLGA({ lgacode, lga_name: lganame });
@@ -318,45 +299,6 @@ function refreshData() {
   showToast('Refreshing data…');
 }
 
-// ── Drag-to-resize ─────────────────────────────────────────────────────────
-(function initDrag() {
-  const handle = document.getElementById('drag-handle');
-  const panel  = document.getElementById('bt-panel');
-  let dragging = false, startY = 0, startH = 0;
-
-  handle.addEventListener('mousedown', (e) => {
-    dragging = true;
-    startY   = e.clientY;
-    startH   = panel.getBoundingClientRect().height;
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'ns-resize';
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    const delta = startY - e.clientY;
-    const newH  = Math.max(80, Math.min(window.innerHeight * 0.6, startH + delta));
-    panel.style.height = newH + 'px';
-  });
-  document.addEventListener('mouseup', () => {
-    dragging = false;
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
-  });
-
-  // Touch support
-  handle.addEventListener('touchstart', (e) => {
-    dragging = true; startY = e.touches[0].clientY;
-    startH = panel.getBoundingClientRect().height;
-  }, { passive: true });
-  document.addEventListener('touchmove', (e) => {
-    if (!dragging) return;
-    const delta = startY - e.touches[0].clientY;
-    const newH  = Math.max(80, Math.min(window.innerHeight * 0.6, startH + delta));
-    panel.style.height = newH + 'px';
-  }, { passive: true });
-  document.addEventListener('touchend', () => { dragging = false; });
-})();
-
 // ── Projects ───────────────────────────────────────────────────────────────
 async function loadProjects() {
   const projects = await apiFetch('/api/projects');
@@ -366,7 +308,6 @@ async function loadProjects() {
   projects.forEach(p => {
     const o = document.createElement('option');
     o.value = p.id; o.textContent = p.name;
-    if (p.is_active) o.selected = true;
     sel.appendChild(o);
   });
   sel.addEventListener('change', () => { if (sel.value) selectProject(parseInt(sel.value)); });
@@ -389,13 +330,10 @@ async function selectProject(pid) {
 
 function resetDrillState() {
   currentLGA = currentWard = currentSett = null;
-  navLevel = 'lga';
-  navData  = { lga: [], ward: [], settlement: [] };
-  ['tab-ward','tab-sett'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = true;
-  });
-  updateBreadcrumb();
+  navLevel   = 'lga';
+  navData    = { lga: [], ward: [], settlement: [] };
+  activeNavIdx = -1;
+  updateNavHeader();
 }
 
 function resetToProject() {
@@ -403,7 +341,7 @@ function resetToProject() {
   resetDrillState();
   clearSource('settlement-src');
   clearSource('points-src');
-  renderTable(navData.lga, 'lga');
+  renderNav(navData.lga, 'lga');
   map.flyTo({ center: [5.25, 13.05], zoom: 7, duration: 800 });
 }
 
@@ -432,13 +370,13 @@ async function loadPoints(unique_cod) {
   if (d) map.getSource('points-src').setData(d);
 }
 
-// ── Metrics (table data) ───────────────────────────────────────────────────
+// ── Metrics ────────────────────────────────────────────────────────────────
 async function loadLGAMetrics() {
   const d = await apiFetch(`/api/projects/${currentPid}/analytics/lgas`);
   if (!d) return;
   navData.lga = d;
   navLevel = 'lga';
-  renderTable(d, 'lga');
+  renderNav(d, 'lga');
 }
 
 async function loadWardMetrics(lgacode) {
@@ -446,9 +384,7 @@ async function loadWardMetrics(lgacode) {
   if (!d) return;
   navData.ward = d;
   navLevel = 'ward';
-  renderTable(d, 'ward');
-  const tab = document.getElementById('tab-ward');
-  if (tab) tab.disabled = false;
+  renderNav(d, 'ward');
 }
 
 async function loadSettlementMetrics(wardcode) {
@@ -456,9 +392,7 @@ async function loadSettlementMetrics(wardcode) {
   if (!d) return;
   navData.settlement = d;
   navLevel = 'settlement';
-  renderTable(d, 'settlement');
-  const tab = document.getElementById('tab-sett');
-  if (tab) tab.disabled = false;
+  renderNav(d, 'settlement');
 }
 
 // ── Drill-down logic ───────────────────────────────────────────────────────
@@ -467,7 +401,7 @@ async function drillLGA(item) {
   currentWard = currentSett = null;
   clearSource('settlement-src');
   clearSource('points-src');
-  updateBreadcrumb();
+  updateNavHeader();
   zoomToLGA(item.lgacode);
   await Promise.all([
     loadWardMetrics(item.lgacode),
@@ -479,7 +413,7 @@ async function drillWard(item) {
   currentWard = item;
   currentSett = null;
   clearSource('points-src');
-  updateBreadcrumb();
+  updateNavHeader();
   zoomToWard(item.wardcode);
   await Promise.all([
     loadSettlementMetrics(item.wardcode),
@@ -489,174 +423,138 @@ async function drillWard(item) {
 
 async function drillSettlement(item) {
   currentSett = item;
-  updateBreadcrumb();
+  updateNavHeader();
   zoomToSettlement(item.unique_cod);
   await loadPoints(item.unique_cod);
-  // Zoom map to show points level
   if (map.getZoom() < 12) map.flyTo({ zoom: 13, duration: 600 });
 }
 
-// ── Tab switcher ───────────────────────────────────────────────────────────
-function switchTab(level) {
-  const data = navData[level];
-  if (!data?.length) return;
-  navLevel = level;
-  renderTable(data, level);
-  document.querySelectorAll('.bt-tab').forEach(t =>
-    t.classList.toggle('active', t.dataset.level === level));
+// ── Nav back ───────────────────────────────────────────────────────────────
+function navGoBack() {
+  if (navLevel === 'ward') {
+    // go back to LGA list
+    currentWard = currentSett = null;
+    clearSource('points-src');
+    navLevel = 'lga';
+    renderNav(navData.lga, 'lga');
+    if (currentLGA) zoomToLGA(currentLGA.lgacode);
+    currentLGA = null;
+    updateNavHeader();
+  } else if (navLevel === 'settlement') {
+    // go back to ward list
+    currentSett = null;
+    clearSource('points-src');
+    navLevel = 'ward';
+    renderNav(navData.ward, 'ward');
+    if (currentWard) zoomToWard(currentWard.wardcode);
+    currentWard = null;
+    updateNavHeader();
+  }
 }
 
-// ── Bottom table rendering ─────────────────────────────────────────────────
-const COLS = {
-  lga: [
-    { key: 'lga_name',        label: 'LGA',           w: '140px' },
-    { key: 'total_settlements',label: 'Settlements',   w: '90px', align: 'right' },
-    { key: 'visited_settlements',label: 'Visited',     w: '70px', align: 'right' },
-    { key: 'visitation_pct',  label: 'Visitation %',  w: '140px', bar: true },
-    { key: 'total_grids',     label: 'Total Grids',   w: '90px', align: 'right' },
-    { key: 'visited_grids',   label: 'Visited Grids', w: '90px', align: 'right' },
-    { key: 'completeness_pct',label: 'Completeness %',w: '140px', bar: true },
-    { key: 'point_count',     label: 'GPS Points',    w: '90px', align: 'right' },
-  ],
-  ward: [
-    { key: 'ward_name',       label: 'Ward',          w: '150px' },
-    { key: 'lga_name',        label: 'LGA',           w: '120px' },
-    { key: 'total_settlements',label: 'Settlements',  w: '90px', align: 'right' },
-    { key: 'visited_settlements',label: 'Visited',    w: '70px', align: 'right' },
-    { key: 'visitation_pct',  label: 'Visitation %',  w: '140px', bar: true },
-    { key: 'completeness_pct',label: 'Completeness %',w: '140px', bar: true },
-    { key: 'point_count',     label: 'GPS Points',    w: '90px', align: 'right' },
-  ],
-  settlement: [
-    { key: 'settlement_name', label: 'Settlement',    w: '180px' },
-    { key: 'ward_name',       label: 'Ward',          w: '130px' },
-    { key: 'lga_name',        label: 'LGA',           w: '110px' },
-    { key: 'is_visited',      label: 'Status',        w: '80px' },
-    { key: 'total_grids',     label: 'Grids',         w: '70px', align: 'right' },
-    { key: 'completeness_pct',label: 'Completeness %',w: '140px', bar: true },
-    { key: 'point_count',     label: 'GPS Points',    w: '90px', align: 'right' },
-  ],
-};
+// ── Nav header ─────────────────────────────────────────────────────────────
+function updateNavHeader() {
+  const btn   = document.getElementById('nav-back-btn');
+  const title = document.getElementById('nav-hdr-title');
 
-function renderTable(items, level) {
-  const cols  = COLS[level];
-  const thead = document.getElementById('bt-thead');
-
-  // Update active tab
-  document.querySelectorAll('.bt-tab').forEach(t =>
-    t.classList.toggle('active', t.dataset.level === level));
-
-  // Headers
-  thead.innerHTML = '<tr>' + cols.map(c => `
-    <th style="min-width:${c.w}" onclick="sortTable('${c.key}','${level}')">
-      ${c.label}<span class="sort-icon">⇅</span>
-    </th>`).join('') + '</tr>';
-
-  renderRows(items, level);
-  document.getElementById('bt-search').value = '';
-  document.getElementById('bt-count').textContent = `${items.length} rows`;
-  updateFooterSummary(items, level);
+  if (navLevel === 'lga') {
+    btn.classList.add('hidden');
+    const count = navData.lga.length;
+    title.textContent = `LGAs (${count})`;
+  } else if (navLevel === 'ward') {
+    btn.classList.remove('hidden');
+    const count = navData.ward.length;
+    const lname = currentLGA ? ` — ${currentLGA.lga_name}` : '';
+    title.textContent = `Wards (${count})${lname}`;
+  } else if (navLevel === 'settlement') {
+    btn.classList.remove('hidden');
+    const count = navData.settlement.length;
+    const wname = currentWard ? ` — ${currentWard.ward_name}` : '';
+    title.textContent = `Settlements (${count})${wname}`;
+  }
 }
 
-function renderRows(items, level) {
-  const cols  = COLS[level];
-  const tbody = document.getElementById('bt-tbody');
+// ── Color helper ───────────────────────────────────────────────────────────
+function pctColor(pct) {
+  if (pct >= 70) return '#22c55e';
+  if (pct >= 40) return '#f59e0b';
+  return '#ef4444';
+}
 
-  if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="${cols.length}" class="bt-empty">No data found</td></tr>`;
+// ── renderNav ──────────────────────────────────────────────────────────────
+function renderNav(items, level) {
+  const list = document.getElementById('nav-list');
+  activeNavIdx = -1;
+
+  if (!items || !items.length) {
+    list.innerHTML = `<div style="padding:24px 16px;text-align:center;color:#475569;font-size:13px">No data</div>`;
     return;
   }
 
-  tbody.innerHTML = items.map((row, i) => {
-    const cells = cols.map(c => {
-      const val = row[c.key];
-      if (c.bar) {
-        const pct = Math.min(100, Math.max(0, Number(val) || 0));
-        const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
-        return `<td>
-          <div class="tbl-bar-wrap">
-            <div class="tbl-bar"><div class="tbl-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-            <span style="font-size:11px;color:${color};font-weight:600;min-width:34px">${pct.toFixed(1)}%</span>
-          </div>
-        </td>`;
-      }
-      if (c.key === 'is_visited') {
-        return `<td><span class="vis-badge ${val ? 'yes' : 'no'}">${val ? '✓ Visited' : '✗ Not visited'}</span></td>`;
-      }
-      const display = val != null ? (typeof val === 'number' ? val.toLocaleString() : val) : '—';
-      const align   = c.align === 'right' ? 'text-align:right' : '';
-      return `<td style="${align}">${display}</td>`;
-    }).join('');
+  list.innerHTML = items.map((item, idx) => {
+    let name, pct, isVisited;
 
-    return `<tr data-idx="${i}" onclick="onRowClick(${i},'${level}')" >${cells}</tr>`;
+    if (level === 'lga') {
+      name = item.lga_name || '—';
+      pct  = Math.min(100, Math.max(0, Number(item.visitation_pct) || 0));
+    } else if (level === 'ward') {
+      name = item.ward_name || '—';
+      pct  = Math.min(100, Math.max(0, Number(item.visitation_pct) || 0));
+    } else {
+      name      = item.settlement_name || item.unique_cod || '—';
+      isVisited = item.is_visited;
+      pct       = isVisited ? 100 : 0;
+    }
+
+    const color = pctColor(pct);
+
+    let rightContent;
+    if (level === 'settlement') {
+      rightContent = isVisited
+        ? `<span class="vis-badge yes" style="font-size:10px">✓</span>`
+        : `<span class="vis-badge no"  style="font-size:10px">✗</span>`;
+    } else {
+      rightContent = `
+        <div class="nav-item-bar"><div class="nav-item-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+        <span class="nav-item-pct" style="color:${color}">${pct.toFixed(0)}%</span>`;
+    }
+
+    return `<div class="nav-item" data-idx="${idx}" onclick="onNavClick(${idx},'${level}')">
+      <span class="nav-item-name" title="${name}">${name}</span>
+      ${rightContent}
+    </div>`;
   }).join('');
+
+  // Search filter reset
+  const searchInput = document.getElementById('nav-search-input');
+  if (searchInput) searchInput.value = '';
+
+  updateNavHeader();
 }
 
-function onRowClick(idx, level) {
-  document.querySelectorAll('#bt-tbody tr').forEach(r => r.classList.remove('selected'));
-  document.querySelector(`#bt-tbody tr[data-idx="${idx}"]`)?.classList.add('selected');
+// ── Nav click ──────────────────────────────────────────────────────────────
+function onNavClick(idx, level) {
+  // Update active style
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const el = document.querySelector(`.nav-item[data-idx="${idx}"]`);
+  if (el) el.classList.add('active');
+  activeNavIdx = idx;
+
   const item = navData[level][idx];
   if (!item) return;
-  if (level === 'lga')        drillLGA(item);
-  else if (level === 'ward')  drillWard(item);
+
+  if (level === 'lga')             drillLGA(item);
+  else if (level === 'ward')       drillWard(item);
   else if (level === 'settlement') drillSettlement(item);
 }
 
-function filterTable() {
-  const q = document.getElementById('bt-search').value.toLowerCase();
-  document.querySelectorAll('#bt-tbody tr').forEach(tr => {
-    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+// ── Search filter ──────────────────────────────────────────────────────────
+function filterNavList() {
+  const q = document.getElementById('nav-search-input').value.toLowerCase();
+  document.querySelectorAll('#nav-list .nav-item').forEach(el => {
+    const name = el.querySelector('.nav-item-name')?.textContent.toLowerCase() || '';
+    el.style.display = name.includes(q) ? '' : 'none';
   });
-}
-
-function sortTable(key, level) {
-  const data = navData[level];
-  if (sortCol === key) sortDir = -sortDir;
-  else { sortCol = key; sortDir = 1; }
-  data.sort((a, b) => {
-    const av = a[key], bv = b[key];
-    if (av == null) return 1; if (bv == null) return -1;
-    return typeof av === 'string'
-      ? av.localeCompare(bv) * sortDir
-      : (av - bv) * sortDir;
-  });
-  renderRows(data, level);
-}
-
-function updateFooterSummary(items, level) {
-  const el = document.getElementById('bt-footer');
-  if (!items.length) { el.textContent = 'No records'; return; }
-  if (level === 'lga') {
-    const visited = items.filter(r => r.visitation_pct >= 50).length;
-    const avgPct  = (items.reduce((s, r) => s + (r.visitation_pct || 0), 0) / items.length).toFixed(1);
-    el.textContent = `${items.length} LGAs  •  ${visited} ≥50% visited  •  Avg visitation ${avgPct}%`;
-  } else if (level === 'ward') {
-    const avgPct = (items.reduce((s, r) => s + (r.visitation_pct || 0), 0) / items.length).toFixed(1);
-    el.textContent = `${items.length} wards in ${currentLGA?.lga_name || ''}  •  Avg visitation ${avgPct}%`;
-  } else {
-    const visited = items.filter(r => r.is_visited).length;
-    const pct     = ((visited / items.length) * 100).toFixed(1);
-    el.textContent = `${items.length} settlements  •  ${visited} visited (${pct}%)  •  ${currentWard?.ward_name || ''}`;
-  }
-}
-
-// ── Breadcrumb ─────────────────────────────────────────────────────────────
-function updateBreadcrumb() {
-  const el = document.getElementById('tb-breadcrumb');
-  let html = `<span class="bc-seg" onclick="resetToProject()"><i class="bi bi-house-fill"></i> Sokoto</span>`;
-  if (currentLGA) {
-    html += `<span class="bc-arrow">›</span>
-             <span class="bc-seg" onclick="switchTab('lga')">${currentLGA.lga_name}</span>`;
-  }
-  if (currentWard) {
-    html += `<span class="bc-arrow">›</span>
-             <span class="bc-seg" onclick="switchTab('ward')">${currentWard.ward_name}</span>`;
-  }
-  if (currentSett) {
-    html += `<span class="bc-arrow">›</span>
-             <span class="bc-seg current">${currentSett.settlement_name || currentSett.unique_cod}</span>`;
-  }
-  el.innerHTML = html;
 }
 
 // ── Zoom helpers ───────────────────────────────────────────────────────────
@@ -684,12 +582,13 @@ function zoomToWard(wardcode) {
   const src  = map.getSource('ward-src')?._data;
   const feat = src?.features?.find(f => f.properties.wardcode === wardcode);
   const bounds = boundsFromFeature(feat);
-  if (bounds) map.fitBounds(bounds, { padding: 60, maxZoom: 12 });
-  else {
+  if (bounds) {
+    map.fitBounds(bounds, { padding: 60, maxZoom: 12 });
+  } else {
     const all = map.getSource('ward-src')?._data;
     if (all?.features?.length) {
       const b = new maplibregl.LngLatBounds();
-      all.features.forEach(f => boundsFromFeature(f) && b.extend(boundsFromFeature(f)));
+      all.features.forEach(f => { const b2 = boundsFromFeature(f); if (b2) b.extend(b2); });
       if (!b.isEmpty()) map.fitBounds(b, { padding: 60 });
     }
   }
@@ -716,12 +615,16 @@ async function loadProjectSummary() {
   const d = await apiFetch(`/api/projects/${currentPid}/analytics/summary`);
   if (!d) return;
   projectSummary = d;
-  document.getElementById('kpi-visited').textContent =
-    `${d.visited_settlements}/${d.total_settlements}`;
-  document.getElementById('kpi-comp').textContent =
-    (d.completeness_pct || 0).toFixed(1);
-  document.getElementById('kpi-points').textContent =
-    (d.total_points || 0).toLocaleString();
+
+  const total   = d.total_settlements   || 0;
+  const visited = d.visited_settlements || 0;
+  const notVis  = Math.max(0, total - visited);
+  const pct     = total > 0 ? ((visited / total) * 100).toFixed(0) : 0;
+
+  document.getElementById('vis-pct-big').textContent    = `${pct}%`;
+  document.getElementById('kpi-total').textContent      = total.toLocaleString();
+  document.getElementById('kpi-visited').textContent    = visited.toLocaleString();
+  document.getElementById('kpi-not-visited').textContent = notVis.toLocaleString();
 }
 
 // ── QC ─────────────────────────────────────────────────────────────────────
@@ -735,7 +638,7 @@ async function loadQCSummary() {
   document.getElementById('qc-ttl').textContent   = d.total_flags || 0;
 }
 
-// ── Pie charts ─────────────────────────────────────────────────────────────
+// ── Pie chart ──────────────────────────────────────────────────────────────
 let currentPieType = null;
 
 function togglePieModal(type) {
@@ -754,18 +657,11 @@ function renderPieChart(type) {
   const ctx = document.getElementById('pie-chart').getContext('2d');
   if (pieChart) { pieChart.destroy(); pieChart = null; }
 
-  let visited, total, title, subtitle;
-  if (type === 'coverage') {
-    visited  = projectSummary.visited_settlements || 0;
-    total    = projectSummary.total_settlements || 1;
-    title    = 'Settlement Visitation';
-    subtitle = `${visited} of ${total} settlements visited`;
-  } else {
-    visited  = projectSummary.visited_grids || 0;
-    total    = projectSummary.total_grids || 1;
-    title    = 'Grid Completeness';
-    subtitle = `${visited} of ${total} grids covered`;
-  }
+  const visited  = projectSummary.visited_settlements || 0;
+  const total    = projectSummary.total_settlements   || 1;
+  const title    = 'Settlement Visitation';
+  const subtitle = `${visited} of ${total} settlements visited`;
+
   document.getElementById('pie-title').textContent    = title;
   document.getElementById('pie-subtitle').textContent = subtitle;
 
@@ -793,21 +689,30 @@ function renderPieChart(type) {
 }
 
 // ── CSV Export ─────────────────────────────────────────────────────────────
-function exportTableCSV() {
+function exportNavCSV() {
   const items = navData[navLevel];
-  const cols  = COLS[navLevel];
   if (!items?.length) { showToast('No data to export', 'warn'); return; }
 
-  const header = cols.map(c => `"${c.label}"`).join(',');
-  const rows   = items.map(row =>
-    cols.map(c => {
-      const v = row[c.key];
-      if (v == null) return '';
-      if (typeof v === 'string' && v.includes(',')) return `"${v}"`;
-      return v;
-    }).join(',')
-  );
-  const csv  = [header, ...rows].join('\n');
+  let headers, rows;
+  if (navLevel === 'lga') {
+    headers = ['LGA', 'Total Settlements', 'Visited Settlements', 'Visitation %', 'GPS Points'];
+    rows = items.map(r => [r.lga_name, r.total_settlements, r.visited_settlements, r.visitation_pct, r.point_count]);
+  } else if (navLevel === 'ward') {
+    headers = ['Ward', 'LGA', 'Total Settlements', 'Visited Settlements', 'Visitation %', 'GPS Points'];
+    rows = items.map(r => [r.ward_name, r.lga_name, r.total_settlements, r.visited_settlements, r.visitation_pct, r.point_count]);
+  } else {
+    headers = ['Settlement', 'Ward', 'LGA', 'Visited', 'GPS Points'];
+    rows = items.map(r => [r.settlement_name, r.ward_name, r.lga_name, r.is_visited ? 'Yes' : 'No', r.point_count]);
+  }
+
+  const header = headers.map(h => `"${h}"`).join(',');
+  const body   = rows.map(row => row.map(v => {
+    if (v == null) return '';
+    if (typeof v === 'string' && v.includes(',')) return `"${v}"`;
+    return v;
+  }).join(','));
+
+  const csv  = [header, ...body].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoTracker — Quality Checks</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    /* ── Quality page specific ── */
+    .quality-root {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg-dark);
+    }
+
+    .quality-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 28px;
+    }
+
+    .quality-page-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .quality-page-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+
+    /* Spinner */
+    .qc-spinner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 60px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .spinner-ring {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary-light);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* QC metric cards grid */
+    .qc-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 18px;
+      margin-bottom: 32px;
+    }
+
+    .qc-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: var(--transition);
+    }
+    .qc-card:hover { border-color: var(--border-light); }
+
+    .qc-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .qc-card-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .qc-card-icon.red    { background: rgba(220,38,38,0.15);  color: #f87171; }
+    .qc-card-icon.amber  { background: rgba(217,119,6,0.15);  color: #fbbf24; }
+    .qc-card-icon.blue   { background: rgba(14,165,233,0.15); color: #38bdf8; }
+
+    .qc-card-number {
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -1px;
+    }
+    .qc-card-number.red   { color: #f87171; }
+    .qc-card-number.amber { color: #fbbf24; }
+    .qc-card-number.blue  { color: #38bdf8; }
+
+    .qc-card-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .qc-card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Summary strip */
+    .qc-summary-strip {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 13px;
+    }
+    .qc-summary-strip i { font-size: 18px; color: var(--text-muted); }
+    .qc-summary-total { font-size: 20px; font-weight: 700; color: #f87171; margin-right: 4px; }
+
+    /* Link to field checks */
+    .qc-link-row {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+<div class="quality-root">
+
+  <!-- ── Topbar ───────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="tb-logo">🛰️</div>
+      <span>GeoTracker</span>
+    </div>
+    <div class="topbar-sep"></div>
+
+    <nav class="top-nav">
+      <a class="top-nav-tab" href="/dashboard">
+        <i class="bi bi-map"></i> Dashboard
+      </a>
+      <a class="top-nav-tab active" href="/quality">
+        <i class="bi bi-shield-check"></i> Quality Checks
+      </a>
+    </nav>
+
+    <div class="topbar-sep"></div>
+
+    <div class="topbar-right">
+      <select id="project-switcher" class="project-switcher"></select>
+
+      <a href="/admin" class="btn btn-sm btn-secondary" id="admin-link" style="display:none">
+        <i class="bi bi-gear"></i> Admin
+      </a>
+
+      <div class="user-menu" onclick="handleLogout()">
+        <div class="user-avatar"><i class="bi bi-person"></i></div>
+        <span id="topbar-username">User</span>
+        <i class="bi bi-box-arrow-right"></i>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Page body ─────────────────────────────────────────────────── -->
+  <div class="quality-body">
+    <div class="quality-page-title">
+      <i class="bi bi-shield-check" style="color:var(--primary-light)"></i>
+      Field Quality Checks
+    </div>
+    <div class="quality-page-subtitle">
+      Automated checks that identify data quality issues in submitted GPS points.
+      Select a project above to load results.
+    </div>
+
+    <!-- Spinner (shown before project selected) -->
+    <div class="qc-spinner" id="qc-spinner" style="display:none">
+      <div class="spinner-ring"></div>
+      <span>Loading…</span>
+    </div>
+
+    <!-- Cards (hidden until loaded) -->
+    <div class="hidden" id="qc-content">
+      <div class="qc-cards-grid">
+
+        <!-- Card 1: Outside State -->
+        <div class="qc-card">
+          <div class="qc-card-top">
+            <div class="qc-card-icon red">
+              <i class="bi bi-geo"></i>
+            </div>
+            <div class="qc-card-number red" id="qc-outside-state">—</div>
+          </div>
+          <div class="qc-card-label">Points Outside Sokoto State</div>
+          <div class="qc-card-desc">
+            GPS submissions whose LGA name does not match any known LGA in the project boundary.
+            These points likely fall outside the expected coverage area.
+          </div>
+        </div>
+
+        <!-- Card 2: Outside LGA -->
+        <div class="qc-card">
+          <div class="qc-card-top">
+            <div class="qc-card-icon amber">
+              <i class="bi bi-building"></i>
+            </div>
+            <div class="qc-card-number amber" id="qc-outside-lga">—</div>
+          </div>
+          <div class="qc-card-label">Points Outside Stated LGA</div>
+          <div class="qc-card-desc">
+            Points where the recorded LGA and ward combination does not match
+            any valid ward-to-LGA mapping in the reference boundary data.
+          </div>
+        </div>
+
+        <!-- Card 3: Outside Ward -->
+        <div class="qc-card">
+          <div class="qc-card-top">
+            <div class="qc-card-icon amber">
+              <i class="bi bi-map"></i>
+            </div>
+            <div class="qc-card-number amber" id="qc-outside-ward">—</div>
+          </div>
+          <div class="qc-card-label">Geolocations Outside Ward</div>
+          <div class="qc-card-desc">
+            Submissions where the stated settlement name and ward combination
+            does not correspond to any registered settlement in the reference data.
+          </div>
+        </div>
+
+        <!-- Card 4: Time violations -->
+        <div class="qc-card">
+          <div class="qc-card-top">
+            <div class="qc-card-icon blue">
+              <i class="bi bi-clock"></i>
+            </div>
+            <div class="qc-card-number blue" id="qc-time-violations">—</div>
+          </div>
+          <div class="qc-card-label">Submissions Before 6am or After 8pm</div>
+          <div class="qc-card-desc">
+            Records collected outside expected field hours (06:00–20:00).
+            May indicate data entry errors, system clock issues, or after-hours submissions.
+          </div>
+        </div>
+
+      </div><!-- .qc-cards-grid -->
+
+      <!-- Summary strip -->
+      <div class="qc-summary-strip" id="qc-summary-strip">
+        <i class="bi bi-info-circle-fill" style="color:#38bdf8"></i>
+        <span><span class="qc-summary-total" id="qc-summary-total">0</span> flags detected — checks will be computed when survey data is uploaded.</span>
+      </div>
+
+    </div><!-- #qc-content -->
+
+  </div><!-- .quality-body -->
+</div><!-- .quality-root -->
+
+<div id="toast-container"></div>
+<script>
+/* ── Auth ───────────────────────────────────────────────────────────────── */
+const token = localStorage.getItem('token');
+if (!token) window.location.href = '/';
+
+document.getElementById('topbar-username').textContent = localStorage.getItem('username') || 'User';
+if (localStorage.getItem('is_admin') === 'true') {
+  document.getElementById('admin-link').style.display = 'inline-flex';
+}
+function handleLogout() { localStorage.clear(); window.location.href = '/'; }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+function showToast(msg, type = 'info') {
+  const tc = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast ${type === 'error' ? 'error' : type === 'warn' ? 'warn' : ''}`;
+  el.textContent = msg;
+  tc.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+/* ── API helper ──────────────────────────────────────────────────────────── */
+async function apiFetch(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(path, { ...opts, headers });
+  if (res.status === 401) { handleLogout(); return null; }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    showToast(err.detail || 'Request failed', 'error');
+    return null;
+  }
+  return res.json();
+}
+
+/* ── State ───────────────────────────────────────────────────────────────── */
+let currentPid = null;
+
+/* ── Projects ────────────────────────────────────────────────────────────── */
+async function loadProjects() {
+  const projects = await apiFetch('/api/projects');
+  if (!projects) return;
+
+  const sel = document.getElementById('project-switcher');
+  sel.innerHTML = '<option value="">Select project…</option>';
+  projects.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', () => {
+    if (sel.value) loadFieldChecks(parseInt(sel.value));
+  });
+
+  const active = projects.find(p => p.is_active) || projects[0];
+  if (active) {
+    sel.value = active.id;
+    loadFieldChecks(active.id);
+  }
+}
+
+/* ── Load field QC checks — placeholder zeros ────────────────────────────── */
+function loadFieldChecks(pid) {
+  currentPid = pid;
+  setSpinner(false);
+
+  document.getElementById('qc-outside-state').textContent   = '0';
+  document.getElementById('qc-outside-lga').textContent     = '0';
+  document.getElementById('qc-outside-ward').textContent    = '0';
+  document.getElementById('qc-time-violations').textContent = '0';
+  document.getElementById('qc-summary-total').textContent   = '0';
+
+  document.getElementById('qc-content').classList.remove('hidden');
+}
+
+function setSpinner(on) {
+  document.getElementById('qc-spinner').style.display   = on ? 'flex' : 'none';
+  if (on) document.getElementById('qc-content').classList.add('hidden');
+}
+
+function reloadChecks() {
+  if (currentPid) loadFieldChecks(currentPid);
+  return false; // prevent link navigation
+}
+
+/* ── Init ────────────────────────────────────────────────────────────────── */
+loadProjects();
+</script>
+</body>
+</html>

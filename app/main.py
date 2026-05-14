@@ -106,6 +106,11 @@ async def admin():
     return FileResponse(os.path.join(static_dir, "admin.html"))
 
 
+@app.get("/quality")
+async def quality_page():
+    return FileResponse(os.path.join(static_dir, "quality.html"))
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "geospatial-tracker"}
