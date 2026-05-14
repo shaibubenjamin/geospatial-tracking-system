@@ -268,7 +268,10 @@ async def upload_mda(
             "form_duration_min": form_duration_min,
             "sync_lag_hours": sync_lag_hours,
             "flag_duplicate": flag_duplicate,
+            "flag_duplicate_gps": False,          # set by SQL after insert
             "flag_gps_outside_lga": False,        # set by SQL after insert
+            "flag_gps_outside_ward": False,       # set by SQL after insert
+            "flag_gps_outside_state": False,      # set by SQL after insert
             "flag_gps_poor_accuracy": flag_gps_poor_accuracy,
             "flag_gps_zero": flag_gps_zero,
             "flag_after_hours": flag_after_hours,
@@ -354,9 +357,10 @@ async def upload_mda(
                 "gps_accuracy", "geom",
                 "started_time", "completed_time", "received_on",
                 "form_duration_min", "sync_lag_hours",
-                "flag_duplicate", "flag_gps_outside_lga", "flag_gps_poor_accuracy",
-                "flag_gps_zero", "flag_after_hours", "flag_fast_form",
-                "flag_slow_form", "flag_sync_lag", "flag_refusal",
+                "flag_duplicate", "flag_duplicate_gps",
+                "flag_gps_outside_lga", "flag_gps_outside_ward", "flag_gps_outside_state",
+                "flag_gps_poor_accuracy", "flag_gps_zero", "flag_after_hours",
+                "flag_fast_form", "flag_slow_form", "flag_sync_lag", "flag_refusal",
                 "uploaded_at",
             ]
 
@@ -375,9 +379,11 @@ async def upload_mda(
                     h["gps_accuracy"], geom_val,
                     h["started_time"], h["completed_time"], h["received_on"],
                     h["form_duration_min"], h["sync_lag_hours"],
-                    h["flag_duplicate"], h["flag_gps_outside_lga"], h["flag_gps_poor_accuracy"],
-                    h["flag_gps_zero"], h["flag_after_hours"], h["flag_fast_form"],
-                    h["flag_slow_form"], h["flag_sync_lag"], h["flag_refusal"],
+                    # flags — must match hh_cols order exactly
+                    h["flag_duplicate"], h["flag_duplicate_gps"],
+                    h["flag_gps_outside_lga"], h["flag_gps_outside_ward"], h["flag_gps_outside_state"],
+                    h["flag_gps_poor_accuracy"], h["flag_gps_zero"], h["flag_after_hours"],
+                    h["flag_fast_form"], h["flag_slow_form"], h["flag_sync_lag"], h["flag_refusal"],
                     now_str,
                 ))
 
@@ -426,17 +432,54 @@ async def upload_mda(
                 page_size=1000,
             )
 
-        # Set flag_gps_outside_lga via spatial join
+        # GPS outside stated LGA polygon
         cur.execute("""
             UPDATE mda_households h
             SET flag_gps_outside_lga = TRUE
-            WHERE h.geom IS NOT NULL
-              AND h.flag_gps_zero = FALSE
+            WHERE h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
               AND NOT EXISTS (
                   SELECT 1 FROM lgas l
                   WHERE l.project_id = 1
                     AND UPPER(TRIM(l.lga_name)) = UPPER(TRIM(h.lga))
                     AND ST_Within(h.geom, l.geom)
+              )
+        """)
+
+        # GPS outside Sokoto State (not within any LGA polygon at all)
+        cur.execute("""
+            UPDATE mda_households h
+            SET flag_gps_outside_state = TRUE
+            WHERE h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+              AND NOT EXISTS (
+                  SELECT 1 FROM lgas l
+                  WHERE l.project_id = 1
+                    AND ST_Within(h.geom, l.geom)
+              )
+        """)
+
+        # GPS outside any ward polygon
+        cur.execute("""
+            UPDATE mda_households h
+            SET flag_gps_outside_ward = TRUE
+            WHERE h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+              AND NOT EXISTS (
+                  SELECT 1 FROM wards w
+                  WHERE w.project_id = 1
+                    AND ST_Within(h.geom, w.geom)
+              )
+        """)
+
+        # Duplicate GPS coordinates (same lat/lon in more than one record)
+        cur.execute("""
+            UPDATE mda_households h
+            SET flag_duplicate_gps = TRUE
+            WHERE h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+              AND h.flag_gps_zero = FALSE
+              AND EXISTS (
+                  SELECT 1 FROM mda_households h2
+                  WHERE h2.id != h.id
+                    AND h2.latitude = h.latitude
+                    AND h2.longitude = h.longitude
               )
         """)
 
@@ -481,7 +524,10 @@ async def qc_summary(
         SELECT
           COUNT(*) AS total_forms,
           SUM(CASE WHEN flag_duplicate THEN 1 ELSE 0 END) AS duplicates,
+          SUM(CASE WHEN flag_duplicate_gps THEN 1 ELSE 0 END) AS duplicate_gps,
           SUM(CASE WHEN flag_gps_outside_lga THEN 1 ELSE 0 END) AS gps_outside_lga,
+          SUM(CASE WHEN flag_gps_outside_ward THEN 1 ELSE 0 END) AS gps_outside_ward,
+          SUM(CASE WHEN flag_gps_outside_state THEN 1 ELSE 0 END) AS gps_outside_state,
           SUM(CASE WHEN flag_gps_poor_accuracy THEN 1 ELSE 0 END) AS gps_poor_accuracy,
           SUM(CASE WHEN flag_gps_zero THEN 1 ELSE 0 END) AS gps_zero,
           SUM(CASE WHEN flag_after_hours THEN 1 ELSE 0 END) AS after_hours,
@@ -500,15 +546,18 @@ async def qc_summary(
     row = result.fetchone()
     if row is None:
         return {
-            "total_forms": 0, "duplicates": 0, "gps_outside_lga": 0,
+            "total_forms": 0, "duplicates": 0, "duplicate_gps": 0,
+            "gps_outside_lga": 0, "gps_outside_ward": 0, "gps_outside_state": 0,
             "gps_poor_accuracy": 0, "gps_zero": 0, "after_hours": 0,
             "fast_forms": 0, "slow_forms": 0, "sync_lag": 0, "refusals": 0,
             "refusal_pct": 0.0, "days_active": 0, "lgas_covered": 0,
             "ra_count": 0, "total_individuals": 0, "data_as_of": None,
         }
     keys = [
-        "total_forms", "duplicates", "gps_outside_lga", "gps_poor_accuracy",
-        "gps_zero", "after_hours", "fast_forms", "slow_forms", "sync_lag",
+        "total_forms", "duplicates", "duplicate_gps",
+        "gps_outside_lga", "gps_outside_ward", "gps_outside_state",
+        "gps_poor_accuracy", "gps_zero", "after_hours",
+        "fast_forms", "slow_forms", "sync_lag",
         "refusals", "refusal_pct", "days_active", "lgas_covered", "ra_count",
         "total_individuals", "data_as_of",
     ]
@@ -639,51 +688,57 @@ async def qc_duration_by_lga(
 # GET /api/mda/qc/gps/geojson
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.get("/qc/gps/geojson")
-async def qc_gps_geojson(
-    db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
-):
-    result = await db.execute(text("""
+async def _gps_geojson(db: AsyncSession, where_clause: str, limit: int = 20000):
+    """Shared helper for filtered GPS GeoJSON endpoints."""
+    result = await db.execute(text(f"""
         SELECT
-          formid,
-          lga,
-          ra_key,
-          data_entry_persons,
-          date_trt::text AS date_trt,
-          flag_gps_outside_lga,
-          flag_gps_poor_accuracy,
-          gps_accuracy,
-          form_duration_min,
+          formid, lga, data_entry_persons,
+          date_trt::text, gps_accuracy, form_duration_min,
+          flag_gps_outside_lga, flag_gps_outside_ward,
+          flag_gps_outside_state, flag_duplicate_gps,
+          latitude, longitude,
           ST_AsGeoJSON(geom)::json AS geometry
         FROM mda_households
-        WHERE geom IS NOT NULL
-        LIMIT 50000
+        WHERE geom IS NOT NULL AND {where_clause}
+        LIMIT {limit}
     """))
     rows = result.fetchall()
     features = []
     for row in rows:
-        (formid, lga, ra_key, data_entry_persons, date_trt,
-         flag_gps_outside_lga, flag_gps_poor_accuracy,
-         gps_accuracy, form_duration_min, geometry) = row
-
+        (formid, lga, ra, date_trt, acc, dur,
+         out_lga, out_ward, out_state, dup_gps, lat, lon, geometry) = row
         features.append({
             "type": "Feature",
             "geometry": geometry,
             "properties": {
-                "formid": formid,
-                "lga": lga,
-                "ra_key": ra_key,
-                "data_entry_persons": data_entry_persons,
+                "formid": formid, "lga": lga, "ra": ra,
                 "date_trt": date_trt,
-                "flag_gps_outside_lga": bool(flag_gps_outside_lga),
-                "flag_gps_poor_accuracy": bool(flag_gps_poor_accuracy),
-                "gps_accuracy": float(gps_accuracy) if gps_accuracy is not None else None,
-                "form_duration_min": float(form_duration_min) if form_duration_min is not None else None,
+                "accuracy": float(acc) if acc else None,
+                "duration_min": float(dur) if dur else None,
+                "out_lga": bool(out_lga), "out_ward": bool(out_ward),
+                "out_state": bool(out_state), "dup_gps": bool(dup_gps),
+                "lat": float(lat) if lat else None,
+                "lon": float(lon) if lon else None,
             },
         })
+    return {"type": "FeatureCollection", "features": features}
 
-    return {
-        "type": "FeatureCollection",
-        "features": features,
-    }
+
+@router.get("/qc/gps/outside-lga")
+async def gps_outside_lga(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    return await _gps_geojson(db, "flag_gps_outside_lga = TRUE")
+
+
+@router.get("/qc/gps/outside-ward")
+async def gps_outside_ward(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    return await _gps_geojson(db, "flag_gps_outside_ward = TRUE")
+
+
+@router.get("/qc/gps/outside-state")
+async def gps_outside_state(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    return await _gps_geojson(db, "flag_gps_outside_state = TRUE")
+
+
+@router.get("/qc/gps/duplicate")
+async def gps_duplicate(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    return await _gps_geojson(db, "flag_duplicate_gps = TRUE")

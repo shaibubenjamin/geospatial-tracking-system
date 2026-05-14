@@ -86,12 +86,17 @@
         </div>
       </div>
 
-      <!-- Nav header: back button + level title -->
+      <!-- Nav header: back button + level title + download -->
       <div class="nav-hdr">
         <button class="nav-back hidden" id="nav-back-btn" onclick="navGoBack()">
           <i class="bi bi-chevron-left"></i> Back
         </button>
-        <span class="nav-hdr-title" id="nav-hdr-title">LGAs</span>
+        <span class="nav-hdr-title" id="nav-hdr-title" style="line-height:1.3">LGAs</span>
+        <button class="nav-back" id="nav-download-btn"
+                style="margin-left:auto;color:var(--primary-light)"
+                title="Download CSV" onclick="downloadCSV('lgas')">
+          <i class="bi bi-download"></i>
+        </button>
       </div>
 
       <!-- Scrollable nav list -->

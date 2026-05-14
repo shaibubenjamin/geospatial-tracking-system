@@ -213,7 +213,10 @@ class MdaHousehold(Base):
     sync_lag_hours = Column(Float)           # received - completed in hours
     # QC flags
     flag_duplicate = Column(Boolean, default=False)
-    flag_gps_outside_lga = Column(Boolean, default=False)
+    flag_duplicate_gps = Column(Boolean, default=False)       # same lat/lon as another record
+    flag_gps_outside_lga = Column(Boolean, default=False)     # GPS not within stated LGA polygon
+    flag_gps_outside_ward = Column(Boolean, default=False)    # GPS not within any ward polygon
+    flag_gps_outside_state = Column(Boolean, default=False)   # GPS not within any Sokoto LGA
     flag_gps_poor_accuracy = Column(Boolean, default=False)   # accuracy > 20m
     flag_gps_zero = Column(Boolean, default=False)            # lat==0 & lon==0
     flag_after_hours = Column(Boolean, default=False)         # outside 06:00-19:00
