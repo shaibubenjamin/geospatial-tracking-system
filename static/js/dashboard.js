@@ -341,6 +341,11 @@ function resetToProject() {
   resetDrillState();
   clearSource('settlement-src');
   clearSource('points-src');
+  // Remove all layer filters — show all LGAs and wards
+  ['lga-line', 'lga-label', 'ward-line', 'ward-label'].forEach(id => {
+    if (map.getLayer(id)) map.setFilter(id, null);
+  });
+  loadWardBoundaries(null); // reload all wards
   renderNav(navData.lga, 'lga');
   map.flyTo({ center: [5.25, 13.05], zoom: 7, duration: 800 });
 }
@@ -401,10 +406,16 @@ async function drillLGA(item) {
   currentWard = currentSett = null;
   clearSource('settlement-src');
   clearSource('points-src');
+
+  // Hide all other LGA boundaries — show only the selected one
+  const lgaFilter = ['==', ['get', 'lgacode'], item.lgacode];
+  ['lga-line', 'lga-label'].forEach(id => { if (map.getLayer(id)) map.setFilter(id, lgaFilter); });
+
   updateNavHeader();
   zoomToLGA(item.lgacode);
   await Promise.all([
     loadWardMetrics(item.lgacode),
+    loadWardBoundaries(item.lgacode),      // wards for this LGA only
     loadSettlementBoundaries(item.lgacode, null),
   ]);
 }
@@ -413,6 +424,11 @@ async function drillWard(item) {
   currentWard = item;
   currentSett = null;
   clearSource('points-src');
+
+  // Hide all other ward boundaries — show only the selected one
+  const wardFilter = ['==', ['get', 'wardcode'], item.wardcode];
+  ['ward-line', 'ward-label'].forEach(id => { if (map.getLayer(id)) map.setFilter(id, wardFilter); });
+
   updateNavHeader();
   zoomToWard(item.wardcode);
   await Promise.all([
@@ -432,18 +448,29 @@ async function drillSettlement(item) {
 // ── Nav back ───────────────────────────────────────────────────────────────
 function navGoBack() {
   if (navLevel === 'ward') {
-    // go back to LGA list
+    // Back to LGA list: restore all LGA + ward boundaries, clear settlement
     currentWard = currentSett = null;
+    clearSource('settlement-src');
     clearSource('points-src');
+    // Remove all filters — show all LGAs and wards again
+    ['lga-line', 'lga-label', 'ward-line', 'ward-label'].forEach(id => {
+      if (map.getLayer(id)) map.setFilter(id, null);
+    });
+    // Reload all ward boundaries (selectProject loaded them all initially)
+    loadWardBoundaries(null);
     navLevel = 'lga';
     renderNav(navData.lga, 'lga');
-    if (currentLGA) zoomToLGA(currentLGA.lgacode);
     currentLGA = null;
+    map.flyTo({ center: [5.25, 13.05], zoom: 7, duration: 700 });
     updateNavHeader();
   } else if (navLevel === 'settlement') {
-    // go back to ward list
+    // Back to ward list: restore all wards for the LGA, clear settlement
     currentSett = null;
     clearSource('points-src');
+    // Remove ward filter — show all wards for this LGA again
+    ['ward-line', 'ward-label'].forEach(id => {
+      if (map.getLayer(id)) map.setFilter(id, null);
+    });
     navLevel = 'ward';
     renderNav(navData.ward, 'ward');
     if (currentWard) zoomToWard(currentWard.wardcode);
