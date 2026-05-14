@@ -27,6 +27,19 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up — creating database tables...")
     await create_all_tables()
 
+    # Idempotent column additions for MDA tables (new flags added post-launch)
+    async with AsyncSessionLocal() as db:
+        for stmt in [
+            "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_duplicate_gps BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_gps_outside_ward BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_gps_outside_state BOOLEAN DEFAULT FALSE",
+        ]:
+            try:
+                await db.execute(text(stmt))
+            except Exception:
+                pass
+        await db.commit()
+
     async with AsyncSessionLocal() as db:
         # Seed default admin user
         result = await db.execute(select(User).where(User.username == "admin"))

@@ -97,11 +97,11 @@ function setBasemap(key, el) {
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 
 function initMapSources() {
-  // ── LGA — lines only, no fill (transparent) ─────────────────────
+  // ── LGA — thick green lines, no fill ────────────────────────────
   map.addSource('lga-src', { type: 'geojson', data: EMPTY_FC });
   map.addLayer({
     id: 'lga-line', type: 'line', source: 'lga-src', maxzoom: 10,
-    paint: { 'line-color': '#3b82f6', 'line-width': 2.0, 'line-opacity': 0.85 },
+    paint: { 'line-color': '#22c55e', 'line-width': 3.0, 'line-opacity': 0.9 },
   });
   map.addLayer({
     id: 'lga-label', type: 'symbol', source: 'lga-src', minzoom: 5, maxzoom: 9,
@@ -109,14 +109,14 @@ function initMapSources() {
       'text-field': ['get', 'lga_name'],
       'text-size': 11, 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
     },
-    paint: { 'text-color': '#93c5fd', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 },
+    paint: { 'text-color': '#4ade80', 'text-halo-color': '#0f172a', 'text-halo-width': 1.5 },
   });
 
-  // ── Ward — lines only, no fill (transparent) ─────────────────────
+  // ── Ward — slim black lines, no fill ─────────────────────────────
   map.addSource('ward-src', { type: 'geojson', data: EMPTY_FC });
   map.addLayer({
     id: 'ward-line', type: 'line', source: 'ward-src', minzoom: 8, maxzoom: 13,
-    paint: { 'line-color': '#a78bfa', 'line-width': 1.2, 'line-opacity': 0.75 },
+    paint: { 'line-color': '#111827', 'line-width': 1.0, 'line-opacity': 0.85 },
   });
   map.addLayer({
     id: 'ward-label', type: 'symbol', source: 'ward-src', minzoom: 9, maxzoom: 12,
@@ -124,7 +124,7 @@ function initMapSources() {
       'text-field': ['get', 'ward_name'], 'text-size': 10,
       'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
     },
-    paint: { 'text-color': '#d8b4fe', 'text-halo-color': '#0f172a', 'text-halo-width': 1.2 },
+    paint: { 'text-color': '#e5e7eb', 'text-halo-color': '#0f172a', 'text-halo-width': 1.2 },
   });
 
   // ── Settlement (visible at zoom 10+) ─────────────────────────────
@@ -140,7 +140,8 @@ function initMapSources() {
     id: 'settlement-line', type: 'line', source: 'settlement-src', minzoom: 10,
     paint: {
       'line-color': ['case', ['get', 'is_visited'], '#22c55e', '#ef4444'],
-      'line-width': 1.0,
+      'line-width': 0.9,
+      'line-dasharray': [4, 3],
     },
   });
   map.addLayer({
@@ -483,22 +484,50 @@ function navGoBack() {
 function updateNavHeader() {
   const btn   = document.getElementById('nav-back-btn');
   const title = document.getElementById('nav-hdr-title');
+  const dl    = document.getElementById('nav-download-btn');
 
   if (navLevel === 'lga') {
     btn.classList.add('hidden');
-    const count = navData.lga.length;
-    title.textContent = `LGAs (${count})`;
+    title.innerHTML = `<span style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Viewing</span><br>All LGAs&ensp;<span style="color:var(--text-muted);font-weight:400">(${navData.lga.length})</span>`;
+    if (dl) { dl.title = 'Download LGA coverage CSV'; dl.onclick = () => downloadCSV('lgas'); }
   } else if (navLevel === 'ward') {
     btn.classList.remove('hidden');
-    const count = navData.ward.length;
-    const lname = currentLGA ? ` — ${currentLGA.lga_name}` : '';
-    title.textContent = `Wards (${count})${lname}`;
+    const lga = currentLGA?.lga_name || '';
+    title.innerHTML = `<span style="color:#22c55e;font-size:10px;text-transform:uppercase;letter-spacing:.5px">${lga}</span><br>Wards&ensp;<span style="color:var(--text-muted);font-weight:400">(${navData.ward.length})</span>`;
+    if (dl) { dl.title = 'Download Ward coverage CSV'; dl.onclick = () => downloadCSV('wards'); }
   } else if (navLevel === 'settlement') {
     btn.classList.remove('hidden');
-    const count = navData.settlement.length;
-    const wname = currentWard ? ` — ${currentWard.ward_name}` : '';
-    title.textContent = `Settlements (${count})${wname}`;
+    const ward = currentWard?.ward_name || '';
+    const lga  = currentLGA?.lga_name  || '';
+    title.innerHTML = `<span style="color:#22c55e;font-size:10px;text-transform:uppercase;letter-spacing:.5px">${lga} › ${ward}</span><br>Settlements&ensp;<span style="color:var(--text-muted);font-weight:400">(${navData.settlement.length})</span>`;
+    if (dl) { dl.title = 'Download Settlement coverage CSV'; dl.onclick = () => downloadCSV('settlements'); }
   }
+}
+
+function downloadCSV(level) {
+  if (!currentPid) return;
+  let url = `/api/projects/${currentPid}/analytics/${level}/csv`;
+  if (level === 'wards'       && currentLGA)  url += `?lgacode=${currentLGA.lgacode}`;
+  if (level === 'settlements' && currentWard) url += `?wardcode=${currentWard.wardcode}`;
+  else if (level === 'settlements' && currentLGA) url += `?lgacode=${currentLGA.lgacode}`;
+  const a = document.createElement('a');
+  a.href = url; a.download = '';
+  // Must include auth header — use fetch + blob
+  apiFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(() => {})
+    .catch(() => {});
+  // Simpler: direct link with token in query param isn't ideal;
+  // use fetch blob approach
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(r => r.blob())
+    .then(blob => {
+      const u = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = u;
+      a.download = `${level}_coverage.csv`;
+      a.click();
+      URL.revokeObjectURL(u);
+    });
 }
 
 // ── Color helper ───────────────────────────────────────────────────────────
@@ -680,7 +709,7 @@ function togglePieModal(type) {
   renderPieChart(type);
 }
 
-function renderPieChart(type) {
+function renderPieChart(_type) {
   const ctx = document.getElementById('pie-chart').getContext('2d');
   if (pieChart) { pieChart.destroy(); pieChart = null; }
 

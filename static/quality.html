@@ -235,6 +235,24 @@
       margin-right: 5px; vertical-align: middle;
     }
 
+    /* ── GPS Filter buttons ── */
+    .gps-filter-row {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+    }
+    .gps-filter-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg-dark); color: var(--text-muted);
+      cursor: pointer; font-size: 13px; font-weight: 500; transition: var(--transition);
+    }
+    .gps-filter-btn:hover { border-color: var(--border-light); color: var(--text); }
+    .gps-filter-btn.active { border-color: var(--primary); color: var(--primary-light); background: rgba(22,163,74,0.08); }
+    .gps-filter-count {
+      background: var(--bg-hover); border-radius: 10px;
+      padding: 1px 7px; font-size: 11px; font-weight: 700;
+    }
+    .gps-filter-btn.active .gps-filter-count { background: rgba(22,163,74,0.2); }
+
     /* ── RA Table ── */
     .table-card {
       background: var(--bg-panel);
@@ -539,13 +557,43 @@
       <!-- GPS map -->
       <div class="map-card">
         <div class="section-title">
-          <i class="bi bi-pin-map"></i> GPS Points on Map
+          <i class="bi bi-pin-map"></i> GPS Anomaly Points
         </div>
+
+        <!-- Filter toggle buttons -->
+        <div class="gps-filter-row" id="gps-filter-row">
+          <button class="gps-filter-btn active" id="gfbtn-outside-lga"
+                  onclick="switchGPSFilter('outside-lga')">
+            <i class="bi bi-geo-alt"></i>
+            Outside LGA
+            <span class="gps-filter-count" id="gfc-outside-lga">—</span>
+          </button>
+          <button class="gps-filter-btn" id="gfbtn-outside-ward"
+                  onclick="switchGPSFilter('outside-ward')">
+            <i class="bi bi-map"></i>
+            Outside Ward
+            <span class="gps-filter-count" id="gfc-outside-ward">—</span>
+          </button>
+          <button class="gps-filter-btn" id="gfbtn-outside-state"
+                  onclick="switchGPSFilter('outside-state')">
+            <i class="bi bi-globe2"></i>
+            Outside State
+            <span class="gps-filter-count" id="gfc-outside-state">—</span>
+          </button>
+          <button class="gps-filter-btn" id="gfbtn-duplicate"
+                  onclick="switchGPSFilter('duplicate')">
+            <i class="bi bi-files"></i>
+            Duplicate GPS
+            <span class="gps-filter-count" id="gfc-duplicate">—</span>
+          </button>
+        </div>
+
         <div id="qc-map"></div>
-        <div class="map-legend">
-          <span><span class="legend-dot" style="background:#22c55e"></span>Valid GPS</span>
-          <span><span class="legend-dot" style="background:#f59e0b"></span>Poor Accuracy (&gt;20m)</span>
-          <span><span class="legend-dot" style="background:#ef4444"></span>Outside LGA</span>
+
+        <div class="map-legend" id="gps-legend">
+          <span id="gps-legend-text" style="color:var(--text-muted);font-size:12px">
+            Click a filter button to view flagged GPS points
+          </span>
         </div>
       </div>
 
@@ -866,47 +914,103 @@ function initMap() {
   });
 }
 
-function loadGPSPoints(geojson) {
-  initMap();
-  qcMap.on('load', () => addPointsLayer(geojson));
-  if (qcMap.loaded()) addPointsLayer(geojson);
+// GPS filter colours per category
+const GPS_FILTER_COLORS = {
+  'outside-lga':   '#ef4444',
+  'outside-ward':  '#f97316',
+  'outside-state': '#a855f7',
+  'duplicate':     '#06b6d4',
+};
+const GPS_FILTER_LABELS = {
+  'outside-lga':   'Points whose GPS falls outside their stated LGA polygon',
+  'outside-ward':  'Points whose GPS falls outside any ward polygon',
+  'outside-state': 'Points whose GPS falls outside all Sokoto State LGAs',
+  'duplicate':     'Points sharing identical lat/lon with another record',
+};
+
+let currentGPSFilter = 'outside-lga';
+
+async function switchGPSFilter(filter) {
+  currentGPSFilter = filter;
+  // Update button active states
+  document.querySelectorAll('.gps-filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`gfbtn-${filter}`).classList.add('active');
+  // Update legend text
+  document.getElementById('gps-legend-text').textContent = GPS_FILTER_LABELS[filter] || '';
+  // Fetch and display
+  const geojson = await apiFetch(`/api/mda/qc/gps/${filter}`);
+  if (geojson) updateGPSLayer(geojson, GPS_FILTER_COLORS[filter] || '#ef4444');
 }
 
-function addPointsLayer(geojson) {
-  if (qcMap.getSource('mda-gps')) {
-    qcMap.getSource('mda-gps').setData(geojson);
-    return;
-  }
-  qcMap.addSource('mda-gps', { type: 'geojson', data: geojson });
-  qcMap.addLayer({
-    id: 'mda-points',
-    type: 'circle',
-    source: 'mda-gps',
-    paint: {
-      'circle-radius': 4,
-      'circle-color': [
-        'case',
-        ['==', ['get', 'flag_gps_outside_lga'], true], '#ef4444',
-        ['==', ['get', 'flag_gps_poor_accuracy'], true], '#f59e0b',
-        '#22c55e'
-      ],
-      'circle-opacity': 0.85,
-      'circle-stroke-width': 1,
-      'circle-stroke-color': 'rgba(0,0,0,0.3)'
-    }
+function initMap() {
+  if (qcMap) return;
+  qcMap = new maplibregl.Map({
+    container: 'qc-map',
+    style: {
+      version: 8,
+      sources: { 'osm-tiles': { type:'raster', tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize:256, attribution:'© OpenStreetMap' } },
+      layers: [{ id:'osm', type:'raster', source:'osm-tiles' }]
+    },
+    center: [5.25, 13.05], zoom: 7
   });
 
-  // Fit map to points if there are any
-  if (geojson.features && geojson.features.length > 0) {
-    const coords = geojson.features.map(f => f.geometry.coordinates);
-    const lngs = coords.map(c => c[0]);
-    const lats = coords.map(c => c[1]);
-    const bounds = [
-      [Math.min(...lngs), Math.min(...lats)],
-      [Math.max(...lngs), Math.max(...lats)]
-    ];
-    qcMap.fitBounds(bounds, { padding: 40, maxZoom: 12 });
-  }
+  mapPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '260px' });
+
+  qcMap.on('click', 'mda-points', (e) => {
+    const p = e.features[0].properties;
+    const coords = e.features[0].geometry.coordinates.slice();
+    qcMap.flyTo({ center: coords, zoom: Math.max(qcMap.getZoom(), 12) });
+    mapPopup.setLngLat(coords).setHTML(`
+      <div style="font-size:12px;color:#f1f5f9;background:#1e293b;padding:4px 0;line-height:1.7">
+        <strong>${p.ra || '—'}</strong><br>
+        <span style="color:#94a3b8">LGA: ${p.lga || '—'}</span><br>
+        <span style="color:#94a3b8">Date: ${p.date_trt || '—'}</span><br>
+        <span style="color:#94a3b8">Duration: ${p.duration_min != null ? p.duration_min.toFixed(1)+' min' : '—'}</span><br>
+        <span style="color:#94a3b8">Accuracy: ${p.accuracy != null ? p.accuracy.toFixed(1)+' m' : '—'}</span><br>
+        <span style="color:#94a3b8">Lat/Lon: ${p.lat?.toFixed(5)}, ${p.lon?.toFixed(5)}</span>
+      </div>`).addTo(qcMap);
+  });
+
+  qcMap.on('mouseenter', 'mda-points', () => { qcMap.getCanvas().style.cursor = 'pointer'; });
+  qcMap.on('mouseleave', 'mda-points', () => { qcMap.getCanvas().style.cursor = ''; });
+}
+
+function updateGPSLayer(geojson, color) {
+  initMap();
+  const doUpdate = () => {
+    if (qcMap.getSource('mda-gps')) {
+      qcMap.getSource('mda-gps').setData(geojson);
+    } else {
+      qcMap.addSource('mda-gps', { type: 'geojson', data: geojson });
+      qcMap.addLayer({
+        id: 'mda-points', type: 'circle', source: 'mda-gps',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3, 12, 6],
+          'circle-color': color, 'circle-opacity': 0.85,
+          'circle-stroke-width': 1, 'circle-stroke-color': 'rgba(0,0,0,0.4)',
+        },
+      });
+    }
+    // Update circle color for current filter
+    if (qcMap.getLayer('mda-points')) {
+      qcMap.setPaintProperty('mda-points', 'circle-color', color);
+    }
+    // Fit bounds
+    if (geojson.features?.length) {
+      const coords = geojson.features.map(f => f.geometry.coordinates);
+      const lngs = coords.map(c => c[0]);
+      const lats = coords.map(c => c[1]);
+      qcMap.fitBounds([
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ], { padding: 50, maxZoom: 12 });
+    }
+  };
+  if (qcMap.loaded()) doUpdate(); else qcMap.on('load', doUpdate);
+}
+
+function loadGPSPoints() {
+  switchGPSFilter('outside-lga');
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1022,6 +1126,12 @@ async function loadQCData() {
     document.getElementById('kpi-fast').textContent        = summary.fast_forms;
     document.getElementById('kpi-slow').textContent        = summary.slow_forms;
 
+    // Populate GPS filter button counts
+    document.getElementById('gfc-outside-lga').textContent   = (summary.gps_outside_lga   || 0).toLocaleString();
+    document.getElementById('gfc-outside-ward').textContent  = (summary.gps_outside_ward  || 0).toLocaleString();
+    document.getElementById('gfc-outside-state').textContent = (summary.gps_outside_state || 0).toLocaleString();
+    document.getElementById('gfc-duplicate').textContent     = (summary.duplicate_gps     || 0).toLocaleString();
+
     const refPct = summary.refusal_pct != null ? summary.refusal_pct.toFixed(1) : '0.0';
     document.getElementById('kpi-refusal-pct').textContent = refPct + '%';
     document.getElementById('kpi-refusal-count').textContent = summary.refusals || 0;
@@ -1049,9 +1159,8 @@ async function loadQCData() {
     const durations = await apiFetch('/api/mda/qc/duration-by-lga');
     if (durations) renderDurationChart(durations);
 
-    // 4. GPS GeoJSON
-    const geojson = await apiFetch('/api/mda/qc/gps/geojson');
-    if (geojson) loadGPSPoints(geojson);
+    // 4. GPS map — load default filter (outside-lga)
+    loadGPSPoints();
 
     // 5. RA performance
     const raPerf = await apiFetch('/api/mda/qc/ra-performance');
