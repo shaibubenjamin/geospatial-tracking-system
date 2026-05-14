@@ -15,6 +15,7 @@ from app.database import create_all_tables, AsyncSessionLocal
 from app.routes.auth import hash_password
 from app.models import User, GeoProject
 from app.routes import auth, projects, boundaries, ingestion, analytics, qc
+from app.routes import mda as mda_route
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ app.include_router(boundaries.router, prefix="/api")
 app.include_router(ingestion.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(qc.router, prefix="/api")
+app.include_router(mda_route.router, prefix="/api")
 
 # Serve static files
 import os

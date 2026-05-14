@@ -174,3 +174,83 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class MdaHousehold(Base):
+    __tablename__ = "mda_households"
+
+    id = Column(Integer, primary_key=True)
+    formid = Column(Text, unique=True, nullable=False, index=True)
+    username = Column(Text)
+    teamcode = Column(Text)
+    data_type = Column(Text)
+    data_entry_persons = Column(Text)
+    data_entry_persons_norm = Column(Text)   # lower().strip()
+    phone_number_data = Column(Text)
+    ra_key = Column(Text, index=True)        # f"{name_norm}|{phone}"
+    lga = Column(Text, index=True)           # admin2 value
+    admin3_code = Column(Text)
+    admin5_code = Column(Text)
+    trt_day = Column(Text)
+    date_trt = Column(Date, index=True)
+    consent_trt = Column(Text)               # '0'=refusal '1'=consent
+    reasons_for_refusal = Column(Text)
+    others_reasons_for_refusal = Column(Text)
+    hh_num = Column(Text)
+    hh_seq = Column(Text)
+    serial_number_hh_id = Column(Text)
+    number_of_treated = Column(Integer)
+    housemarking_code = Column(Text)
+    gps_raw = Column(Text)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    gps_accuracy = Column(Float)
+    geom = Column(Geometry("POINT", srid=4326))
+    started_time = Column(DateTime(timezone=True))
+    completed_time = Column(DateTime(timezone=True))
+    received_on = Column(DateTime(timezone=True))
+    form_duration_min = Column(Float)        # completed - started in minutes
+    sync_lag_hours = Column(Float)           # received - completed in hours
+    # QC flags
+    flag_duplicate = Column(Boolean, default=False)
+    flag_gps_outside_lga = Column(Boolean, default=False)
+    flag_gps_poor_accuracy = Column(Boolean, default=False)   # accuracy > 20m
+    flag_gps_zero = Column(Boolean, default=False)            # lat==0 & lon==0
+    flag_after_hours = Column(Boolean, default=False)         # outside 06:00-19:00
+    flag_fast_form = Column(Boolean, default=False)           # < 5 min
+    flag_slow_form = Column(Boolean, default=False)           # > 60 min
+    flag_sync_lag = Column(Boolean, default=False)            # > 48 h
+    flag_refusal = Column(Boolean, default=False)
+    uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    individuals = relationship(
+        "MdaIndividual", back_populates="household",
+        primaryjoin="MdaHousehold.formid == foreign(MdaIndividual.hh_formid)",
+    )
+
+
+class MdaIndividual(Base):
+    __tablename__ = "mda_individuals"
+
+    id = Column(Integer, primary_key=True)
+    hh_formid = Column(Text, index=True)
+    mother_name = Column(Text)
+    child_name = Column(Text)
+    dob = Column(Date)
+    dob_checknote = Column(Text)
+    sex = Column(Text)
+    height_cm = Column(Text)
+    age_in_months = Column(Integer)
+    treatment_status = Column(Text)    # '1'=treated '2'=not treated
+    not_treated = Column(Text)
+    vomit_spill_azt = Column(Text)
+    child_id_r2 = Column(Text)
+    respondent_hh_id = Column(Text)
+    individual_id = Column(Text)
+    flag_orphan = Column(Boolean, default=False)
+    uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    household = relationship(
+        "MdaHousehold", back_populates="individuals",
+        primaryjoin="foreign(MdaIndividual.hh_formid) == MdaHousehold.formid",
+    )
