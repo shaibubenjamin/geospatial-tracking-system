@@ -224,12 +224,25 @@ class MdaHousehold(Base):
     flag_slow_form = Column(Boolean, default=False)           # > 60 min
     flag_sync_lag = Column(Boolean, default=False)            # > 48 h
     flag_refusal = Column(Boolean, default=False)
+    check_treatment_date = Column(Date, index=True)   # form check_treatment_date_calc col 21
+    hq_user = Column(Text, index=True)                # col 37
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     individuals = relationship(
         "MdaIndividual", back_populates="household",
         primaryjoin="MdaHousehold.formid == foreign(MdaIndividual.hh_formid)",
     )
+
+
+class MdaBaseline(Base):
+    __tablename__ = "mda_baseline"
+    id = Column(Integer, primary_key=True)
+    state = Column(Text)
+    lga = Column(Text, index=True)
+    ward = Column(Text, index=True)
+    settlement = Column(Text)
+    total_treated = Column(Integer)
+    uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class MdaIndividual(Base):
