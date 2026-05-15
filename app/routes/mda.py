@@ -189,6 +189,8 @@ async def upload_mda(
         started_time   = _parse_dt(cell(33))
         username       = _str(cell(34))
         received_on    = _parse_dt(cell(35))
+        check_treatment_date_raw = _parse_date(cell(21))
+        hq_user_val = _str(cell(37))
 
         # Normalize RA name
         name_norm = data_entry_persons.lower().strip() if data_entry_persons else None
@@ -279,6 +281,8 @@ async def upload_mda(
             "flag_slow_form": flag_slow_form,
             "flag_sync_lag": flag_sync_lag,
             "flag_refusal": flag_refusal,
+            "check_treatment_date": check_treatment_date_raw,
+            "hq_user": hq_user_val,
         })
 
     # ── Parse Repeat-group_indv (individuals) ────────────────────────────────
@@ -361,6 +365,7 @@ async def upload_mda(
                 "flag_gps_outside_lga", "flag_gps_outside_ward", "flag_gps_outside_state",
                 "flag_gps_poor_accuracy", "flag_gps_zero", "flag_after_hours",
                 "flag_fast_form", "flag_slow_form", "flag_sync_lag", "flag_refusal",
+                "check_treatment_date", "hq_user",
                 "uploaded_at",
             ]
 
@@ -384,6 +389,7 @@ async def upload_mda(
                     h["flag_gps_outside_lga"], h["flag_gps_outside_ward"], h["flag_gps_outside_state"],
                     h["flag_gps_poor_accuracy"], h["flag_gps_zero"], h["flag_after_hours"],
                     h["flag_fast_form"], h["flag_slow_form"], h["flag_sync_lag"], h["flag_refusal"],
+                    h["check_treatment_date"], h["hq_user"],
                     now_str,
                 ))
 
@@ -742,3 +748,183 @@ async def gps_outside_state(db: AsyncSession = Depends(get_db), _u: User = Depen
 @router.get("/qc/gps/duplicate")
 async def gps_duplicate(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
     return await _gps_geojson(db, "flag_duplicate_gps = TRUE")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/overview
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/overview")
+async def mda_overview(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    result = await db.execute(text("""
+        SELECT
+          COUNT(*) AS total_forms,
+          COALESCE(SUM(number_of_treated), 0) AS total_treated,
+          COUNT(DISTINCT hq_user) AS teams_active,
+          COUNT(DISTINCT check_treatment_date) AS days_active,
+          COUNT(DISTINCT lga) AS lgas_covered,
+          SUM(CASE WHEN flag_refusal THEN 1 ELSE 0 END) AS refusals,
+          SUM(CASE WHEN flag_fast_form THEN 1 ELSE 0 END) AS fast_forms,
+          SUM(CASE WHEN flag_after_hours THEN 1 ELSE 0 END) AS after_hours,
+          SUM(CASE WHEN flag_gps_outside_lga THEN 1 ELSE 0 END) AS gps_outside_lga,
+          SUM(CASE WHEN flag_duplicate_gps THEN 1 ELSE 0 END) AS duplicate_gps,
+          (SELECT COALESCE(SUM(total_treated),0) FROM mda_baseline) AS baseline_total,
+          MIN(check_treatment_date)::text AS campaign_start,
+          MAX(check_treatment_date)::text AS campaign_end
+        FROM mda_households
+    """))
+    row = result.fetchone()
+    if not row or not row[0]:
+        return {"total_forms": 0}
+    d = dict(zip([
+        "total_forms","total_treated","teams_active","days_active",
+        "lgas_covered","refusals","fast_forms","after_hours",
+        "gps_outside_lga","duplicate_gps","baseline_total",
+        "campaign_start","campaign_end"
+    ], row))
+    for k in ["total_forms","total_treated","teams_active","days_active","lgas_covered",
+              "refusals","fast_forms","after_hours","gps_outside_lga","duplicate_gps","baseline_total"]:
+        if d[k] is not None: d[k] = int(d[k])
+    bl = d["baseline_total"] or 0
+    d["coverage_pct"] = round(100.0 * d["total_treated"] / bl, 1) if bl > 0 else 0
+    d["total_qc_flags"] = d["after_hours"] + d["fast_forms"] + d["gps_outside_lga"] + d["duplicate_gps"]
+    return d
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/trends/daily
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/trends/daily")
+async def mda_trends_daily(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    result = await db.execute(text("""
+        SELECT
+          check_treatment_date::text AS date,
+          COUNT(*) AS forms,
+          COALESCE(SUM(number_of_treated), 0) AS treated,
+          COUNT(DISTINCT hq_user) AS teams
+        FROM mda_households
+        WHERE check_treatment_date IS NOT NULL
+        GROUP BY check_treatment_date
+        ORDER BY check_treatment_date
+    """))
+    return [dict(zip(["date","forms","treated","teams"], row)) for row in result.fetchall()]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/teams/performance
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/teams/performance")
+async def mda_teams(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    result = await db.execute(text("""
+        SELECT
+          hq_user,
+          lga,
+          COUNT(*) AS total_forms,
+          COUNT(DISTINCT check_treatment_date) AS days_active,
+          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT check_treatment_date), 0), 1) AS avg_per_day,
+          COALESCE(SUM(number_of_treated), 0) AS total_treated,
+          SUM(CASE WHEN flag_after_hours THEN 1 ELSE 0 END) AS after_hours,
+          SUM(CASE WHEN flag_fast_form THEN 1 ELSE 0 END) AS fast_forms
+        FROM mda_households
+        WHERE hq_user IS NOT NULL
+        GROUP BY hq_user, lga
+        ORDER BY avg_per_day DESC
+    """))
+    rows = result.fetchall()
+    keys = ["hq_user","lga","total_forms","days_active","avg_per_day","total_treated","after_hours","fast_forms"]
+    out = []
+    for row in rows:
+        d = dict(zip(keys, row))
+        d["avg_per_day"] = float(d["avg_per_day"] or 0)
+        d["meets_target"] = d["avg_per_day"] >= 80
+        for k in ["total_forms","days_active","total_treated","after_hours","fast_forms"]:
+            if d[k] is not None: d[k] = int(d[k])
+        out.append(d)
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/coverage/lga
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/coverage/lga")
+async def mda_coverage_lga(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+    result = await db.execute(text("""
+        SELECT
+          h.lga,
+          COUNT(*) AS forms,
+          COALESCE(SUM(h.number_of_treated), 0) AS actual_treated,
+          COALESCE(b.baseline_total, 0) AS baseline_total,
+          CASE WHEN COALESCE(b.baseline_total, 0) > 0
+               THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
+               ELSE 0 END AS coverage_pct,
+          COUNT(DISTINCT h.hq_user) AS teams,
+          COUNT(DISTINCT h.check_treatment_date) AS days_reported
+        FROM mda_households h
+        LEFT JOIN (
+          SELECT UPPER(TRIM(lga)) AS lga, SUM(total_treated) AS baseline_total
+          FROM mda_baseline GROUP BY UPPER(TRIM(lga))
+        ) b ON UPPER(TRIM(h.lga)) = b.lga
+        GROUP BY h.lga, b.baseline_total
+        ORDER BY coverage_pct DESC
+    """))
+    rows = result.fetchall()
+    keys = ["lga","forms","actual_treated","baseline_total","coverage_pct","teams","days_reported"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/mda/upload-baseline
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/upload-baseline")
+async def upload_baseline(
+    file: UploadFile = File(...),
+    _admin: User = Depends(require_admin),
+):
+    """Upload settlement_total_treated_pivot.xlsx (replaces existing baseline)."""
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(400, "File must be .xlsx")
+    raw = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    except Exception as e:
+        raise HTTPException(400, f"Cannot open workbook: {e}")
+    ws = wb[wb.sheetnames[0]]
+    rows_raw = list(ws.iter_rows(min_row=2, values_only=True))
+    wb.close()
+
+    def strip_q(v):
+        if v is None: return None
+        s = str(v).strip().strip("'").strip()
+        return s if s else None
+
+    records = []
+    for row in rows_raw:
+        state = strip_q(row[0]); lga = strip_q(row[1])
+        ward = strip_q(row[2]); sett = strip_q(row[3])
+        total = None
+        try: total = int(float(str(row[4])))
+        except: pass
+        if lga and total is not None:
+            records.append((state, lga, ward, sett, total))
+
+    conn = _get_sync_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mda_baseline")
+        if records:
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO mda_baseline(state, lga, ward, settlement, total_treated) VALUES %s",
+                records, page_size=500,
+            )
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); raise HTTPException(500, f"DB error: {e}")
+    finally:
+        conn.close()
+
+    return {"rows_inserted": len(records)}

@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MDA Dashboard — Sightsavers</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Font Awesome 6.5 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- MapLibre GL JS -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+<style>
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --navy: #002F5F;
+  --navy-dark: #001e3e;
+  --blue: #0067B8;
+  --sky: #00A4E4;
+  --cyan: #4FC3F7;
+  --pale: #F4F9FE;
+  --good: #16a34a;
+  --good-bg: #dcfce7;
+  --warn: #d97706;
+  --warn-bg: #fef3c7;
+  --bad: #dc2626;
+  --bad-bg: #fee2e2;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --sidebar-w: 248px;
+  --topbar-h: 56px;
+  --radius: 10px;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'Inter', 'Segoe UI', sans-serif; font-size: 14px; color: var(--text); background: #f8fafc; }
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; border: none; background: none; font-family: inherit; }
+
+/* ── Layout shell ──────────────────────────────────────────────────────────── */
+.shell { display: flex; flex-direction: column; height: 100vh; }
+.body-row { display: flex; flex: 1; min-height: 0; }
+
+/* ── Topbar ────────────────────────────────────────────────────────────────── */
+.topbar {
+  height: var(--topbar-h);
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+.tb-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; color: var(--navy); white-space: nowrap; }
+.tb-brand .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sky); display: inline-block; }
+.topbar-sep { flex: 1; }
+.tb-breadcrumb { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.tb-breadcrumb a { color: var(--blue); }
+.tb-breadcrumb i { font-size: 10px; }
+.tb-actions { display: flex; align-items: center; gap: 8px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: #0055a0; }
+.btn-secondary { background: #f1f5f9; color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: #e2e8f0; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.tb-user { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
+.tb-user:hover { color: var(--navy); }
+.user-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: linear-gradient(180deg, var(--navy-dark) 0%, var(--navy) 100%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+.sidebar-logo { padding: 20px 20px 12px; }
+.sidebar-logo .logo-mark { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+.sidebar-logo .logo-sub { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.45); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+.nav-section { padding: 10px 0 4px; }
+.nav-section-label { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.35); letter-spacing: 1.5px; text-transform: uppercase; padding: 0 20px 6px; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.72);
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+  position: relative;
+}
+.nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.nav-item.active { background: rgba(255,255,255,0.10); color: #fff; border-left-color: var(--sky); font-weight: 500; }
+.nav-item i { width: 18px; text-align: center; font-size: 14px; opacity: 0.9; }
+.nav-badge { margin-left: auto; background: var(--bad); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; min-width: 20px; text-align: center; }
+.nav-badge.hidden { display: none; }
+.sidebar-footer { margin-top: auto; padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 11px; color: rgba(255,255,255,0.35); }
+
+/* ── Main content ──────────────────────────────────────────────────────────── */
+.main { flex: 1; overflow-y: auto; min-width: 0; }
+.view { display: none; padding: 24px; }
+.view.active { display: block; }
+.view-header { margin-bottom: 20px; }
+.view-title { font-size: 20px; font-weight: 700; color: var(--navy); }
+.view-sub { font-size: 13px; color: var(--text-muted); margin-top: 3px; }
+
+/* ── Filters row ───────────────────────────────────────────────────────────── */
+.filters-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.filter-select { height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: #fff; color: var(--text); outline: none; cursor: pointer; }
+.filter-select:focus { border-color: var(--blue); }
+.filters-spacer { flex: 1; }
+
+/* ── KPI cards ─────────────────────────────────────────────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.kpi-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.kpi-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--border); border-radius: var(--radius) 0 0 var(--radius); }
+.kpi-card.accent-blue::before { background: var(--blue); }
+.kpi-card.accent-sky::before { background: var(--sky); }
+.kpi-card.accent-good::before { background: var(--good); }
+.kpi-card.accent-warn::before { background: var(--warn); }
+.kpi-card.accent-bad::before { background: var(--bad); }
+.kpi-icon { font-size: 20px; color: var(--text-muted); margin-bottom: 6px; }
+.kpi-card.accent-blue .kpi-icon { color: var(--blue); }
+.kpi-card.accent-sky .kpi-icon { color: var(--sky); }
+.kpi-card.accent-good .kpi-icon { color: var(--good); }
+.kpi-card.accent-warn .kpi-icon { color: var(--warn); }
+.kpi-card.accent-bad .kpi-icon { color: var(--bad); }
+.kpi-val { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1; }
+.kpi-label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-sub { font-size: 11px; color: var(--text-muted); }
+
+/* ── Two-col chart row ─────────────────────────────────────────────────────── */
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.chart-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.chart-title { font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 14px; }
+.chart-wrap { position: relative; }
+
+/* ── Table ─────────────────────────────────────────────────────────────────── */
+.section-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.section-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.section-card-title { font-size: 14px; font-weight: 600; color: var(--navy); }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: var(--pale); font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: left; }
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--pale); }
+tbody td { padding: 9px 14px; color: var(--text); vertical-align: middle; }
+
+/* ── Coverage bar in table ─────────────────────────────────────────────────── */
+.cov-bar-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.cov-bar-bg { flex: 1; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+.cov-bar-fill { height: 100%; border-radius: 3px; background: var(--blue); transition: width 0.4s; }
+.cov-bar-fill.good { background: var(--good); }
+.cov-bar-fill.warn { background: var(--warn); }
+.cov-bar-fill.bad { background: var(--bad); }
+.cov-pct { font-size: 12px; font-weight: 600; color: var(--text); min-width: 38px; text-align: right; }
+
+/* ── Status chips ──────────────────────────────────────────────────────────── */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+
+/* ── QC Tiles ──────────────────────────────────────────────────────────────── */
+.qc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.qc-tile {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.qc-tile-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.qc-tile-icon.red { background: var(--bad-bg); color: var(--bad); }
+.qc-tile-icon.amber { background: var(--warn-bg); color: var(--warn); }
+.qc-tile-icon.blue { background: #dbeafe; color: var(--blue); }
+.qc-tile-body { flex: 1; }
+.qc-tile-val { font-size: 24px; font-weight: 700; color: var(--navy); }
+.qc-tile-lbl { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Team table row colors ─────────────────────────────────────────────────── */
+.row-good { background: #f0fdf4 !important; }
+.row-warn { background: #fffbeb !important; }
+.row-bad  { background: #fef2f2 !important; }
+
+/* ── Map ───────────────────────────────────────────────────────────────────── */
+#geo-map { height: 600px; border-radius: 8px; overflow: hidden; }
+.geo-filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.geo-btn { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; background: #fff; border: 1px solid var(--border); color: var(--text); cursor: pointer; transition: all 0.15s; }
+.geo-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+/* ── Upload modal ──────────────────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 999; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal-box { background: #fff; border-radius: 12px; padding: 28px; width: 480px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,0.15); transform: translateY(8px); transition: transform 0.2s; }
+.modal-overlay.open .modal-box { transform: translateY(0); }
+.modal-title { font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+.modal-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+.modal-section { background: var(--pale); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+.modal-section-title { font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 8px; }
+.modal-warning { background: var(--warn-bg); border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--warn); margin-bottom: 16px; display: flex; gap: 8px; align-items: flex-start; }
+.file-row { display: flex; align-items: center; gap: 8px; }
+.file-row input[type=file] { flex: 1; font-size: 12px; }
+.upload-progress { font-size: 12px; color: var(--text-muted); margin-top: 6px; min-height: 18px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+/* ── Spinner ───────────────────────────────────────────────────────────────── */
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Loading state ─────────────────────────────────────────────────────────── */
+.loading-placeholder { display: flex; align-items: center; justify-content: center; height: 120px; color: var(--text-muted); font-size: 13px; gap: 10px; }
+.sk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); animation: sk 1.2s ease-in-out infinite; display: inline-block; }
+.sk-dot:nth-child(2) { animation-delay: 0.15s; }
+.sk-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes sk { 0%,80%,100%{transform:scale(0)}40%{transform:scale(1)} }
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .charts-row { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Topbar ──────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="tb-brand">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23002F5F'/%3E%3Ctext x='16' y='21' text-anchor='middle' fill='white' font-size='14' font-family='Arial' font-weight='bold'%3ES%3C/text%3E%3C/svg%3E" alt="Logo" style="width:28px;height:28px;border-radius:6px" />
+      <span>MDA Dashboard</span>
+      <span class="brand-dot"></span>
+    </div>
+
+    <div class="tb-breadcrumb">
+      <a href="/dashboard"><i class="fa-solid fa-map"></i> GeoTracker</a>
+      <i class="fa-solid fa-chevron-right"></i>
+      <span>Mass Drug Administration</span>
+    </div>
+
+    <div class="topbar-sep"></div>
+
+    <div class="tb-actions">
+      <span id="campaign-dates" style="font-size:12px;color:var(--text-muted)"></span>
+      <button class="btn btn-primary btn-sm" onclick="openUploadModal()">
+        <i class="fa-solid fa-upload"></i> Upload Data
+      </button>
+      <div class="tb-user" onclick="handleLogout()">
+        <div class="user-avatar" id="topbar-avatar">U</div>
+        <span id="topbar-username">User</span>
+        <i class="fa-solid fa-right-from-bracket" style="font-size:12px"></i>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Body row ────────────────────────────────────────────────────────── -->
+  <div class="body-row">
+
+    <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-mark">Sightsavers</div>
+        <div class="logo-sub">MDA Monitor</div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Campaign</div>
+        <div class="nav-item active" data-view="overview" onclick="switchView('overview')">
+          <i class="fa-solid fa-gauge-high"></i> Overview
+        </div>
+        <div class="nav-item" data-view="coverage" onclick="switchView('coverage')">
+          <i class="fa-solid fa-chart-pie"></i> Coverage Analysis
+        </div>
+        <div class="nav-item" data-view="quality" onclick="switchView('quality')">
+          <i class="fa-solid fa-shield-halved"></i> Quality Checks
+          <span class="nav-badge hidden" id="qc-nav-badge">0</span>
+        </div>
+        <div class="nav-item" data-view="geo" onclick="switchView('geo')">
+          <i class="fa-solid fa-map-location-dot"></i> Geographic View
+        </div>
+        <div class="nav-item" data-view="teams" onclick="switchView('teams')">
+          <i class="fa-solid fa-people-group"></i> Teams Performance
+        </div>
+        <div class="nav-item" data-view="trends" onclick="switchView('trends')">
+          <i class="fa-solid fa-chart-line"></i> Campaign Trends
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Operations</div>
+        <div class="nav-item" data-view="reports" onclick="switchView('reports')">
+          <i class="fa-solid fa-file-export"></i> Reports &amp; Export
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        Sokoto State NTD Programme<br />
+        MDA Campaign Monitor v1.0
+      </div>
+    </nav>
+
+    <!-- ── Main ──────────────────────────────────────────────────────────── -->
+    <main class="main">
+
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <!-- VIEW: Overview                                                     -->
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <div class="view active" id="view-overview">
+        <div class="view-header">
+          <div class="view-title">Campaign Overview</div>
+          <div class="view-sub">Real-time summary of MDA data submissions and coverage</div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-row">
+          <select class="filter-select" id="ov-lga-filter" onchange="applyOverviewFilter()">
+            <option value="">All LGAs</option>
+          </select>
+          <div class="filters-spacer"></div>
+          <button class="btn btn-secondary btn-sm" onclick="initOverview()">
+            <i class="fa-solid fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+
+        <!-- KPI cards -->
+        <div class="kpi-grid" id="ov-kpi-grid">
+          <div class="kpi-card accent-blue">
+            <i class="fa-solid fa-clipboard-list kpi-icon"></i>
+            <div class="kpi-val" id="ov-total-forms">—</div>
+            <div class="kpi-label">Total HH Forms</div>
+            <div class="kpi-sub" id="ov-forms-sub"></div>
+          </div>
+          <div class="kpi-card accent-sky">
+            <i class="fa-solid fa-child-reaching kpi-icon"></i>
+            <div class="kpi-val" id="ov-treated">—</div>
+            <div class="kpi-label">Children Treated</div>
+          </div>
+          <div class="kpi-card">
+            <i class="fa-solid fa-users kpi-icon"></i>
+            <div class="kpi-val" id="ov-teams">—</div>
+            <div class="kpi-label">Teams Active</div>
+          </div>
+          <div class="kpi-card" id="ov-coverage-card">
+            <i class="fa-solid fa-bullseye kpi-icon"></i>
+            <div class="kpi-val" id="ov-coverage">—</div>
+            <div class="kpi-label">Admin Coverage %</div>
+            <div class="kpi-sub" id="ov-coverage-sub"></div>
+          </div>
+          <div class="kpi-card">
+            <i class="fa-solid fa-calendar-days kpi-icon"></i>
+            <div class="kpi-val" id="ov-days">—</div>
+            <div class="kpi-label">Campaign Days</div>
+          </div>
+          <div class="kpi-card" id="ov-qc-card">
+            <i class="fa-solid fa-triangle-exclamation kpi-icon"></i>
+            <div class="kpi-val" id="ov-qc-flags">—</div>
+            <div class="kpi-label">Total QC Flags</div>
+            <div class="kpi-sub" id="ov-qc-sub"></div>
+          </div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title"><i class="fa-solid fa-bars-progress" style="color:var(--blue)"></i> Submissions by LGA</div>
+            <div class="chart-wrap"><canvas id="ov-lga-chart" height="260"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title"><i class="fa-solid fa-chart-line" style="color:var(--sky)"></i> Daily Submission Trend</div>
+            <div class="chart-wrap"><canvas id="ov-trend-chart" height="260"></canvas></div>
+          </div>
+        </div>
+
+        <!-- LGA Coverage table -->
+        <div class="section-card">
+          <div class="section-card-header">
+            <div class="section-card-title">LGA Coverage Summary</div>
+            <button class="btn btn-secondary btn-sm" onclick="exportTableCSV('lga-table','lga-coverage.csv')">
+              <i class="fa-solid fa-download"></i> CSV
+            </button>
+          </div>
+          <div class="tbl-wrap">
+            <table id="lga-table">
+              <thead>
+                <tr>
+                  <th>LGA</th><th>Baseline</th><th>Administered</th>
+                  <th>Coverage %</th><th>Teams</th><th>Days</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="lga-tbody">
+                <tr><td colspan="7"><div class="loading-placeholder"><span class="sk-dot"></span><span class="sk-dot"></span><span class="sk-dot"></span>&nbsp;Loading…</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <!-- VIEW: Coverage Analysis                                            -->
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-coverage">
+        <div class="view-header">
+          <div class="view-title">Coverage Analysis</div>
+          <div class="view-sub">Baseline vs administered treatment comparison by LGA</div>
+        </div>
+
+        <div class="kpi-grid" id="cov-kpi-grid">
+          <div class="kpi-card accent-blue">
+            <i class="fa-solid fa-database kpi-icon"></i>
+            <div class="kpi-val" id="cov-baseline">—</div>
+            <div class="kpi-label">Baseline Total</div>
+          </div>
+          <div class="kpi-card accent-sky">
+            <i class="fa-solid fa-syringe kpi-icon"></i>
+            <div class="kpi-val" id="cov-administered">—</div>
+            <div class="kpi-label">Total Administered</div>
+          </div>
+          <div class="kpi-card" id="cov-pct-card">
+            <i class="fa-solid fa-percent kpi-icon"></i>
+            <div class="kpi-val" id="cov-pct">—</div>
+            <div class="kpi-label">Overall Coverage %</div>
+          </div>
+          <div class="kpi-card accent-good">
+            <i class="fa-solid fa-circle-check kpi-icon"></i>
+            <div class="kpi-val" id="cov-good-lgas">—</div>
+            <div class="kpi-label">LGAs at ≥80%</div>
+          </div>
+          <div class="kpi-card accent-bad">
+            <i class="fa-solid fa-circle-xmark kpi-icon"></i>
+            <div class="kpi-val" id="cov-bad-lgas">—</div>
+            <div class="kpi-label">LGAs Below 60%</div>
+          </div>
+        </div>
+
+        <div class="section-card" style="margin-bottom:20px">
+          <div class="section-card-header">
+            <div class="section-card-title">LGA Coverage Comparison</div>
+          </div>
+          <div style="padding:16px 20px">
+            <canvas id="cov-bar-chart" height="380"></canvas>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <div class="section-card-title">LGA Coverage Detail</div>
+            <button class="btn btn-secondary btn-sm" onclick="exportTableCSV('cov-lga-table','coverage-detail.csv')">
+              <i class="fa-solid fa-download"></i> CSV
+            </button>
+          </div>
+          <div class="tbl-wrap">
+            <table id="cov-lga-table">
+              <thead>
+                <tr>
+                  <th>LGA</th><th>Baseline</th><th>Administered</th>
+                  <th>Coverage %</th><th>Teams</th><th>Days</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="cov-lga-tbody">
+                <tr><td colspan="7"><div class="loading-placeholder"><span class="sk-dot"></span><span class="sk-dot"></span><span class="sk-dot"></span>&nbsp;Loading…</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <!-- VIEW: Quality Checks                                               -->
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-quality">
+        <div class="view-header">
+          <div class="view-title">Quality Checks</div>
+          <div class="view-sub">Data quality flags and submission anomalies</div>
+        </div>
+
+        <div class="qc-grid" id="qc-tiles">
+          <div class="qc-tile">
+            <div class="qc-tile-icon red"><i class="fa-solid fa-map-pin"></i></div>
+            <div class="qc-tile-body">
+              <div class="qc-tile-val" id="qc-gps-outside">—</div>
+              <div class="qc-tile-lbl">GPS Outside LGA</div>
+            </div>
+          </div>
+          <div class="qc-tile">
+            <div class="qc-tile-icon amber"><i class="fa-solid fa-copy"></i></div>
+            <div class="qc-tile-body">
+              <div class="qc-tile-val" id="qc-dup-gps">—</div>
+              <div class="qc-tile-lbl">Duplicate GPS</div>
+            </div>
+          </div>
+          <div class="qc-tile">
+            <div class="qc-tile-icon amber"><i class="fa-solid fa-moon"></i></div>
+            <div class="qc-tile-body">
+              <div class="qc-tile-val" id="qc-after-hours">—</div>
+              <div class="qc-tile-lbl">After-Hours Submissions</div>
+            </div>
+          </div>
+          <div class="qc-tile">
+            <div class="qc-tile-icon blue"><i class="fa-solid fa-bolt"></i></div>
+            <div class="qc-tile-body">
+              <div class="qc-tile-val" id="qc-fast-forms">—</div>
+              <div class="qc-tile-lbl">Fast Forms &lt;5 min</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title"><i class="fa-solid fa-hand" style="color:var(--bad)"></i> Refusals by LGA</div>
+            <div class="chart-wrap"><canvas id="qc-refusals-chart" height="260"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title"><i class="fa-solid fa-clock" style="color:var(--warn)"></i> Avg Duration by LGA (min)</div>
+            <div class="chart-wrap"><canvas id="qc-duration-chart" height="260"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <!-- VIEW: Geographic View                                              -->
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-geo">
+        <div class="view-header">
+          <div class="view-title">Geographic View</div>
+          <div class="view-sub">Map of GPS submissions and flagged points</div>
+        </div>
+
+        <div class="geo-filter-row">
+          <button class="geo-btn active" id="geo-btn-outside-lga" onclick="loadGeoLayer('outside-lga')">Outside LGA</button>
+          <button class="geo-btn" id="geo-btn-outside-ward" onclick="loadGeoLayer('outside-ward')">Outside Ward</button>
+          <button class="geo-btn" id="geo-btn-duplicate" onclick="loadGeoLayer('duplicate')">Duplicate GPS</button>
+          <button class="geo-btn" id="geo-btn-state" onclick="loadGeoLayer('outside-state')">Outside State</button>
+          <div style="flex:1"></div>
+          <span id="geo-count-label" style="font-size:12px;color:var(--text-muted);align-self:center"></span>
+        </div>
+
+        <div id="geo-map"></div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <!-- VIEW: Teams Performance                                            -->
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-teams">
+        <div class="view-header">
+          <div class="view-title">Teams Performance</div>
+          <div class="view-sub">Daily submission rates and target tracking (target: 80 forms/day)</div>
+        </div>
+
+        <div class="filters-row">
+          <select class="filter-select" id="teams-lga-filter" onchange="filterTeamsTable()">
+            <option value="">All LGAs</option>
+          </select>
+          <select class="filter-select" id="teams-sort" onchange="filterTeamsTable()">
+            <option value="avg_per_day">Sort: Avg/Day</option>
+            <option value="total_forms">Sort: Total Forms</option>
+            <option value="total_treated">Sort: Treated</option>
+          </select>
+          <div class="filters-spacer"></div>
+          <button class="btn btn-secondary btn-sm" onclick="exportTableCSV('teams-table','teams-performance.csv')">
+            <i class="fa-solid fa-download"></i> Export
+          </button>
+        </div>
+
+        <!-- Teams KPIs -->
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);max-width:600px;margin-bottom:20px">
+          <div class="kpi-card accent-good">
+            <i class="fa-solid fa-circle-check kpi-icon"></i>
+            <div class="kpi-val" id="teams-on-target">—</div>
+            <div class="kpi-label">Meeting Target</div>
+          </div>
+          <div class="kpi-card accent-bad">
+            <i class="fa-solid fa-circle-xmark kpi-icon"></i>
+            <div class="kpi-val" id="teams-below-target">—</div>
+            <div class="kpi-label">Below Target</div>
+          </div>
+          <div class="kpi-card accent-blue">
+            <i class="fa-solid fa-chart-simple kpi-icon"></i>
+            <div class="kpi-val" id="teams-avg-day">—</div>
+            <div class="kpi-label">Avg Forms/Day</div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <div class="section-card-title">Team Performance Table</div>
+          </div>
+          <div class="tbl-wrap">
+            <table id="teams-table">
+              <thead>
+                <tr>
+                  <th>Team ID</th><th>LGA</th><th>Total Forms</th>
+                  <th>Days Active</th><th>Avg/Day</th><th>Target</th>
+                  <th>Status</th><th>After-Hours</th><th>Fast Forms</th>
+                </tr>
+              </thead>
+              <tbody id="teams-tbody">
+                <tr><td colspan="9"><div class="loading-placeholder"><span class="sk-dot"></span><span class="sk-dot"></span><span class="sk-dot"></span>&nbsp;Loading…</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <!-- VIEW: Campaign Trends                                              -->
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-trends">
+        <div class="view-header">
+          <div class="view-title">Campaign Trends</div>
+          <div class="view-sub">Daily submission and treatment volume over time</div>
+        </div>
+
+        <div class="charts-row" style="grid-template-columns:1fr">
+          <div class="chart-card">
+            <div class="chart-title"><i class="fa-solid fa-chart-line" style="color:var(--blue)"></i> Daily Forms Submitted</div>
+            <div class="chart-wrap"><canvas id="trend-forms-chart" height="220"></canvas></div>
+          </div>
+        </div>
+
+        <div class="charts-row" style="grid-template-columns:1fr">
+          <div class="chart-card">
+            <div class="chart-title"><i class="fa-solid fa-chart-area" style="color:var(--sky)"></i> Daily Children Treated</div>
+            <div class="chart-wrap"><canvas id="trend-treated-chart" height="220"></canvas></div>
+          </div>
+        </div>
+
+        <div class="charts-row" style="grid-template-columns:1fr">
+          <div class="chart-card">
+            <div class="chart-title"><i class="fa-solid fa-users" style="color:var(--navy)"></i> Teams Contributing Per Day</div>
+            <div class="chart-wrap"><canvas id="trend-teams-chart" height="200"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <!-- VIEW: Reports & Export                                             -->
+      <!-- ══════════════════════════════════════════════════════════════════ -->
+      <div class="view" id="view-reports">
+        <div class="view-header">
+          <div class="view-title">Reports &amp; Export</div>
+          <div class="view-sub">Download campaign data and analytics</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">
+
+          <div class="section-card" style="margin-bottom:0">
+            <div class="section-card-header">
+              <div class="section-card-title"><i class="fa-solid fa-map-location" style="color:var(--blue)"></i> LGA Coverage CSV</div>
+            </div>
+            <div style="padding:16px 20px">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Export baseline vs administered data for all LGAs.</p>
+              <a href="/api/projects/1/analytics/lgas/csv" class="btn btn-primary" target="_blank">
+                <i class="fa-solid fa-download"></i> Download CSV
+              </a>
+            </div>
+          </div>
+
+          <div class="section-card" style="margin-bottom:0">
+            <div class="section-card-header">
+              <div class="section-card-title"><i class="fa-solid fa-people-group" style="color:var(--sky)"></i> Team Performance</div>
+            </div>
+            <div style="padding:16px 20px">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Export team performance table as CSV (client-side).</p>
+              <button class="btn btn-primary" onclick="exportTeamsCSV()">
+                <i class="fa-solid fa-download"></i> Export Teams CSV
+              </button>
+            </div>
+          </div>
+
+          <div class="section-card" style="margin-bottom:0">
+            <div class="section-card-header">
+              <div class="section-card-title"><i class="fa-solid fa-shield-halved" style="color:var(--warn)"></i> QC Flags Summary</div>
+            </div>
+            <div style="padding:16px 20px">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Download the QC summary JSON from the API.</p>
+              <a href="/api/mda/qc/summary" class="btn btn-secondary" target="_blank">
+                <i class="fa-solid fa-external-link"></i> View QC Summary
+              </a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+  </div><!-- .body-row -->
+</div><!-- .shell -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- Upload Modal                                                               -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="upload-modal" onclick="closeUploadModal(event)">
+  <div class="modal-box">
+    <div class="modal-title"><i class="fa-solid fa-cloud-arrow-up" style="color:var(--blue)"></i> Upload Data</div>
+    <div class="modal-sub">Upload MDA submissions or baseline data to refresh the dashboard.</div>
+
+    <div class="modal-warning">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span>Uploading replaces all existing data of that type. This action cannot be undone.</span>
+    </div>
+
+    <!-- MDA Data -->
+    <div class="modal-section">
+      <div class="modal-section-title">MDA Data (.xlsx)</div>
+      <div class="file-row">
+        <input type="file" id="mda-file-input" accept=".xlsx" />
+        <button class="btn btn-primary btn-sm" onclick="uploadMdaData()" id="mda-upload-btn">
+          <i class="fa-solid fa-upload"></i> Upload
+        </button>
+      </div>
+      <div class="upload-progress" id="mda-upload-progress"></div>
+    </div>
+
+    <!-- Baseline Data -->
+    <div class="modal-section">
+      <div class="modal-section-title">Baseline Data (.xlsx)</div>
+      <div class="file-row">
+        <input type="file" id="baseline-file-input" accept=".xlsx" />
+        <button class="btn btn-secondary btn-sm" onclick="uploadBaselineData()" id="baseline-upload-btn">
+          <i class="fa-solid fa-upload"></i> Upload
+        </button>
+      </div>
+      <div class="upload-progress" id="baseline-upload-progress"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeUploadModalDirect()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- JavaScript                                                                 -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── Auth helpers ────────────────────────────────────────────────────────── */
+const TOKEN_KEY = 'auth_token';
+const token = () => localStorage.getItem(TOKEN_KEY);
+
+function authHeaders() {
+  return { 'Authorization': `Bearer ${token()}`, 'Content-Type': 'application/json' };
+}
+
+function authGet(url) {
+  return fetch(url, { headers: { 'Authorization': `Bearer ${token()}` } });
+}
+
+async function guardAuth() {
+  if (!token()) { window.location.href = '/'; return; }
+  try {
+    const r = await authGet('/api/users/me');
+    if (!r.ok) { window.location.href = '/'; return; }
+    const u = await r.json();
+    document.getElementById('topbar-username').textContent = u.username || 'User';
+    const av = document.getElementById('topbar-avatar');
+    if (av) av.textContent = (u.username || 'U')[0].toUpperCase();
+  } catch { window.location.href = '/'; }
+}
+
+function handleLogout() {
+  localStorage.removeItem(TOKEN_KEY);
+  window.location.href = '/';
+}
+
+/* ── Number formatting ───────────────────────────────────────────────────── */
+function fmt(n) {
+  if (n == null || n === '') return '—';
+  return Number(n).toLocaleString();
+}
+function fmtPct(n) {
+  if (n == null) return '—';
+  return Number(n).toFixed(1) + '%';
+}
+
+/* ── Status chip helper ──────────────────────────────────────────────────── */
+function statusChip(pct) {
+  if (pct >= 80) return `<span class="chip good"><i class="fa-solid fa-check"></i> Good</span>`;
+  if (pct >= 60) return `<span class="chip warn"><i class="fa-solid fa-exclamation"></i> Warning</span>`;
+  return `<span class="chip bad"><i class="fa-solid fa-xmark"></i> Poor</span>`;
+}
+
+function covBarHtml(pct) {
+  const cls = pct >= 80 ? 'good' : pct >= 60 ? 'warn' : 'bad';
+  return `<div class="cov-bar-wrap">
+    <div class="cov-bar-bg"><div class="cov-bar-fill ${cls}" style="width:${Math.min(pct,100)}%"></div></div>
+    <span class="cov-pct">${fmtPct(pct)}</span>
+  </div>`;
+}
+
+/* ── Chart registry (destroy before recreate) ────────────────────────────── */
+const _charts = {};
+function makeChart(id, config) {
+  if (_charts[id]) { _charts[id].destroy(); }
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  _charts[id] = new Chart(ctx, config);
+  return _charts[id];
+}
+
+/* ── View switching ──────────────────────────────────────────────────────── */
+let _currentView = 'overview';
+const _loaded = {};
+
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const vEl = document.getElementById(`view-${name}`);
+  if (vEl) vEl.classList.add('active');
+  const nEl = document.querySelector(`.nav-item[data-view="${name}"]`);
+  if (nEl) nEl.classList.add('active');
+  _currentView = name;
+
+  if (!_loaded[name]) {
+    _loaded[name] = true;
+    switch(name) {
+      case 'overview':  initOverview(); break;
+      case 'coverage':  loadCoverage(); break;
+      case 'quality':   loadQuality(); break;
+      case 'geo':       loadGeo(); break;
+      case 'teams':     loadTeams(); break;
+      case 'trends':    loadTrends(); break;
+      case 'reports':   break;
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   OVERVIEW
+═══════════════════════════════════════════════════════════════════════════ */
+let _overviewData = null;
+let _lgaCovData = null;
+let _dailyData = null;
+
+async function initOverview() {
+  _loaded['overview'] = true;
+  try {
+    const [ovRes, lgaRes, dailyRes] = await Promise.all([
+      authGet('/api/mda/overview'),
+      authGet('/api/mda/coverage/lga'),
+      authGet('/api/mda/trends/daily'),
+    ]);
+    _overviewData = await ovRes.json();
+    _lgaCovData = await lgaRes.json();
+    _dailyData = await dailyRes.json();
+  } catch(e) {
+    console.error('Overview fetch error', e);
+    return;
+  }
+  renderOverviewKPIs(_overviewData);
+  populateLgaFilter('ov-lga-filter', _lgaCovData);
+  renderLgaChart(_lgaCovData);
+  renderDailyTrendChart(_dailyData);
+  renderLgaTable('lga-tbody', _lgaCovData);
+
+  // Update QC badge in nav
+  const totalQc = _overviewData.total_qc_flags || 0;
+  const badge = document.getElementById('qc-nav-badge');
+  if (badge) {
+    badge.textContent = totalQc;
+    badge.classList.toggle('hidden', totalQc === 0);
+  }
+}
+
+function renderOverviewKPIs(d) {
+  if (!d || !d.total_forms) {
+    document.getElementById('ov-total-forms').textContent = '0';
+    document.getElementById('ov-treated').textContent = '0';
+    document.getElementById('ov-teams').textContent = '0';
+    document.getElementById('ov-coverage').textContent = '0%';
+    document.getElementById('ov-days').textContent = '0';
+    document.getElementById('ov-qc-flags').textContent = '0';
+    return;
+  }
+  document.getElementById('ov-total-forms').textContent = fmt(d.total_forms);
+  document.getElementById('ov-treated').textContent = fmt(d.total_treated);
+  document.getElementById('ov-teams').textContent = fmt(d.teams_active);
+  document.getElementById('ov-days').textContent = fmt(d.days_active);
+  document.getElementById('ov-qc-flags').textContent = fmt(d.total_qc_flags);
+  document.getElementById('ov-qc-sub').textContent =
+    `AH:${d.after_hours} FF:${d.fast_forms} GPS:${d.gps_outside_lga} Dup:${d.duplicate_gps}`;
+
+  const pct = d.coverage_pct || 0;
+  document.getElementById('ov-coverage').textContent = fmtPct(pct);
+  document.getElementById('ov-coverage-sub').textContent = `${fmt(d.total_treated)} / ${fmt(d.baseline_total)}`;
+  const covCard = document.getElementById('ov-coverage-card');
+  covCard.className = 'kpi-card ' + (pct >= 80 ? 'accent-good' : pct >= 60 ? 'accent-warn' : 'accent-bad');
+
+  const qcCard = document.getElementById('ov-qc-card');
+  qcCard.className = 'kpi-card ' + ((d.total_qc_flags || 0) > 0 ? 'accent-warn' : '');
+
+  // Campaign date range in topbar
+  if (d.campaign_start || d.campaign_end) {
+    document.getElementById('campaign-dates').textContent =
+      `Campaign: ${d.campaign_start || '?'} → ${d.campaign_end || '?'}`;
+  }
+}
+
+function populateLgaFilter(selectId, lgaData) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const lgas = [...new Set((lgaData || []).map(r => r.lga).filter(Boolean))].sort();
+  const existing = new Set([...sel.options].map(o => o.value));
+  lgas.forEach(lga => {
+    if (!existing.has(lga)) {
+      const o = document.createElement('option');
+      o.value = lga; o.textContent = lga;
+      sel.appendChild(o);
+    }
+  });
+}
+
+function applyOverviewFilter() {
+  const lga = document.getElementById('ov-lga-filter').value;
+  const data = lga ? (_lgaCovData || []).filter(r => r.lga === lga) : _lgaCovData;
+  renderLgaChart(data);
+  renderLgaTable('lga-tbody', data);
+}
+
+function renderLgaChart(data) {
+  if (!data || !data.length) return;
+  const labels = data.map(r => r.lga || '?');
+  const values = data.map(r => r.forms || 0);
+  const colors = data.map(r => {
+    const p = parseFloat(r.coverage_pct) || 0;
+    return p >= 80 ? '#16a34a' : p >= 60 ? '#d97706' : '#dc2626';
+  });
+  makeChart('ov-lga-chart', {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Forms', data: values, backgroundColor: colors, borderRadius: 4 }] },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 11 } } }, y: { ticks: { font: { size: 11 } } } },
+    }
+  });
+}
+
+function renderDailyTrendChart(data) {
+  if (!data || !data.length) return;
+  makeChart('ov-trend-chart', {
+    type: 'line',
+    data: {
+      labels: data.map(r => r.date),
+      datasets: [{
+        label: 'Forms',
+        data: data.map(r => r.forms),
+        borderColor: '#0067B8',
+        backgroundColor: 'rgba(0,103,184,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 10 }, maxRotation: 45 } }, y: { ticks: { font: { size: 11 } } } }
+    }
+  });
+}
+
+function renderLgaTable(tbodyId, data) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  if (!data || !data.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:24px">No data available</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(r => {
+    const pct = parseFloat(r.coverage_pct) || 0;
+    return `<tr>
+      <td><strong>${r.lga || '—'}</strong></td>
+      <td>${fmt(r.baseline_total)}</td>
+      <td>${fmt(r.actual_treated)}</td>
+      <td>${covBarHtml(pct)}</td>
+      <td>${fmt(r.teams)}</td>
+      <td>${fmt(r.days_reported)}</td>
+      <td>${statusChip(pct)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COVERAGE ANALYSIS
+═══════════════════════════════════════════════════════════════════════════ */
+async function loadCoverage() {
+  let lgaData;
+  try {
+    const [lgaRes, ovRes] = await Promise.all([
+      authGet('/api/mda/coverage/lga'),
+      authGet('/api/mda/overview'),
+    ]);
+    lgaData = await lgaRes.json();
+    const ov = await ovRes.json();
+
+    document.getElementById('cov-baseline').textContent = fmt(ov.baseline_total);
+    document.getElementById('cov-administered').textContent = fmt(ov.total_treated);
+    const pct = ov.coverage_pct || 0;
+    document.getElementById('cov-pct').textContent = fmtPct(pct);
+    const pctCard = document.getElementById('cov-pct-card');
+    pctCard.className = 'kpi-card ' + (pct >= 80 ? 'accent-good' : pct >= 60 ? 'accent-warn' : 'accent-bad');
+
+    const goodLgas = lgaData.filter(r => parseFloat(r.coverage_pct) >= 80).length;
+    const badLgas  = lgaData.filter(r => parseFloat(r.coverage_pct) < 60).length;
+    document.getElementById('cov-good-lgas').textContent = goodLgas;
+    document.getElementById('cov-bad-lgas').textContent  = badLgas;
+  } catch(e) { console.error(e); return; }
+
+  // Coverage bar chart
+  makeChart('cov-bar-chart', {
+    type: 'bar',
+    data: {
+      labels: lgaData.map(r => r.lga || '?'),
+      datasets: [
+        {
+          label: 'Administered',
+          data: lgaData.map(r => r.actual_treated),
+          backgroundColor: lgaData.map(r => {
+            const p = parseFloat(r.coverage_pct) || 0;
+            return p >= 80 ? '#16a34a' : p >= 60 ? '#d97706' : '#dc2626';
+          }),
+          borderRadius: 4,
+        },
+        {
+          label: 'Baseline',
+          data: lgaData.map(r => r.baseline_total),
+          backgroundColor: 'rgba(0,0,0,0.08)',
+          borderRadius: 4,
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { position: 'top', labels: { font: { size: 12 } } } },
+      scales: { x: { ticks: { font: { size: 11 } } }, y: { ticks: { font: { size: 11 } } } }
+    }
+  });
+
+  renderLgaTable('cov-lga-tbody', lgaData);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   QUALITY CHECKS
+═══════════════════════════════════════════════════════════════════════════ */
+async function loadQuality() {
+  try {
+    const [qcRes, refRes, durRes] = await Promise.all([
+      authGet('/api/mda/qc/summary'),
+      authGet('/api/mda/qc/refusals-by-lga'),
+      authGet('/api/mda/qc/duration-by-lga'),
+    ]);
+    const qc  = await qcRes.json();
+    const ref = await refRes.json();
+    const dur = await durRes.json();
+
+    document.getElementById('qc-gps-outside').textContent  = fmt(qc.gps_outside_lga);
+    document.getElementById('qc-dup-gps').textContent      = fmt(qc.duplicate_gps);
+    document.getElementById('qc-after-hours').textContent  = fmt(qc.after_hours);
+    document.getElementById('qc-fast-forms').textContent   = fmt(qc.fast_forms);
+
+    // Refusals chart
+    if (ref.length) {
+      makeChart('qc-refusals-chart', {
+        type: 'bar',
+        data: {
+          labels: ref.map(r => r.lga),
+          datasets: [{
+            label: 'Refusals',
+            data: ref.map(r => r.refusals),
+            backgroundColor: '#dc2626',
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { ticks: { font: { size: 11 } } }, y: { ticks: { font: { size: 11 } } } }
+        }
+      });
+    }
+
+    // Duration chart
+    if (dur.length) {
+      makeChart('qc-duration-chart', {
+        type: 'bar',
+        data: {
+          labels: dur.map(r => r.lga),
+          datasets: [{
+            label: 'Avg Duration (min)',
+            data: dur.map(r => r.avg_min),
+            backgroundColor: '#d97706',
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { font: { size: 11 } } },
+            y: { ticks: { font: { size: 11 } } }
+          }
+        }
+      });
+    }
+  } catch(e) { console.error(e); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GEOGRAPHIC VIEW
+═══════════════════════════════════════════════════════════════════════════ */
+let _geoMap = null;
+let _geoActiveLayer = 'outside-lga';
+
+function loadGeo() {
+  if (!_geoMap) {
+    _geoMap = new maplibregl.Map({
+      container: 'geo-map',
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors'
+          }
+        },
+        layers: [{ id: 'osm-layer', type: 'raster', source: 'osm' }]
+      },
+      center: [5.25, 13.06],
+      zoom: 8
+    });
+    _geoMap.on('load', () => loadGeoLayer('outside-lga'));
+  } else {
+    loadGeoLayer(_geoActiveLayer);
+  }
+}
+
+async function loadGeoLayer(type) {
+  _geoActiveLayer = type;
+  document.querySelectorAll('.geo-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById(`geo-btn-${type}`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  const urlMap = {
+    'outside-lga':   '/api/mda/qc/gps/outside-lga',
+    'outside-ward':  '/api/mda/qc/gps/outside-ward',
+    'duplicate':     '/api/mda/qc/gps/duplicate',
+    'outside-state': '/api/mda/qc/gps/outside-state',
+  };
+  const colorMap = {
+    'outside-lga':   '#dc2626',
+    'outside-ward':  '#d97706',
+    'duplicate':     '#7c3aed',
+    'outside-state': '#0067B8',
+  };
+
+  const url = urlMap[type];
+  if (!url || !_geoMap) return;
+
+  try {
+    const res = await authGet(url);
+    const geojson = await res.json();
+    const count = (geojson.features || []).length;
+    document.getElementById('geo-count-label').textContent = `${count} point${count !== 1 ? 's' : ''} shown`;
+
+    // Remove old source/layer
+    if (_geoMap.getLayer('flagged-points')) _geoMap.removeLayer('flagged-points');
+    if (_geoMap.getSource('flagged')) _geoMap.removeSource('flagged');
+
+    _geoMap.addSource('flagged', { type: 'geojson', data: geojson });
+    _geoMap.addLayer({
+      id: 'flagged-points',
+      type: 'circle',
+      source: 'flagged',
+      paint: {
+        'circle-radius': 6,
+        'circle-color': colorMap[type] || '#dc2626',
+        'circle-opacity': 0.75,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#fff',
+      }
+    });
+
+    // Popup on click
+    _geoMap.off('click', 'flagged-points', _geoPopupHandler);
+    _geoMap.on('click', 'flagged-points', _geoPopupHandler);
+    _geoMap.on('mouseenter', 'flagged-points', () => { _geoMap.getCanvas().style.cursor = 'pointer'; });
+    _geoMap.on('mouseleave', 'flagged-points', () => { _geoMap.getCanvas().style.cursor = ''; });
+
+    // Fit bounds
+    if (count > 0) {
+      const coords = geojson.features.map(f => f.geometry.coordinates);
+      const lons = coords.map(c => c[0]);
+      const lats = coords.map(c => c[1]);
+      _geoMap.fitBounds(
+        [[Math.min(...lons)-0.05, Math.min(...lats)-0.05], [Math.max(...lons)+0.05, Math.max(...lats)+0.05]],
+        { padding: 40, maxZoom: 13 }
+      );
+    }
+  } catch(e) { console.error('Geo layer error', e); }
+}
+
+function _geoPopupHandler(e) {
+  const p = e.features[0].properties;
+  new maplibregl.Popup()
+    .setLngLat(e.lngLat)
+    .setHTML(`
+      <strong>${p.formid || '?'}</strong><br/>
+      LGA: ${p.lga || '—'}<br/>
+      RA: ${p.ra || '—'}<br/>
+      Date: ${p.date_trt || '—'}<br/>
+      Accuracy: ${p.accuracy != null ? p.accuracy + 'm' : '—'}
+    `)
+    .addTo(_geoMap);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TEAMS PERFORMANCE
+═══════════════════════════════════════════════════════════════════════════ */
+let _teamsData = [];
+
+async function loadTeams() {
+  try {
+    const res = await authGet('/api/mda/teams/performance');
+    _teamsData = await res.json();
+  } catch(e) { console.error(e); return; }
+
+  // Populate LGA filter
+  const lgas = [...new Set(_teamsData.map(r => r.lga).filter(Boolean))].sort();
+  const sel = document.getElementById('teams-lga-filter');
+  lgas.forEach(lga => {
+    const o = document.createElement('option');
+    o.value = lga; o.textContent = lga;
+    sel.appendChild(o);
+  });
+
+  renderTeamsSummary(_teamsData);
+  renderTeamsTable(_teamsData);
+}
+
+function renderTeamsSummary(data) {
+  const onTarget   = data.filter(r => r.avg_per_day >= 80).length;
+  const belowTarget= data.filter(r => r.avg_per_day < 80).length;
+  const avgDay     = data.length ? (data.reduce((s,r) => s + (r.avg_per_day||0), 0) / data.length) : 0;
+  document.getElementById('teams-on-target').textContent    = onTarget;
+  document.getElementById('teams-below-target').textContent = belowTarget;
+  document.getElementById('teams-avg-day').textContent      = avgDay.toFixed(1);
+}
+
+function filterTeamsTable() {
+  const lgaFilter = document.getElementById('teams-lga-filter').value;
+  const sortKey   = document.getElementById('teams-sort').value;
+  let data = lgaFilter ? _teamsData.filter(r => r.lga === lgaFilter) : [..._teamsData];
+  data.sort((a,b) => (b[sortKey] || 0) - (a[sortKey] || 0));
+  renderTeamsTable(data);
+}
+
+function renderTeamsTable(data) {
+  const tbody = document.getElementById('teams-tbody');
+  if (!data || !data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:24px">No team data available</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(r => {
+    const avg = r.avg_per_day || 0;
+    const rowCls = avg >= 80 ? 'row-good' : avg >= 40 ? 'row-warn' : 'row-bad';
+    let statusHtml;
+    if (avg >= 80) statusHtml = `<span class="chip good">On Track</span>`;
+    else if (avg >= 40) statusHtml = `<span class="chip warn">Lagging</span>`;
+    else statusHtml = `<span class="chip bad">Critical</span>`;
+    return `<tr class="${rowCls}">
+      <td><code style="font-size:12px;background:#f1f5f9;padding:2px 6px;border-radius:4px">${r.hq_user || '—'}</code></td>
+      <td>${r.lga || '—'}</td>
+      <td>${fmt(r.total_forms)}</td>
+      <td>${fmt(r.days_active)}</td>
+      <td><strong>${avg.toFixed(1)}</strong></td>
+      <td style="color:var(--text-muted)">80</td>
+      <td>${statusHtml}</td>
+      <td>${fmt(r.after_hours)}</td>
+      <td>${fmt(r.fast_forms)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAMPAIGN TRENDS
+═══════════════════════════════════════════════════════════════════════════ */
+async function loadTrends() {
+  let data;
+  try {
+    const res = await authGet('/api/mda/trends/daily');
+    data = await res.json();
+  } catch(e) { console.error(e); return; }
+
+  const labels = data.map(r => r.date);
+
+  // Daily forms
+  makeChart('trend-forms-chart', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Forms Submitted',
+        data: data.map(r => r.forms),
+        borderColor: '#0067B8',
+        backgroundColor: 'rgba(0,103,184,0.07)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 10 }, maxRotation: 45 } }, y: { ticks: { font: { size: 11 } } } }
+    }
+  });
+
+  // Daily treated
+  makeChart('trend-treated-chart', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Children Treated',
+        data: data.map(r => r.treated),
+        borderColor: '#00A4E4',
+        backgroundColor: 'rgba(0,164,228,0.10)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 10 }, maxRotation: 45 } }, y: { ticks: { font: { size: 11 } } } }
+    }
+  });
+
+  // Teams per day
+  makeChart('trend-teams-chart', {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Teams Active',
+        data: data.map(r => r.teams),
+        backgroundColor: '#002F5F',
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 45 } },
+        y: { ticks: { font: { size: 11 }, stepSize: 1 } }
+      }
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UPLOAD MODAL
+═══════════════════════════════════════════════════════════════════════════ */
+function openUploadModal() {
+  document.getElementById('upload-modal').classList.add('open');
+}
+function closeUploadModal(e) {
+  if (e.target === document.getElementById('upload-modal')) closeUploadModalDirect();
+}
+function closeUploadModalDirect() {
+  document.getElementById('upload-modal').classList.remove('open');
+}
+
+async function uploadMdaData() {
+  const fileInput = document.getElementById('mda-file-input');
+  const progress  = document.getElementById('mda-upload-progress');
+  const btn       = document.getElementById('mda-upload-btn');
+  if (!fileInput.files.length) { progress.textContent = 'Please select a file.'; return; }
+  const file = fileInput.files[0];
+  btn.disabled = true;
+  progress.innerHTML = '<span class="sk-dot"></span><span class="sk-dot"></span><span class="sk-dot"></span> Uploading…';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/mda/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token()}` },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) { progress.textContent = `Error: ${data.detail || res.statusText}`; }
+    else {
+      progress.textContent = `Done: ${data.households} households, ${data.individuals} individuals inserted.`;
+      // Reload current view data
+      Object.keys(_loaded).forEach(k => delete _loaded[k]);
+      _loaded[_currentView] = true;
+      initOverview();
+      switchView(_currentView);
+    }
+  } catch(e) { progress.textContent = `Upload failed: ${e.message}`; }
+  finally { btn.disabled = false; }
+}
+
+async function uploadBaselineData() {
+  const fileInput = document.getElementById('baseline-file-input');
+  const progress  = document.getElementById('baseline-upload-progress');
+  const btn       = document.getElementById('baseline-upload-btn');
+  if (!fileInput.files.length) { progress.textContent = 'Please select a file.'; return; }
+  const file = fileInput.files[0];
+  btn.disabled = true;
+  progress.innerHTML = '<span class="sk-dot"></span><span class="sk-dot"></span><span class="sk-dot"></span> Uploading baseline…';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/mda/upload-baseline', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token()}` },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) { progress.textContent = `Error: ${data.detail || res.statusText}`; }
+    else {
+      progress.textContent = `Done: ${data.rows_inserted} baseline rows inserted.`;
+      Object.keys(_loaded).forEach(k => delete _loaded[k]);
+      initOverview();
+    }
+  } catch(e) { progress.textContent = `Upload failed: ${e.message}`; }
+  finally { btn.disabled = false; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CSV EXPORT HELPERS
+═══════════════════════════════════════════════════════════════════════════ */
+function exportTableCSV(tableId, filename) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const rows = [...table.querySelectorAll('tr')];
+  const csv = rows.map(r =>
+    [...r.querySelectorAll('th,td')].map(cell => {
+      const text = cell.innerText.replace(/[\r\n]+/g,' ').trim();
+      return `"${text.replace(/"/g,'""')}"`;
+    }).join(',')
+  ).join('\n');
+  triggerDownload(csv, filename, 'text/csv');
+}
+
+function exportTeamsCSV() {
+  if (!_teamsData || !_teamsData.length) { alert('No team data loaded. Visit Teams Performance first.'); return; }
+  const keys = ['hq_user','lga','total_forms','days_active','avg_per_day','total_treated','after_hours','fast_forms','meets_target'];
+  const header = keys.join(',');
+  const rows = _teamsData.map(r => keys.map(k => `"${r[k] ?? ''}"`).join(','));
+  triggerDownload([header, ...rows].join('\n'), 'teams-performance.csv', 'text/csv');
+}
+
+function triggerDownload(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════════════════════ */
+(async function init() {
+  await guardAuth();
+  initOverview();
+})();
+</script>
+</body>
+</html>

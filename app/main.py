@@ -33,6 +33,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_duplicate_gps BOOLEAN DEFAULT FALSE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_gps_outside_ward BOOLEAN DEFAULT FALSE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_gps_outside_state BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS check_treatment_date DATE",
+            "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS hq_user TEXT",
         ]:
             try:
                 await db.execute(text(stmt))
@@ -124,6 +126,11 @@ async def admin():
 @app.get("/quality")
 async def quality_page():
     return FileResponse(os.path.join(static_dir, "quality.html"))
+
+
+@app.get("/mda")
+async def mda_dashboard():
+    return FileResponse(os.path.join(static_dir, "mda.html"))
 
 
 @app.get("/api/health")
