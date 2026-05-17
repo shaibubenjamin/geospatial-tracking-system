@@ -9,11 +9,11 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
     :root{
-      --navy:#002F5F;--deep:#003D7A;--blue:#0067B8;--bright:#0F86D6;
-      --sky:#00A4E4;--cyan:#4FC3F7;--mist:#E8F1FA;--pale:#F4F9FE;
-      --ink:#0E1E33;--muted:#5B6B82;--line:#DCE6F2;
+      --navy:#003D1A;--deep:#005225;--blue:#006B2E;--bright:#008C3A;
+      --sky:#44B568;--cyan:#9FDAB5;--mist:#E9F7EE;--pale:#F4FBF6;
+      --ink:#0C1E10;--muted:#4A6852;--line:#C3E8CE;
       --good:#16A34A;--good-bg:#DCFCE7;--warn:#D97706;--warn-bg:#FEF3C7;
-      --bad:#DC2626;--bad-bg:#FEE2E2;
+      --bad:#DC2626;--bad-bg:#FEE2E2;--gold:#C8A000;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family:'Inter',system-ui,sans-serif; background:var(--pale); color:var(--ink); font-size:14px; height:100vh; overflow:hidden; }
@@ -22,7 +22,7 @@
     /* ── SIDEBAR ── */
     .sidebar {
       width: 240px; flex-shrink: 0;
-      background: linear-gradient(180deg, #001229, var(--navy) 40%, var(--deep));
+      background: linear-gradient(180deg, #001A08, var(--navy) 40%, var(--deep));
       display: flex; flex-direction: column;
       color: #cfe0f3; overflow-y: auto;
       box-shadow: 2px 0 20px rgba(0,0,0,.18);
@@ -37,7 +37,7 @@
       background: linear-gradient(135deg, var(--sky), var(--bright));
       display: grid; place-items: center;
       color: #fff; font-size: 16px;
-      box-shadow: 0 2px 12px rgba(0,164,228,.4);
+      box-shadow: 0 2px 12px rgba(0,107,46,.45);
     }
     .brand-name { color: #fff; font-weight: 700; font-size: 13.5px; }
     .brand-sub  { color: #7ea9d4; font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px; }
@@ -56,13 +56,15 @@
     .nav-item {
       display: flex; align-items: center; gap: 10px;
       padding: 10px 14px; margin: 0 8px; border-radius: 8px;
-      cursor: pointer; color: #bfd4ea; font-size: 13px; font-weight: 500;
-      transition: all .15s; user-select: none;
+      cursor: pointer; color: #a8d4b8; font-size: 13px; font-weight: 500;
+      transition: background .18s, color .18s, transform .15s, box-shadow .18s;
+      user-select: none; border: 1px solid transparent; position: relative;
     }
-    .nav-item i { width: 17px; text-align: center; color: #7ea9d4; }
-    .nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
-    .nav-item.active { background: rgba(15,134,214,.25); color: #fff; border: 1px solid rgba(79,195,247,.25); }
-    .nav-item.active i { color: var(--cyan); }
+    .nav-item i { width: 17px; text-align: center; color: #7ec49a; transition: color .18s, transform .18s; }
+    .nav-item:hover { background: rgba(255,255,255,.1); color: #fff; transform: translateX(4px); }
+    .nav-item:hover i { color: var(--cyan); transform: scale(1.15); }
+    .nav-item.active { background: linear-gradient(90deg,rgba(0,107,46,.55),rgba(0,107,46,.25)); color: #fff; border-left: 3px solid #44B568; border-radius: 0 8px 8px 0; box-shadow: 0 2px 14px rgba(0,0,0,.22); transform: translateX(2px); }
+    .nav-item.active i { color: #9FDAB5; }
     .sidebar-footer {
       margin-top: auto; padding: 12px 16px;
       border-top: 1px solid rgba(255,255,255,.07);
@@ -120,10 +122,10 @@
       font-size: 12.5px; font-weight: 600; cursor: pointer;
       border: 1px solid transparent; transition: all .15s; font-family: inherit;
     }
-    .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,103,184,.25); }
+    .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,107,46,.25); }
     .btn-primary:hover { background: var(--deep); }
     .btn-ghost   { background: #fff; color: var(--deep); border-color: var(--line); }
-    .btn-ghost:hover { background: var(--mist); border-color: rgba(0,103,184,.3); }
+    .btn-ghost:hover { background: var(--mist); border-color: rgba(0,107,46,.3); }
     .btn-danger  { background: var(--bad); color: #fff; }
     .btn-danger:hover { background: #b91c1c; }
     .btn-sm { padding: 5px 10px; font-size: 11.5px; }
@@ -388,7 +390,7 @@
         <div class="page-head">
           <div>
             <div class="page-title">API Sync</div>
-            <div class="page-sub">Configure automatic data synchronisation from an external ODK / KoboToolbox API</div>
+            <div class="page-sub">Configure automatic data synchronisation from the Comcare platform</div>
           </div>
           <div class="actions">
             <button class="btn btn-primary" onclick="triggerSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
