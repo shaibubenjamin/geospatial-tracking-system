@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MDA Dashboard — SARMAAN Sokoto</title>
+<title>SARMAAN MDA Dashboard — Sokoto State</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 :root{
-  /* eHealth Africa brand colours */
-  --navy:#004A7C;--deep:#006093;--blue:#0099CC;--bright:#00B4DF;
-  --sky:#29CCF0;--cyan:#7DE0F5;--mist:#E0F5FF;--pale:#F0FBFF;
-  --ink:#0E1E33;--muted:#5B6B82;--line:#D0EAF5;
+  /* SARMAAN brand colours */
+  --navy:#003D1A;--deep:#005225;--blue:#006B2E;--bright:#008C3A;
+  --sky:#44B568;--cyan:#9FDAB5;--mist:#E9F7EE;--pale:#F4FBF6;
+  --ink:#0C1E10;--muted:#4A6852;--line:#C3E8CE;
   --good:#16A34A;--good-bg:#DCFCE7;--warn:#D97706;--warn-bg:#FEF3C7;
-  --bad:#DC2626;--bad-bg:#FEE2E2;
+  --bad:#DC2626;--bad-bg:#FEE2E2;--gold:#C8A000;
 }
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -20,17 +20,18 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .app{display:flex;height:100vh}
 
 /* ===== SIDEBAR ===== */
-.sidebar{width:252px;background:linear-gradient(180deg,#003058,var(--navy) 40%,var(--deep));color:#cfe0f3;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.18);transition:width .25s cubic-bezier(.4,0,.2,1);overflow-x:hidden}
+.sidebar{width:252px;background:linear-gradient(180deg,#001A08,var(--navy) 40%,var(--deep));color:#cce8d5;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.18);transition:width .25s cubic-bezier(.4,0,.2,1);overflow-x:hidden}
 .brand{padding:22px 22px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.1);transition:padding .25s}
-.brand-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sky),var(--bright));display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;box-shadow:0 2px 12px rgba(0,164,228,.4);flex-shrink:0}
+.brand-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--bright),var(--gold));display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;box-shadow:0 2px 12px rgba(0,107,46,.5);flex-shrink:0}
 .brand-name{color:#fff;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;transition:opacity .2s}
-.brand-sub{color:#7ea9d4;font-size:11px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;overflow:hidden;transition:opacity .2s}
+.brand-sub{color:#90c9a0;font-size:11px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;overflow:hidden;transition:opacity .2s}
 .nav-section{padding:18px 12px 8px;color:#6b8db0;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;font-weight:600;white-space:nowrap;overflow:hidden;transition:opacity .2s}
-.nav-item{display:flex;align-items:center;gap:11px;padding:11px 14px;margin:0 10px;border-radius:8px;cursor:pointer;color:#bfd4ea;font-size:13.5px;font-weight:500;transition:all .15s;user-select:none;white-space:nowrap;overflow:hidden}
-.nav-item i{width:18px;text-align:center;color:#7ea9d4;flex-shrink:0}
-.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
-.nav-item.active{background:rgba(15,134,214,.25);color:#fff;border:1px solid rgba(79,195,247,.3)}
-.nav-item.active i{color:var(--cyan)}
+.nav-item{display:flex;align-items:center;gap:11px;padding:11px 14px;margin:0 8px;border-radius:8px;cursor:pointer;color:#a8d4b8;font-size:13.5px;font-weight:500;transition:background .18s,color .18s,transform .15s,box-shadow .18s;user-select:none;white-space:nowrap;overflow:hidden;border:1px solid transparent;position:relative}
+.nav-item i{width:18px;text-align:center;color:#7ec49a;flex-shrink:0;transition:color .18s,transform .18s}
+.nav-item:hover{background:rgba(255,255,255,.1);color:#fff;transform:translateX(4px)}
+.nav-item:hover i{color:var(--cyan);transform:scale(1.15)}
+.nav-item.active{background:linear-gradient(90deg,rgba(0,107,46,.55),rgba(0,107,46,.25));color:#fff;border-left:3px solid var(--sky);border-radius:0 8px 8px 0;box-shadow:0 2px 14px rgba(0,0,0,.22);transform:translateX(2px)}
+.nav-item.active i{color:var(--sky)}
 .nav-badge{margin-left:auto;background:var(--sky);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700}
 .sidebar-footer{margin-top:auto;padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);font-size:11.5px;color:#9eb6d0;overflow:hidden}
 /* Collapsed sidebar */
@@ -48,7 +49,7 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .app:hover .sidebar-toggle{opacity:1}
 /* Tooltip for collapsed items */
 .sidebar.collapsed .nav-item{position:relative}
-.sidebar.collapsed .nav-item:hover::after{content:attr(data-label);position:absolute;left:68px;background:var(--navy);color:#fff;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:500;white-space:nowrap;z-index:200;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.25);top:50%;transform:translateY(-50%)}
+.sidebar.collapsed .nav-item:hover::after{content:attr(data-label);position:absolute;left:68px;background:var(--deep);color:#fff;padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;z-index:200;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.3);top:50%;transform:translateY(-50%);border:1px solid rgba(68,181,104,.2)}
 
 /* ===== MAIN ===== */
 .main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -70,14 +71,14 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .page-sub{color:var(--muted);font-size:12.5px;margin-top:3px}
 .actions{display:flex;gap:8px;align-items:center}
 .btn{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s}
-.btn-primary{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(0,103,184,.25)}
-.btn-primary:hover{background:var(--deep);box-shadow:0 2px 12px rgba(0,103,184,.35)}
+.btn-primary{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(0,107,46,.25)}
+.btn-primary:hover{background:var(--deep);box-shadow:0 2px 12px rgba(0,107,46,.35)}
 .btn-ghost{background:#fff;color:var(--deep);border-color:var(--line)}
-.btn-ghost:hover{background:var(--mist);border-color:rgba(0,103,184,.3)}
+.btn-ghost:hover{background:var(--mist);border-color:rgba(0,107,46,.3)}
 .btn-danger{background:#DC2626;color:#fff}
 .btn-sm{padding:5px 10px;font-size:11.5px}
 /* Active filter chip */
-.filter-active{display:inline-flex;align-items:center;gap:6px;background:rgba(0,103,184,.1);color:var(--blue);border:1px solid rgba(0,103,184,.25);padding:4px 10px;border-radius:99px;font-size:11.5px;font-weight:600}
+.filter-active{display:inline-flex;align-items:center;gap:6px;background:rgba(0,107,46,.1);color:var(--blue);border:1px solid rgba(0,107,46,.25);padding:4px 10px;border-radius:99px;font-size:11.5px;font-weight:600}
 /* Chart download button */
 .chart-dl{background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:4px 6px;border-radius:6px;transition:all .15s}
 .chart-dl:hover{color:var(--blue);background:var(--mist)}
@@ -99,14 +100,14 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 @media(max-width:700px){.kpi-grid{grid-template-columns:1fr!important}}
 
 /* Card base */
-.kpi{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(0,153,204,.07);transition:box-shadow .18s,border-color .18s,transform .15s;cursor:pointer}
+.kpi{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(0,107,46,.07);transition:box-shadow .18s,border-color .18s,transform .15s;cursor:pointer}
 .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--blue);border-radius:12px 0 0 12px}
 .kpi.accent::before{background:var(--sky)}
 .kpi.good::before{background:var(--good)}
 .kpi.warn::before{background:var(--warn)}
 .kpi.bad::before{background:var(--bad)}
-.kpi:hover{box-shadow:0 6px 22px rgba(0,153,204,.13);border-color:rgba(0,153,204,.3);transform:translateY(-1px)}
-.kpi.kpi-active{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,153,204,.15)}
+.kpi:hover{box-shadow:0 6px 22px rgba(0,107,46,.13);border-color:rgba(0,153,204,.3);transform:translateY(-1px)}
+.kpi.kpi-active{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,107,46,.15)}
 
 /* Horizontal inner layout: text LEFT · metric RIGHT */
 .kpi-body{display:flex;align-items:stretch;gap:12px;min-height:0}
@@ -130,7 +131,7 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 
 /* Trend delta badge */
 .kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:99px;white-space:nowrap;align-self:flex-start;margin-top:4px}
-.kpi-delta.up{background:rgba(0,153,204,.12);color:var(--blue)}
+.kpi-delta.up{background:rgba(0,107,46,.12);color:var(--blue)}
 .kpi-delta.down{background:rgba(217,119,6,.12);color:var(--warn)}
 .kpi-delta.neutral{background:var(--mist);color:var(--muted)}
 
@@ -217,12 +218,12 @@ tbody tr:hover{background:var(--pale)}
 .legend-dot span{width:10px;height:10px;border-radius:50%}
 
 /* Pill */
-.pill{display:inline-flex;align-items:center;gap:8px;background:var(--mist);color:var(--deep);padding:6px 12px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(0,103,184,.15)}
+.pill{display:inline-flex;align-items:center;gap:8px;background:var(--mist);color:var(--deep);padding:6px 12px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(0,107,46,.15)}
 .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--blue)}
 
 /* ===== CHATBOT ===== */
-.chatbot-fab{position:fixed;bottom:28px;right:28px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#fff;border:none;cursor:pointer;display:grid;place-items:center;font-size:22px;box-shadow:0 6px 24px rgba(0,103,184,.4);z-index:2000;transition:transform .2s,box-shadow .2s}
-.chatbot-fab:hover{transform:scale(1.1);box-shadow:0 8px 28px rgba(0,103,184,.5)}
+.chatbot-fab{position:fixed;bottom:28px;right:28px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#fff;border:none;cursor:pointer;display:grid;place-items:center;font-size:22px;box-shadow:0 6px 24px rgba(0,107,46,.4);z-index:2000;transition:transform .2s,box-shadow .2s}
+.chatbot-fab:hover{transform:scale(1.1);box-shadow:0 8px 28px rgba(0,107,46,.5)}
 .chatbot-panel{position:fixed;bottom:96px;right:28px;width:370px;height:520px;background:#fff;border-radius:18px;box-shadow:0 12px 50px rgba(0,0,0,.18);z-index:2000;display:flex;flex-direction:column;overflow:hidden;transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .25s;border:1px solid var(--line)}
 .chatbot-panel.hidden{transform:translateY(24px) scale(.97);opacity:0;pointer-events:none}
 .chatbot-hdr{background:linear-gradient(135deg,var(--navy),var(--deep));color:#fff;padding:16px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0}
@@ -254,7 +255,7 @@ tbody tr:hover{background:var(--pale)}
 .chart-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(0);background:var(--navy);color:#fff;padding:9px 18px;border-radius:10px;font-size:12.5px;font-weight:600;z-index:3000;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.22);transition:opacity .3s,transform .3s;white-space:nowrap}
 .chart-toast.hide{opacity:0;transform:translateX(-50%) translateY(12px)}
 /* Highlighted chart bar/segment glow */
-.chart-active-label{display:inline-flex;align-items:center;gap:6px;background:rgba(0,153,204,.12);border:1.5px solid var(--blue);color:var(--blue);border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer;margin-left:8px}
+.chart-active-label{display:inline-flex;align-items:center;gap:6px;background:rgba(0,107,46,.12);border:1.5px solid var(--blue);color:var(--blue);border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer;margin-left:8px}
 .chart-active-label::after{content:"×";margin-left:4px;opacity:.6}
 
 /* ===== GEO CONTROLS ===== */
@@ -270,7 +271,7 @@ tbody tr:hover{background:var(--pale)}
 .geo-map-card.geo-fullscreen-mode{position:fixed;inset:0;z-index:500;border-radius:0;margin:0;height:100vh!important}
 .geo-map-card.geo-fullscreen-mode .geo-ctrl-strip{padding:8px 14px}
 .geo-map-card.geo-fullscreen-mode #geo-map{min-height:0;height:calc(100vh - 110px)!important}
-/* Coverage pct KPI blue color */
+/* Coverage pct KPI accent */
 #geo-coverage-pct{color:var(--blue)}
 </style>
 </head>
@@ -301,8 +302,8 @@ tbody tr:hover{background:var(--pale)}
     <div class="nav-item" data-view="reports" data-label="Reports &amp; Export"><i class="fa-solid fa-file-export"></i> Reports &amp; Export</div>
 
     <div class="sidebar-footer">
-      <div>Sokoto MDA Platform</div>
-      <div style="color:#7ea9d4;font-size:10.5px;margin-top:2px">v1.0 &mdash; Research Preview</div>
+      <div>Sightsavers &mdash; SARMAAN</div>
+      <div style="color:#90c9a0;font-size:10.5px;margin-top:2px">Sokoto State 2026</div>
       <div id="admin-nav-link" style="display:none;margin-top:10px">
         <a href="/mda-admin" style="color:var(--cyan);text-decoration:none;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
           <i class="fa-solid fa-screwdriver-wrench"></i> Admin Panel
@@ -349,7 +350,7 @@ tbody tr:hover{background:var(--pale)}
 
         <div class="filters">
           <div class="filter"><label>Date Range</label><select id="f-date"><option value="">Campaign to date</option><option value="7d">Last 7 days</option><option value="1d">Yesterday</option></select></div>
-          <div class="filter"><label>LGA</label><select id="f-lga" onchange="applyFilter()"><option value="">All LGAs</option></select></div>
+          <div class="filter"><label>LGA</label><select id="f-lga" onchange="loadWardOptions(this.value,'f-ward').then(applyFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="f-ward" onchange="applyFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary" onclick="applyFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost" id="reset-filter-btn" onclick="resetFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
@@ -538,7 +539,7 @@ tbody tr:hover{background:var(--pale)}
 
         <!-- Coverage filters -->
         <div class="filters" style="margin-bottom:12px">
-          <div class="filter"><label>LGA</label><select id="cov-f-lga" onchange="applyCovFilter()"><option value="">All LGAs</option></select></div>
+          <div class="filter"><label>LGA</label><select id="cov-f-lga" onchange="loadWardOptions(this.value,'cov-f-ward').then(applyCovFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="cov-f-ward" onchange="applyCovFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyCovFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost btn-sm" id="cov-reset-btn" onclick="resetCovFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
@@ -605,7 +606,7 @@ tbody tr:hover{background:var(--pale)}
 
         <!-- QC summary filters -->
         <div class="filters" style="margin-bottom:12px">
-          <div class="filter"><label>LGA</label><select id="qc-f-lga" onchange="applyQCFilter()"><option value="">All LGAs</option></select></div>
+          <div class="filter"><label>LGA</label><select id="qc-f-lga" onchange="loadWardOptions(this.value,'qc-f-ward').then(applyQCFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="qc-f-ward" onchange="applyQCFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyQCFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost btn-sm" id="qc-reset-btn" onclick="resetQCFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
@@ -696,25 +697,37 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
-        <!-- Completeness KPI strip -->
-        <div class="kpi-grid cols-3" style="margin-bottom:10px">
-          <div class="kpi accent" style="padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-map-pin" style="font-size:13px"></i></div>
-            <div class="lbl">Settlements Visited</div>
-            <div class="val" style="font-size:20px" id="geo-sett-visited-count">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">of <span id="geo-sett-total-count">—</span> settlements have &ge;70% grids with GPS</div>
+        <!-- Geo KPI strip -->
+        <div style="display:flex;gap:10px;margin-bottom:10px;align-items:stretch;flex-wrap:wrap">
+          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
+            <div class="kpi-icon-strip"><i class="fa-solid fa-chart-pie" style="font-size:13px"></i></div>
+            <div class="lbl">% Visitation Coverage</div>
+            <div class="val" style="font-size:22px;color:var(--blue)" id="geo-coverage-pct">&mdash;</div>
+            <div class="sub" style="font-size:10.5px">Settlements with &ge;70% grid coverage</div>
           </div>
-          <div class="kpi" style="padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-border-all" style="font-size:13px"></i></div>
-            <div class="lbl">Wards with Activity</div>
-            <div class="val" style="font-size:20px" id="geo-ward-active-count">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">of <span id="geo-ward-total-count">—</span> wards have at least 1 visited settlement</div>
+          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
+            <div class="kpi-icon-strip"><i class="fa-solid fa-circle-check" style="font-size:13px"></i></div>
+            <div class="lbl">Visited Settlements</div>
+            <div class="val" style="font-size:22px;color:var(--good)" id="geo-sett-visited-count">&mdash;</div>
+            <div class="sub" style="font-size:10.5px">of <span id="geo-sett-total-count">—</span> total settlements</div>
           </div>
-          <div class="kpi good" style="padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-draw-polygon" style="font-size:13px"></i></div>
-            <div class="lbl">LGA Coverage</div>
-            <div class="val" style="font-size:20px" id="geo-coverage-pct">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">Overall settlement visitation rate across all LGAs</div>
+          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
+            <div class="kpi-icon-strip"><i class="fa-solid fa-circle-xmark" style="font-size:13px"></i></div>
+            <div class="lbl">Not Yet Visited</div>
+            <div class="val" style="font-size:22px;color:var(--bad)" id="geo-sett-notvisited-count">&mdash;</div>
+            <div class="sub" style="font-size:10.5px">settlements remaining</div>
+          </div>
+          <!-- hidden but still set by JS for back-compat -->
+          <span id="geo-ward-active-count" style="display:none"></span>
+          <span id="geo-ward-total-count" style="display:none"></span>
+          <!-- Download settlement status -->
+          <div style="display:flex;align-items:center">
+            <button onclick="downloadSettlementStatus()" title="Download settlement visit status as Excel"
+              style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px;cursor:pointer;color:var(--deep);font-size:11.5px;font-weight:600;transition:all .15s;white-space:nowrap"
+              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
+              <i class="fa-solid fa-file-excel" style="font-size:20px;color:#16A34A"></i>
+              Download<br>Settlement Status
+            </button>
           </div>
         </div>
 
@@ -723,11 +736,14 @@ tbody tr:hover{background:var(--pale)}
           <div class="geo-left">
             <!-- Nav panel — full height, no legend -->
             <div class="card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;margin-bottom:0">
-              <div class="card-head" style="padding:10px 14px;gap:0">
-                <button id="geo-back-btn" onclick="geoGoBack()" style="display:none;background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;font-weight:600;padding:0 8px 0 0;flex-shrink:0">
-                  &#8592; Back
-                </button>
-                <div id="geo-nav-title" style="font-size:13px;font-weight:700;color:var(--navy);flex:1">All LGAs</div>
+              <div class="card-head" style="padding:10px 14px;gap:0;flex-wrap:wrap">
+                <div id="geo-breadcrumb" style="display:flex;align-items:center;gap:4px;font-size:12px;flex:1;flex-wrap:wrap">
+                  <span id="geo-bc-all" onclick="geoGoRoot()" style="cursor:pointer;color:var(--blue);font-weight:600">All LGAs</span>
+                  <span id="geo-bc-lga-sep" style="display:none;color:var(--muted)">›</span>
+                  <span id="geo-bc-lga" onclick="geoGoLGA()" style="display:none;cursor:pointer;color:var(--blue);font-weight:600"></span>
+                  <span id="geo-bc-ward-sep" style="display:none;color:var(--muted)">›</span>
+                  <span id="geo-bc-ward" style="display:none;color:var(--navy);font-weight:700"></span>
+                </div>
                 <span id="geo-nav-count" style="font-size:11px;color:var(--muted)"></span>
               </div>
               <div style="padding:8px 12px;border-bottom:1px solid var(--line);flex-shrink:0">
@@ -770,10 +786,8 @@ tbody tr:hover{background:var(--pale)}
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block"></span>GPS in grid</span>
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#dc2626;border-radius:50%;display:inline-block"></span>GPS outside</span>
             </div>
-            <!-- Overlay / special layer controls -->
+            <!-- QC overlay controls + Team Movement -->
             <div class="geo-ctrl-strip">
-              <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-right:4px">Overlays</span>
-              <div class="geo-ctrl-sep"></div>
               <button class="geo-ctrl-btn" id="geo-btn-hm-all" onclick="geoHeatmap('all',this)" title="All QC anomalies heatmap">
                 <i class="fa-solid fa-fire"></i> QC Heatmap
               </button>
@@ -787,9 +801,12 @@ tbody tr:hover{background:var(--pale)}
                 <i class="fa-solid fa-crosshairs"></i> Outside Ward
               </button>
               <div class="geo-ctrl-sep"></div>
-              <button class="geo-ctrl-btn" id="geo-btn-movement" onclick="geoToggleMovement(this)" title="Team movement pattern">
+              <button class="geo-ctrl-btn" id="geo-btn-movement" onclick="geoToggleMovement(this)" title="Show team movement paths">
                 <i class="fa-solid fa-route"></i> Team Movement
               </button>
+              <select id="geo-team-select" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterTeam(this.value)" title="Filter to a specific team">
+                <option value="">All Teams</option>
+              </select>
               <button class="geo-ctrl-btn" id="geo-btn-clear" onclick="geoClearOverlays()" title="Clear all overlays" style="margin-left:auto;color:var(--muted)">
                 <i class="fa-solid fa-eraser"></i> Clear
               </button>
@@ -976,7 +993,7 @@ tbody tr:hover{background:var(--pale)}
   <div id="upload-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:14px;padding:28px;width:480px;max-width:95vw">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-        <h3 style="font-size:16px;font-weight:700;color:#002F5F">Upload Campaign Data</h3>
+        <h3 style="font-size:16px;font-weight:700;color:#003D1A">Upload Campaign Data</h3>
         <button onclick="closeUploadModal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#5B6B82">&#x2715;</button>
       </div>
       <div style="background:#FEF3C7;border:1px solid #D97706;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:18px">
@@ -1033,7 +1050,7 @@ tbody tr:hover{background:var(--pale)}
   }
 
   /* ── COLOUR HELPERS ── */
-  const covHex = () => '#0067B8';   // all bars uniformly blue
+  const covHex = () => '#006B2E';
   const covCls = c => c >= 80 ? 'good' : c >= 60 ? 'warn' : 'bad';
   function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
 
@@ -1107,7 +1124,7 @@ tbody tr:hover{background:var(--pale)}
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
       tr.title = 'Click to filter dashboard to ' + (r.lga || 'this LGA');
-      tr.onclick = () => { const sel=document.getElementById('f-lga'); if(sel){sel.value=r.lga||'';} applyFilter(); };
+      tr.onclick = () => { const sel=document.getElementById('f-lga'); if(sel) sel.value=r.lga||''; loadWardOptions(r.lga||'','f-ward').then(applyFilter); };
       tr.innerHTML =
         '<td><b>' + (r.lga || '—') + '</b></td>' +
         '<td>' + fmt(r.baseline_total) + '</td>' +
@@ -1160,6 +1177,7 @@ tbody tr:hover{background:var(--pale)}
     FILTER = { lga: '', ward: '' };
     CHART_FILTER = { lga: null, date: null, ageGroup: null };
     ['f-lga','f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    const wSel = document.getElementById('f-ward'); if (wSel) while (wSel.options.length > 1) wSel.remove(1);
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
     if (label) label.style.display = 'none';
@@ -1176,6 +1194,24 @@ tbody tr:hover{background:var(--pale)}
   }
   window.applyFilter = applyFilter;
   window.resetFilter = resetFilter;
+
+  /* ── Ward dropdown loader (shared by all filter groups) ── */
+  async function loadWardOptions(lgaVal, wardSelId) {
+    const sel = document.getElementById(wardSelId);
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    if (!lgaVal) return;
+    const wards = await api('/api/mda/wards?lga=' + encodeURIComponent(lgaVal));
+    if (wards && wards.length) {
+      wards.forEach(w => {
+        const o = document.createElement('option');
+        o.value = w; o.textContent = w;
+        sel.appendChild(o);
+      });
+    }
+  }
+  window.loadWardOptions = loadWardOptions;
+
 
   /* ── Fuzzy string similarity (normalised edit distance) ── */
   function strSimilarity(a, b) {
@@ -1199,19 +1235,18 @@ tbody tr:hover{background:var(--pale)}
     let attempts = 0;
     const tryDrill = () => {
       attempts++;
-      if (attempts > 60) return;
-      if (!geoMapBuilt || !geoPid || !geoNavData.lga.length) {
+      if (attempts > 80) return;
+      // Wait until map is built, project id known, LGA nav data AND LGA boundary FC are ready
+      if (!geoMapBuilt || !geoPid || !geoNavData.lga.length || !geoLGAfc) {
         setTimeout(tryDrill, 200);
         return;
       }
-      // Try exact match first, then fuzzy (threshold 0.6 = roughly 80%+ similarity)
       const needle = (lgaName || '').trim().toLowerCase();
       let item = geoNavData.lga.find(l =>
         (l.lga_name || '').trim().toLowerCase() === needle ||
         (l.lga || '').trim().toLowerCase() === needle
       );
       if (!item) {
-        // Fuzzy match — pick best scoring item above 0.6
         let best = null, bestScore = 0;
         geoNavData.lga.forEach(l => {
           const s1 = strSimilarity(lgaName, l.lga_name);
@@ -1219,17 +1254,17 @@ tbody tr:hover{background:var(--pale)}
           const s  = Math.max(s1, s2);
           if (s > bestScore) { bestScore = s; best = l; }
         });
-        if (bestScore >= 0.6) item = best;
+        if (bestScore >= 0.5) item = best;
       }
       if (item) {
         geodrillLGA(item);
-      } else if (geoNavData.lga.length > 0) {
+      } else if (geoNavData.lga.length > 0 && geoLGAfc) {
         console.warn('navToGeoLGA: no match for "' + lgaName + '"');
       } else {
         setTimeout(tryDrill, 200);
       }
     };
-    setTimeout(tryDrill, 300);
+    setTimeout(tryDrill, 150);
   }
   window.navToGeoLGA = navToGeoLGA;
 
@@ -1266,7 +1301,10 @@ tbody tr:hover{background:var(--pale)}
           onClick: (evt, elems) => {
             if (!elems.length) return;
             const lga = sorted[elems[0].index]?.lga;
-            if (lga) { const sel=document.getElementById('cov-f-lga'); if(sel) sel.value=lga; applyCovFilter(); }
+            if (lga) {
+              const sel=document.getElementById('cov-f-lga'); if(sel) sel.value=lga;
+              loadWardOptions(lga,'cov-f-ward').then(()=>applyCovFilter());
+            }
           },
           plugins: {
             legend: { display: false },
@@ -1286,6 +1324,7 @@ tbody tr:hover{background:var(--pale)}
   function resetCovFilter() {
     COV_FILTER = { lga: '', ward: '' };
     ['cov-f-lga','cov-f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    const cwSel = document.getElementById('cov-f-ward'); if (cwSel) while (cwSel.options.length > 1) cwSel.remove(1);
     document.getElementById('cov-filter-label') && (document.getElementById('cov-filter-label').style.display='none');
     document.getElementById('cov-reset-btn')    && (document.getElementById('cov-reset-btn').style.display='none');
     buildLGATable('cov-lga-table-body', lgaCovData, true);
@@ -1308,6 +1347,7 @@ tbody tr:hover{background:var(--pale)}
 
   window.applyCovFilter = applyCovFilter;
   window.resetCovFilter = resetCovFilter;
+
 
   /* ── TOAST NOTIFICATION ── */
   let _toastTimer = null;
@@ -1342,16 +1382,12 @@ tbody tr:hover{background:var(--pale)}
     const lga  = CHART_FILTER.lga;
     const date = CHART_FILTER.date;
 
-    // Sync to the global LGA dropdown and apply
-    if (lga !== null) {
-      const sel = document.getElementById('f-lga');
-      if (sel) sel.value = lga;
-      FILTER.lga = lga;
-    } else {
-      const sel = document.getElementById('f-lga');
-      if (sel) sel.value = '';
-      FILTER.lga = '';
-    }
+    // Sync to the global LGA dropdown and load wards
+    const lgaVal = lga !== null ? lga : '';
+    const sel = document.getElementById('f-lga');
+    if (sel) sel.value = lgaVal;
+    FILTER.lga = lgaVal;
+    loadWardOptions(lgaVal, 'f-ward');
 
     // Rebuild overview charts with current filter
     rebuildOverviewCharts();
@@ -1429,9 +1465,9 @@ tbody tr:hover{background:var(--pale)}
   window.dlTableCSV = dlTableCSV;
   window.dlCovTableCSV = dlCovTableCSV;
 
-  /* ── SHARED CHART DEFAULTS ── eHealth Africa palette */
-  const C_BLUE1 = '#0099CC', C_BLUE2 = '#29CCF0', C_BLUE3 = '#7DE0F5';
-  const C_BLUE_ALPHA = 'rgba(0,153,204,.55)', C_GRID = '#E0F5FF';
+  /* ── SHARED CHART DEFAULTS ── */
+  const C_BLUE1 = '#006B2E', C_BLUE2 = '#44B568', C_BLUE3 = '#9FDAB5';
+  const C_BLUE_ALPHA = 'rgba(0,107,46,.55)', C_GRID = '#E9F7EE';
   const DL_BASE = { display: true, font: { size: 10, weight: '600', family: "'Inter','Segoe UI',sans-serif" }, color: '#5B6B82' };
   const DL_WHITE = { display: true, font: { size: 10, weight: '700', family: "'Inter','Segoe UI',sans-serif" }, color: '#ffffff' };
 
@@ -1608,9 +1644,10 @@ tbody tr:hover{background:var(--pale)}
             const cnt = refusals[elems[0].index]?.refusals;
             if (!lga) return;
             qcFilterLGA = qcFilterLGA === lga ? '' : lga;
+            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
+            loadWardOptions(qcFilterLGA, 'qc-f-ward');
             loadQC();
             showToast(qcFilterLGA ? lga + ' — ' + cnt + ' refusals selected (click again to reset)' : 'QC filter cleared');
-            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
           },
           onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
           plugins: {
@@ -1641,9 +1678,10 @@ tbody tr:hover{background:var(--pale)}
             const lga = durations[elems[0].index]?.lga;
             if (!lga) return;
             qcFilterLGA = qcFilterLGA === lga ? '' : lga;
+            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
+            loadWardOptions(qcFilterLGA, 'qc-f-ward');
             loadQC();
             showToast(qcFilterLGA ? 'Duration view filtered to ' + lga + ' (click again to reset)' : 'QC filter cleared');
-            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
           },
           onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
           plugins: {
@@ -1688,7 +1726,7 @@ tbody tr:hover{background:var(--pale)}
         datasets: [{ label: 'Forms Submitted', data: top12.map(l => l[key]||0),
           backgroundColor: top12.map(l => {
             const cov = parseFloat(l.coverage_pct) || 0;
-            return cov >= 80 ? 'rgba(0,153,204,.95)' : cov >= 60 ? 'rgba(0,153,204,.7)' : 'rgba(0,153,204,.45)';
+            return cov >= 80 ? 'rgba(0,107,46,.95)' : cov >= 60 ? 'rgba(0,107,46,.7)' : 'rgba(0,107,46,.45)';
           }),
           borderRadius: 5, maxBarThickness: 24 }]
       },
@@ -1698,9 +1736,22 @@ tbody tr:hover{background:var(--pale)}
           if (!elems.length) return;
           const lga = top12[elems[0].index]?.lga;
           if (!lga) return;
+          const isReset = (typeof CHART_FILTER !== 'undefined' && CHART_FILTER.lga === lga);
           setChartFilter('lga', lga);
+          const lgaSel = document.getElementById('f-lga');
+          if (lgaSel) lgaSel.value = isReset ? '' : lga;
+          if (!isReset) {
+            loadWardOptions(lga, 'f-ward').then(() => {
+              const wardSel = document.getElementById('f-ward');
+              if (wardSel && wardSel.options.length > 1)
+                showToast(lga + ' selected — choose a ward to drill further');
+            });
+          } else {
+            const wSel = document.getElementById('f-ward');
+            if (wSel) { wSel.value=''; while(wSel.options.length>1) wSel.remove(1); }
+          }
           const r = top12[elems[0].index] || {};
-          showToast(lga + ' — ' + Number(r.forms||0).toLocaleString() + ' forms · ' + (parseFloat(r.coverage_pct)||0).toFixed(1) + '% coverage  (click again to reset)');
+          showToast(isReset ? 'Filter cleared' : lga + ' — ' + Number(r.forms||0).toLocaleString() + ' forms · ' + (parseFloat(r.coverage_pct)||0).toFixed(1) + '% coverage');
         },
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         layout: { padding: { right: 8 } },
@@ -1746,7 +1797,7 @@ tbody tr:hover{background:var(--pale)}
       type: 'doughnut',
       data: {
         labels: ['Treated', 'Remaining (gap to target)'],
-        datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, '#E0F5FF'], borderWidth: 0, hoverOffset: 8 }]
+        datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, '#E9F7EE'], borderWidth: 0, hoverOffset: 8 }]
       },
       options: {
         cutout: '68%',
@@ -1841,7 +1892,7 @@ tbody tr:hover{background:var(--pale)}
             labels: dailyData.map(d => d.date),
             datasets: [
               { label: 'Forms Submitted', data: dailyData.map(d => d.forms),
-                borderColor: C_BLUE1, backgroundColor: ctx => gradient(ctx.chart.ctx, 'rgba(0,103,184,.22)', 'rgba(0,103,184,0)'),
+                borderColor: C_BLUE1, backgroundColor: ctx => gradient(ctx.chart.ctx, 'rgba(0,107,46,.22)', 'rgba(0,107,46,0)'),
                 fill: true, tension: 0.35, borderWidth: 2.5, pointRadius: 4,
                 pointBackgroundColor: C_BLUE1, pointHoverRadius: 6, order: 1 },
               { label: 'Team daily target (80/team)', data: dailyTargetData,
@@ -1896,7 +1947,7 @@ tbody tr:hover{background:var(--pale)}
             datasets: [{ label: 'Coverage %', data: sorted.map(l=>parseFloat(l.coverage_pct)||0),
               backgroundColor: sorted.map(l => {
                 const v = parseFloat(l.coverage_pct)||0;
-                return v >= 80 ? 'rgba(0,153,204,.95)' : v >= 60 ? 'rgba(0,153,204,.7)' : 'rgba(0,153,204,.45)';
+                return v >= 80 ? 'rgba(0,107,46,.95)' : v >= 60 ? 'rgba(0,107,46,.7)' : 'rgba(0,107,46,.45)';
               }), borderRadius: 5, maxBarThickness: 16 }]
           },
           options: {
@@ -1935,7 +1986,7 @@ tbody tr:hover{background:var(--pale)}
             type: 'line',
             data: { labels: dailyData.map(d=>d.date),
               datasets:[{ label:'Coverage %', data: cumTreated.map(v=>parseFloat((v/bl*100).toFixed(1))),
-                borderColor: C_BLUE1, backgroundColor: ctx=>gradient(ctx.chart.ctx,'rgba(0,153,204,.25)','rgba(0,153,204,0)'),
+                borderColor: C_BLUE1, backgroundColor: ctx=>gradient(ctx.chart.ctx,'rgba(0,107,46,.25)','rgba(0,153,204,0)'),
                 fill:true, tension:.3, borderWidth:2.5, pointRadius:4, pointHoverRadius:7, pointBackgroundColor: C_BLUE1 }]
             },
             options: {
@@ -2010,7 +2061,7 @@ tbody tr:hover{background:var(--pale)}
           type: 'line',
           data: { labels: dailyData.map(d=>d.date),
             datasets:[{ label:'Daily Forms', data:dailyData.map(d=>d.forms),
-              borderColor: C_BLUE1, backgroundColor:'rgba(0,103,184,.08)', fill:true, tension:.3, borderWidth:2.5, pointRadius:3 }]
+              borderColor: C_BLUE1, backgroundColor:'rgba(0,107,46,.08)', fill:true, tension:.3, borderWidth:2.5, pointRadius:3 }]
           },
           options: {
             plugins: { legend: { position: 'bottom' }, datalabels: { display: false } },
@@ -2024,7 +2075,7 @@ tbody tr:hover{background:var(--pale)}
           type: 'line',
           data: { labels: dailyData.map(d=>d.date),
             datasets:[{ label:'Cumulative Forms', data:cumul,
-              borderColor: C_BLUE2, backgroundColor:ctx=>gradient(ctx.chart.ctx,'rgba(29,204,240,.25)','rgba(29,204,240,0)'),
+              borderColor: C_BLUE2, backgroundColor:ctx=>gradient(ctx.chart.ctx,'rgba(68,181,104,.25)','rgba(29,204,240,0)'),
               fill:true, tension:.3, borderWidth:2.5, pointRadius:3, pointHoverRadius:7, pointBackgroundColor: C_BLUE2 }]
           },
           options: {
@@ -2304,6 +2355,7 @@ tbody tr:hover{background:var(--pale)}
     setEl('geo-coverage-pct', pct.toFixed(1) + '%');
     setEl('geo-sett-visited-count', visitedSett.toLocaleString());
     setEl('geo-sett-total-count', totalSett.toLocaleString());
+    setEl('geo-sett-notvisited-count', (totalSett - visitedSett).toLocaleString());
     setEl('geo-ward-active-count', activeWards);
     setEl('geo-ward-total-count', totalLGAs);
   }
@@ -2411,6 +2463,7 @@ tbody tr:hover{background:var(--pale)}
     setEl('geo-coverage-pct', pct.toFixed(1) + '%');
     setEl('geo-sett-visited-count', visited);
     setEl('geo-sett-total-count', total);
+    setEl('geo-sett-notvisited-count', (total - visited).toLocaleString());
     setEl('geo-ward-active-count', pct.toFixed(0) + '% grids covered');
     // Zoom to settlement extent
     if (d.features && d.features.length) {
@@ -2439,25 +2492,10 @@ tbody tr:hover{background:var(--pale)}
 
   function geoGoBack() {
     if (geoNavLevel === 'ward') {
-      geoCurrentLGA = geoCurrentWard = null; geoNavLevel = 'lga';
-      ['lga-line', 'lga-label', 'lga-fill', 'ward-line', 'ward-label'].forEach(id => {
-        if (geoMap.getLayer(id)) geoMap.setFilter(id, null);
-      });
-      loadGeoBoundariesWard(null);
-      if (geoMap.getSource('settlement-src')) geoMap.getSource('settlement-src').setData(EMPTY_FC);
-      if (geoMap.getSource('points-src'))     geoMap.getSource('points-src').setData(EMPTY_FC);
-      clearGeoGrid();
-      renderGeoNav(geoNavData.lga, 'lga');
-      geoMap.flyTo({ center: [5.25, 13.05], zoom: 7, duration: 700 });
+      geoGoRoot();
     } else if (geoNavLevel === 'settlement') {
-      geoCurrentWard = null; geoNavLevel = 'ward';
-      ['ward-line', 'ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, null); });
-      if (geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(EMPTY_FC);
-      clearGeoGrid();
-      renderGeoNav(geoNavData.ward, 'ward');
-      if (geoCurrentLGA) zoomGeoTo(geoLGAfc, 'lgacode', geoCurrentLGA.lgacode);
+      geoGoLGA();
     }
-    updateGeoNavHeader();
   }
 
   function geoResetView() {
@@ -2477,22 +2515,66 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function updateGeoNavHeader() {
-    const backBtn = document.getElementById('geo-back-btn');
-    const title   = document.getElementById('geo-nav-title');
-    if (!backBtn || !title) return;
+    const lgaSep  = document.getElementById('geo-bc-lga-sep');
+    const lgaEl   = document.getElementById('geo-bc-lga');
+    const wardSep = document.getElementById('geo-bc-ward-sep');
+    const wardEl  = document.getElementById('geo-bc-ward');
+    if (!lgaEl) return;
+
     if (geoNavLevel === 'lga') {
-      backBtn.style.display = 'none';
-      title.textContent = 'All LGAs';
+      if (lgaSep)  lgaSep.style.display  = 'none';
+      if (lgaEl)   lgaEl.style.display   = 'none';
+      if (wardSep) wardSep.style.display = 'none';
+      if (wardEl)  wardEl.style.display  = 'none';
     } else if (geoNavLevel === 'ward') {
-      backBtn.style.display = 'inline';
-      title.innerHTML =
-        '<span style="color:var(--good);font-size:10px;text-transform:uppercase;letter-spacing:.5px">' + (geoCurrentLGA ? geoCurrentLGA.lga_name : '') + '</span><br>Wards';
+      if (lgaSep)  { lgaSep.style.display  = 'inline'; }
+      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
+      if (wardSep) { wardSep.style.display = 'none'; }
+      if (wardEl)  { wardEl.style.display  = 'none'; }
     } else {
-      backBtn.style.display = 'inline';
-      title.innerHTML =
-        '<span style="color:var(--blue);font-size:10px;text-transform:uppercase;letter-spacing:.5px">' + (geoCurrentWard ? geoCurrentWard.ward_name : '') + '</span><br>Settlements';
+      if (lgaSep)  { lgaSep.style.display  = 'inline'; }
+      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
+      if (wardSep) { wardSep.style.display = 'inline'; }
+      if (wardEl)  { wardEl.style.display  = 'inline'; wardEl.textContent = geoCurrentWard ? geoCurrentWard.ward_name : ''; }
     }
   }
+
+  async function geoGoRoot() {
+    geoCurrentLGA = null; geoCurrentWard = null; geoNavLevel = 'lga';
+    updateGeoNavHeader();
+    ['lga-line','lga-label','lga-fill','ward-line','ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, null); });
+    if (geoMap.getSource('points-src'))    geoMap.getSource('points-src').setData(EMPTY_FC);
+    if (geoMap.getSource('sett-src'))      geoMap.getSource('sett-src').setData(EMPTY_FC);
+    if (geoMap.getSource('grid-src'))      geoMap.getSource('grid-src').setData(EMPTY_FC);
+    renderGeoNav(geoNavData.lga, 'lga');
+    await loadGeoBoundariesLGA();
+    if (geoLGAfc) geoMap.fitBounds(turf_bbox(geoLGAfc), { padding: 30, duration: 600 });
+  }
+  function turf_bbox(fc) {
+    let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+    (fc.features||[]).forEach(f=>{
+      function walk(c){if(typeof c[0]==='number'){if(c[0]<minx)minx=c[0];if(c[0]>maxx)maxx=c[0];if(c[1]<miny)miny=c[1];if(c[1]>maxy)maxy=c[1];}else c.forEach(walk);}
+      walk(f.geometry.coordinates);
+    });
+    return [[minx,miny],[maxx,maxy]];
+  }
+  async function geoGoLGA() {
+    if (!geoCurrentLGA) return;
+    geoCurrentWard = null; geoNavLevel = 'ward';
+    updateGeoNavHeader();
+    const f = ['==', ['get', 'lgacode'], geoCurrentLGA.lgacode];
+    ['lga-line','lga-label','lga-fill'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, f); });
+    ['ward-line','ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, null); });
+    if (geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(EMPTY_FC);
+    await Promise.all([
+      loadGeoBoundariesWard(geoCurrentLGA.lgacode),
+      loadGeoBoundariesSettlement(geoCurrentLGA.lgacode, null),
+      loadGeoMetricsWard(geoCurrentLGA.lgacode),
+    ]);
+    zoomGeoTo(geoLGAfc, 'lgacode', geoCurrentLGA.lgacode);
+  }
+  window.geoGoRoot = geoGoRoot;
+  window.geoGoLGA  = geoGoLGA;
 
   function zoomGeoTo(fc, keyProp, keyVal) {
     if (!fc || !fc.features) return;
@@ -2519,11 +2601,11 @@ tbody tr:hover{background:var(--pale)}
       const pct = r.visitation_pct || 0;
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:13px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">' + (p.lga_name || '—') + '</b><br>' +
-        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#0099CC">' + pct.toFixed(0) + '%</b></span><br>' +
+        '<b style="color:#003D1A">' + (p.lga_name || '—') + '</b><br>' +
+        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#006B2E">' + pct.toFixed(0) + '%</b></span><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (r.visited_settlements || 0) + '/' + (r.total_settlements || 0) + ' settlements visited</span><br>' +
         '<button onclick="window._geoDrillLGA(\'' + p.lgacode + '\')" ' +
-          'style="margin-top:6px;background:#0099CC;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Drill into wards →</button>' +
+          'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Drill into wards →</button>' +
         '</div>'
       ).addTo(geoMap);
     });
@@ -2533,11 +2615,11 @@ tbody tr:hover{background:var(--pale)}
       const pct = r.visitation_pct || 0;
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:13px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">' + (p.ward_name || '—') + '</b><br>' +
+        '<b style="color:#003D1A">' + (p.ward_name || '—') + '</b><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (p.lga_name || '') + '</span><br>' +
-        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#0099CC">' + pct.toFixed(0) + '%</b></span><br>' +
+        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#006B2E">' + pct.toFixed(0) + '%</b></span><br>' +
         '<button onclick="window._geoDrillWard(\'' + p.wardcode + '\')" ' +
-          'style="margin-top:6px;background:#0099CC;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show settlements →</button>' +
+          'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show settlements →</button>' +
         '</div>'
       ).addTo(geoMap);
     });
@@ -2547,12 +2629,12 @@ tbody tr:hover{background:var(--pale)}
       const isV = p.is_visited;
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:12.5px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">' + (p.settlement_name || 'Settlement') + '</b><br>' +
+        '<b style="color:#003D1A">' + (p.settlement_name || 'Settlement') + '</b><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (p.ward_name || '') + ' › ' + (p.lga_name || '') + '</span><br>' +
         '<span style="color:' + (isV ? '#15803d' : '#b91c1c') + ';font-weight:700;font-size:12px">' + (isV ? '✓ Complete (≥70%)' : '✗ Incomplete') + '</span><br>' +
         '<span style="color:#5B6B82;font-size:11px">Grids: <b>' + (p.visited_grids || 0) + '/' + (p.total_grids || 0) + '</b> · Completeness: <b>' + compPct + '</b></span><br>' +
         '<button onclick="window._geoDrillSett(\'' + (p.unique_cod||'') + '\',\'' + (p.settlement_name||'').replace(/'/g,'') + '\')" ' +
-          'style="margin-top:6px;background:#0099CC;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show grid cells →</button>' +
+          'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show grid cells →</button>' +
         '</div>'
       ).addTo(geoMap);
     });
@@ -2574,7 +2656,7 @@ tbody tr:hover{background:var(--pale)}
       const inGrid = p.in_grid === true || p.in_grid === 'true';
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:12px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">GPS Point</b><br>' +
+        '<b style="color:#003D1A">GPS Point</b><br>' +
         '<span style="color:' + (inGrid ? '#15803d' : '#b91c1c') + ';font-weight:700">' +
           (inGrid ? '✓ Inside a grid cell' : '✗ Outside all grid cells') +
         '</span><br>' +
@@ -2678,7 +2760,8 @@ tbody tr:hover{background:var(--pale)}
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && geoIsFullscreen) toggleGeoFullscreen(); });
 
   /* ── GEO HEATMAP / MOVEMENT OVERLAYS ── */
-  let activeHeatmapFlag = null, movementActive = false;
+  let activeHeatmapFlag = null, movementActive = false, movementAllFC = null;
+  const TEAM_COLOURS = ['#006B2E','#D97706','#DC2626','#7C3AED','#0891B2','#BE185D','#059669','#B45309','#1D4ED8','#9333EA','#0F766E','#92400E'];
 
   function initOverlaySources() {
     if (!geoMap.getSource('heatmap-src')) {
@@ -2688,8 +2771,8 @@ tbody tr:hover{background:var(--pale)}
           'heatmap-weight': 1,
           'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 12, 1.2],
           'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
-            0, 'rgba(0,103,184,0)', 0.2, 'rgba(0,164,228,.5)',
-            0.5, 'rgba(0,103,184,.8)', 0.8, '#D97706', 1, '#DC2626'],
+            0, 'rgba(0,107,46,0)', 0.2, 'rgba(0,140,58,.5)',
+            0.5, 'rgba(0,107,46,.8)', 0.8, '#D97706', 1, '#DC2626'],
           'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 12, 12, 28],
           'heatmap-opacity': 0.8,
         }
@@ -2699,24 +2782,44 @@ tbody tr:hover{background:var(--pale)}
           'circle-stroke-color': '#fff', 'circle-stroke-width': 1 }
       });
     }
-    if (!geoMap.getSource('movement-src')) {
-      geoMap.addSource('movement-src', { type: 'geojson', data: EMPTY_FC });
-      geoMap.addLayer({ id: 'movement-pts', type: 'circle', source: 'movement-src',
-        paint: {
-          'circle-radius': 4,
-          'circle-color': ['interpolate', ['linear'], ['get', 'local_hour'],
-            6, '#4FC3F7', 10, '#0067B8', 14, '#002F5F', 18, '#D97706', 23, '#374151'],
-          'circle-opacity': 0.75,
-          'circle-stroke-color': '#fff', 'circle-stroke-width': 0.7
-        }
+    if (!geoMap.getSource('movement-lines-src')) {
+      geoMap.addSource('movement-lines-src', { type: 'geojson', data: EMPTY_FC });
+      geoMap.addLayer({ id: 'movement-line-casing', type: 'line', source: 'movement-lines-src',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#fff', 'line-width': 5, 'line-opacity': 0.4 }
+      });
+      geoMap.addLayer({ id: 'movement-line', type: 'line', source: 'movement-lines-src',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': ['get','colour'], 'line-width': ['interpolate',['linear'],['zoom'],8,2,14,4], 'line-opacity': 0.85 }
       });
     }
+    if (!geoMap.getSource('movement-pts-src')) {
+      geoMap.addSource('movement-pts-src', { type: 'geojson', data: EMPTY_FC });
+      geoMap.addLayer({ id: 'movement-pts', type: 'circle', source: 'movement-pts-src',
+        paint: { 'circle-radius': ['interpolate',['linear'],['zoom'],8,3,14,6],
+          'circle-color': ['get','colour'], 'circle-opacity': 0.9,
+          'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 }
+      });
+    }
+  }
+
+  function _buildMovementLayers(pts, colourMap) {
+    pts.forEach(f => { f.properties.colour = colourMap[f.properties.hq_user] || '#006B2E'; });
+    const byTeam = {};
+    pts.forEach(f => { const k=f.properties.hq_user||'?'; if(!byTeam[k]) byTeam[k]=[]; byTeam[k].push(f); });
+    const lines = [];
+    Object.entries(byTeam).forEach(([t,tp]) => {
+      tp.sort((a,b)=>(a.properties.started_time||'')<(b.properties.started_time||'')?-1:1);
+      const coords = tp.map(p=>p.geometry.coordinates).filter(c=>c&&c.length===2);
+      if (coords.length>=2) lines.push({ type:'Feature', geometry:{type:'LineString',coordinates:coords},
+        properties:{hq_user:t,colour:colourMap[t]||'#006B2E',point_count:coords.length} });
+    });
+    return lines;
   }
 
   async function geoHeatmap(flag, btn) {
     if (!geoMap || !geoMapBuilt) return;
     if (!geoMap.getSource('heatmap-src')) initOverlaySources();
-    // Toggle off if same flag active
     if (activeHeatmapFlag === flag) {
       geoMap.getSource('heatmap-src').setData(EMPTY_FC);
       activeHeatmapFlag = null;
@@ -2727,40 +2830,84 @@ tbody tr:hover{background:var(--pale)}
     if (btn) btn.classList.add('active');
     activeHeatmapFlag = flag;
     const fc = await api('/api/mda/qc/heatmap-geojson?flag=' + flag);
-    if (fc && geoMap.getSource('heatmap-src')) {
-      geoMap.getSource('heatmap-src').setData(fc);
-      const count = fc.features ? fc.features.length : 0;
-      if (count === 0) addBotMsg && addBotMsg('No QC anomalies found for this flag type.');
-    }
+    if (fc && geoMap.getSource('heatmap-src')) geoMap.getSource('heatmap-src').setData(fc);
   }
 
   async function geoToggleMovement(btn) {
     if (!geoMap || !geoMapBuilt) return;
-    if (!geoMap.getSource('movement-src')) initOverlaySources();
+    if (!geoMap.getSource('movement-lines-src')) initOverlaySources();
     movementActive = !movementActive;
     if (btn) btn.classList.toggle('active', movementActive);
+    const teamSel = document.getElementById('geo-team-select');
     if (!movementActive) {
-      geoMap.getSource('movement-src').setData(EMPTY_FC);
+      geoMap.getSource('movement-lines-src').setData(EMPTY_FC);
+      geoMap.getSource('movement-pts-src').setData(EMPTY_FC);
+      movementAllFC = null;
+      if (teamSel) { teamSel.style.display='none'; teamSel.value=''; }
       return;
     }
     const fc = await api('/api/mda/teams/movement-geojson');
-    if (fc && geoMap.getSource('movement-src')) {
-      geoMap.getSource('movement-src').setData(fc);
+    if (!fc || !fc.features) return;
+    movementAllFC = fc;
+    const teams = [...new Set(fc.features.map(f=>f.properties.hq_user).filter(Boolean))].sort();
+    const colourMap = {}; teams.forEach((t,i)=>{ colourMap[t]=TEAM_COLOURS[i%TEAM_COLOURS.length]; });
+    const lines = _buildMovementLayers(fc.features, colourMap);
+    geoMap.getSource('movement-lines-src').setData({type:'FeatureCollection',features:lines});
+    geoMap.getSource('movement-pts-src').setData(fc);
+    if (teamSel) {
+      teamSel.style.display='block';
+      while(teamSel.options.length>1) teamSel.remove(1);
+      teams.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; teamSel.appendChild(o); });
+    }
+  }
+
+  function geoFilterTeam(team) {
+    if (!geoMap || !movementAllFC) return;
+    const teams = [...new Set(movementAllFC.features.map(f=>f.properties.hq_user).filter(Boolean))].sort();
+    const colourMap = {}; teams.forEach((t,i)=>{ colourMap[t]=TEAM_COLOURS[i%TEAM_COLOURS.length]; });
+    const pts = team ? movementAllFC.features.filter(f=>f.properties.hq_user===team) : movementAllFC.features;
+    const lines = _buildMovementLayers(pts.map(f=>({...f,properties:{...f.properties}})), colourMap);
+    geoMap.getSource('movement-lines-src').setData({type:'FeatureCollection',features:lines});
+    geoMap.getSource('movement-pts-src').setData({type:'FeatureCollection',features:pts});
+    if (team && pts.length) {
+      const lngs=pts.map(f=>f.geometry.coordinates[0]), lats=pts.map(f=>f.geometry.coordinates[1]);
+      geoMap.fitBounds([[Math.min(...lngs)-.05,Math.min(...lats)-.05],[Math.max(...lngs)+.05,Math.max(...lats)+.05]],{padding:40,maxZoom:13,duration:800});
     }
   }
 
   function geoClearOverlays() {
-    activeHeatmapFlag = null; movementActive = false;
+    activeHeatmapFlag = null; movementActive = false; movementAllFC = null;
     document.querySelectorAll('.geo-ctrl-btn').forEach(b => b.classList.remove('active'));
+    const teamSel = document.getElementById('geo-team-select');
+    if (teamSel) { teamSel.style.display='none'; teamSel.value=''; }
     if (geoMap) {
-      if (geoMap.getSource('heatmap-src'))   geoMap.getSource('heatmap-src').setData(EMPTY_FC);
-      if (geoMap.getSource('movement-src'))  geoMap.getSource('movement-src').setData(EMPTY_FC);
+      if (geoMap.getSource('heatmap-src'))        geoMap.getSource('heatmap-src').setData(EMPTY_FC);
+      if (geoMap.getSource('movement-lines-src')) geoMap.getSource('movement-lines-src').setData(EMPTY_FC);
+      if (geoMap.getSource('movement-pts-src'))   geoMap.getSource('movement-pts-src').setData(EMPTY_FC);
     }
   }
 
   window.geoHeatmap        = geoHeatmap;
   window.geoToggleMovement = geoToggleMovement;
   window.geoClearOverlays  = geoClearOverlays;
+  window.geoFilterTeam     = geoFilterTeam;
+
+  /* ── Settlement status Excel download ── */
+  async function downloadSettlementStatus() {
+    const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token') || '';
+    const res = await fetch('/api/mda/settlement-status/download', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+    if (!res.ok) { showToast('Download failed — no data available'); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'settlement_status.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.downloadSettlementStatus = downloadSettlementStatus;
 
   /* ── SIDEBAR COLLAPSE ── */
   let sidebarCollapsed = false;
@@ -2813,7 +2960,7 @@ tbody tr:hover{background:var(--pale)}
     const lgaSel = document.getElementById('qc-f-lga');
     const wardSel = document.getElementById('qc-f-ward');
     if (lgaSel)  lgaSel.value  = '';
-    if (wardSel) wardSel.value = '';
+    if (wardSel) { wardSel.value = ''; while (wardSel.options.length > 1) wardSel.remove(1); }
     document.getElementById('qc-filter-label') && (document.getElementById('qc-filter-label').style.display = 'none');
     document.getElementById('qc-reset-btn')    && (document.getElementById('qc-reset-btn').style.display = 'none');
     ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
@@ -2821,20 +2968,6 @@ tbody tr:hover{background:var(--pale)}
     buildCharts('quality');
   }
 
-  // Populate ward select when LGA changes
-  document.getElementById('qc-f-lga') && document.getElementById('qc-f-lga').addEventListener('change', function() {
-    const lgaVal = this.value;
-    const wardSel = document.getElementById('qc-f-ward');
-    if (!wardSel) return;
-    while (wardSel.options.length > 1) wardSel.remove(1);
-    if (lgaVal && qcWardMap[lgaVal]) {
-      qcWardMap[lgaVal].forEach(w => {
-        const o = document.createElement('option');
-        o.value = w; o.textContent = w;
-        wardSel.appendChild(o);
-      });
-    }
-  });
 
   window.applyQCFilter  = applyQCFilter;
   window.resetQCFilter  = resetQCFilter;
@@ -2889,7 +3022,7 @@ tbody tr:hover{background:var(--pale)}
     const fd = new FormData();
     fd.append('file', input.files[0]);
     statusEl.style.display='block';
-    statusEl.style.color='#0067B8';
+    statusEl.style.color='#006B2E';
     statusEl.textContent='Uploading…';
     try {
       const r = await fetch(endpoint, { method:'POST', headers:{ Authorization:'Bearer '+token }, body:fd });

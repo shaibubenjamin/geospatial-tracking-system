@@ -226,6 +226,7 @@ class MdaHousehold(Base):
     flag_refusal = Column(Boolean, default=False)
     check_treatment_date = Column(Date, index=True)   # form check_treatment_date_calc col 21
     hq_user = Column(Text, index=True)                # col 37
+    ward_name = Column(Text, index=True)              # populated via spatial join post-upload
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     individuals = relationship(
@@ -270,3 +271,19 @@ class MdaIndividual(Base):
         "MdaHousehold", back_populates="individuals",
         primaryjoin="foreign(MdaIndividual.hh_formid) == MdaHousehold.formid",
     )
+
+
+class MlosSettlement(Base):
+    __tablename__ = "mlos_settlements"
+
+    id = Column(Integer, primary_key=True)
+    state_name = Column(Text)
+    lga_name = Column(Text, index=True)
+    ward_name_raw = Column(Text)        # ward_name as written in MLOS file
+    ward_name = Column(Text, index=True)  # ward_name from spatial join with wards boundary
+    settlement_name = Column(Text)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    source = Column(Text)
+    geom = Column(Geometry("POINT", srid=4326))
+    uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)

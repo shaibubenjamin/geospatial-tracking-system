@@ -11,7 +11,7 @@ import psycopg2
 import psycopg2.extras
 import openpyxl
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
@@ -489,6 +489,17 @@ async def upload_mda(
               )
         """)
 
+        # Spatially join each household GPS point to the ward boundary → populate ward_name
+        cur.execute("""
+            UPDATE mda_households h
+            SET ward_name = w.ward_name
+            FROM wards w
+            WHERE w.project_id = 1
+              AND ST_Within(h.geom, w.geom)
+              AND h.geom IS NOT NULL
+              AND h.flag_gps_zero = FALSE
+        """)
+
         conn.commit()
     except Exception as exc:
         conn.rollback()
@@ -534,7 +545,7 @@ async def qc_summary(
         filters.append("lga = :lga")
         params["lga"] = lga
     if ward:
-        filters.append("admin3_code = :ward OR hq_user = :ward")
+        filters.append("ward_name = :ward")
         params["ward"] = ward
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
     result = await db.execute(text(f"""
@@ -642,7 +653,7 @@ async def qc_refusals_by_lga(
     params: dict = {}
     filters: list = []
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
-    if ward: filters.append("hq_user = :ward"); params["ward"] = ward
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
     result = await db.execute(text(f"""
         SELECT
@@ -683,7 +694,7 @@ async def qc_duration_by_lga(
     params: dict = {}
     filters: list = ["form_duration_min IS NOT NULL"]
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
-    if ward: filters.append("hq_user = :ward"); params["ward"] = ward
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
     where = "WHERE " + " AND ".join(filters)
     result = await db.execute(text(f"""
         SELECT
@@ -899,6 +910,48 @@ async def mda_coverage_lga(db: AsyncSession = Depends(get_db), _u: User = Depend
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/coverage/ward
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/coverage/ward")
+async def mda_coverage_ward(
+    lga: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """Ward-level coverage vs baseline, optionally filtered by LGA."""
+    params: dict = {}
+    where = ""
+    if lga:
+        where = "WHERE UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))"
+        params["lga"] = lga
+    result = await db.execute(text(f"""
+        SELECT
+          h.ward_name,
+          h.lga,
+          COUNT(*) AS forms,
+          COALESCE(SUM(h.number_of_treated), 0) AS actual_treated,
+          COALESCE(b.baseline_total, 0) AS baseline_total,
+          CASE WHEN COALESCE(b.baseline_total, 0) > 0
+               THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
+               ELSE 0 END AS coverage_pct,
+          COUNT(DISTINCT h.hq_user) AS teams,
+          COUNT(DISTINCT h.check_treatment_date) AS days_reported
+        FROM mda_households h
+        LEFT JOIN (
+          SELECT UPPER(TRIM(lga)) AS lga, UPPER(TRIM(ward)) AS ward, SUM(total_treated) AS baseline_total
+          FROM mda_baseline GROUP BY UPPER(TRIM(lga)), UPPER(TRIM(ward))
+        ) b ON UPPER(TRIM(h.lga)) = b.lga AND UPPER(TRIM(h.ward_name)) = b.ward
+        {where}
+        GROUP BY h.ward_name, h.lga, b.baseline_total
+        ORDER BY coverage_pct DESC NULLS LAST
+    """), params)
+    rows = result.fetchall()
+    keys = ["ward_name","lga","forms","actual_treated","baseline_total","coverage_pct","teams","days_reported"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/individuals/age-summary
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1024,6 +1077,194 @@ async def teams_movement_geojson(
         for r in rows
     ]
     return {"type": "FeatureCollection", "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/settlement-status/download
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/settlement-status/download")
+async def download_settlement_status(
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """Download Excel file: LGA, Ward, Settlement, Visited (Yes/No), Completeness %."""
+    result = await db.execute(text("""
+        SELECT
+            sa.lga_name,
+            sa.ward_name,
+            sa.settlement_name,
+            CASE WHEN sa.is_visited THEN 'Visited' ELSE 'Not Visited' END AS visit_status,
+            ROUND(sa.completeness_pct::numeric, 1) AS completeness_pct,
+            sa.visited_grids,
+            sa.total_grids,
+            sa.point_count
+        FROM settlement_analytics sa
+        WHERE sa.project_id = 1
+        ORDER BY sa.lga_name, sa.ward_name, sa.settlement_name
+    """))
+    rows = result.fetchall()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Settlement Status"
+    headers = ["LGA", "Ward", "Settlement", "Status", "Completeness %", "Grids Visited", "Total Grids", "GPS Points"]
+    ws.append(headers)
+
+    # Style header row
+    from openpyxl.styles import Font, PatternFill, Alignment
+    header_fill = PatternFill("solid", fgColor="003D1A")
+    header_font = Font(bold=True, color="FFFFFF")
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    green_fill = PatternFill("solid", fgColor="DCFCE7")
+    red_fill   = PatternFill("solid", fgColor="FEE2E2")
+    for row_data in rows:
+        ws.append(list(row_data))
+        last_row = ws.max_row
+        status_cell = ws.cell(row=last_row, column=4)
+        status_cell.fill = green_fill if status_cell.value == "Visited" else red_fill
+
+    # Auto-width columns
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or "")) for cell in col), default=8)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"settlement_status_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/wards
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/wards")
+async def get_ward_list(
+    lga: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """
+    Return distinct ward names derived from the GPS spatial intersection of the
+    uploaded Excel workbook data with ward boundary polygons.
+    Source is mda_households.ward_name (populated via ST_Within after upload).
+    If lga is provided, return only wards for that LGA.
+    """
+    if lga:
+        result = await db.execute(text("""
+            SELECT DISTINCT ward_name
+            FROM mda_households
+            WHERE ward_name IS NOT NULL
+              AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga))
+            ORDER BY ward_name
+        """), {"lga": lga})
+    else:
+        result = await db.execute(text("""
+            SELECT DISTINCT ward_name
+            FROM mda_households
+            WHERE ward_name IS NOT NULL
+            ORDER BY ward_name
+        """))
+    return [r[0] for r in result.fetchall()]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/mda/upload-mlos
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/upload-mlos")
+async def upload_mlos(
+    file: UploadFile = File(...),
+    _admin: User = Depends(require_admin),
+):
+    """
+    Upload SARMAAN MLOS Excel file (columns: state_name, lga_name, ward_name,
+    settlement_name, latitude, longitude, source).
+    Each record's lat/lon is spatially joined to the wards boundary table to
+    confirm/enrich ward_name from the authoritative polygon geometry.
+    Replaces all existing mlos_settlements records.
+    """
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(400, "File must be .xlsx")
+    raw = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    except Exception as e:
+        raise HTTPException(400, f"Cannot open workbook: {e}")
+
+    ws = wb[wb.sheetnames[0]]
+    rows_raw = list(ws.iter_rows(min_row=2, values_only=True))
+    wb.close()
+
+    # Detect header row position — first row after header
+    records = []
+    for row in rows_raw:
+        if not row or all(v is None for v in row):
+            continue
+        state   = _str(row[0])
+        lga     = _str(row[1])
+        ward_r  = _str(row[2])
+        sett    = _str(row[3])
+        lat     = _float_safe(row[4])
+        lon     = _float_safe(row[5])
+        source  = _str(row[6]) if len(row) > 6 else None
+        if not lga:
+            continue
+        geom_wkt = f"SRID=4326;POINT({lon} {lat})" if lat and lon and not (lat == 0 and lon == 0) else None
+        records.append((state, lga, ward_r, sett, lat, lon, source, geom_wkt))
+
+    conn = _get_sync_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mlos_settlements")
+        if records:
+            now_str = datetime.utcnow().isoformat()
+            psycopg2.extras.execute_values(
+                cur,
+                """INSERT INTO mlos_settlements
+                   (state_name, lga_name, ward_name_raw, settlement_name,
+                    latitude, longitude, source, geom, uploaded_at)
+                   VALUES %s""",
+                [
+                    (s, l, wr, se, la, lo, src, geom, now_str)
+                    for s, l, wr, se, la, lo, src, geom in records
+                ],
+                template="(%s,%s,%s,%s,%s,%s,%s,ST_GeomFromEWKT(%s),%s)",
+                page_size=500,
+            )
+            # Spatial join: set ward_name from the intersecting ward boundary polygon
+            cur.execute("""
+                UPDATE mlos_settlements m
+                SET ward_name = w.ward_name
+                FROM wards w
+                WHERE w.project_id = 1
+                  AND m.geom IS NOT NULL
+                  AND ST_Within(m.geom, w.geom)
+            """)
+            # For records outside any boundary, fall back to ward_name_raw
+            cur.execute("""
+                UPDATE mlos_settlements
+                SET ward_name = ward_name_raw
+                WHERE ward_name IS NULL AND ward_name_raw IS NOT NULL
+            """)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, f"DB error: {e}")
+    finally:
+        conn.close()
+
+    return {"rows_inserted": len(records)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
