@@ -523,10 +523,21 @@ async def upload_mda(
 
 @router.get("/qc/summary")
 async def qc_summary(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    result = await db.execute(text("""
+    params: dict = {}
+    filters: list = []
+    if lga:
+        filters.append("lga = :lga")
+        params["lga"] = lga
+    if ward:
+        filters.append("admin3_code = :ward OR hq_user = :ward")
+        params["ward"] = ward
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    result = await db.execute(text(f"""
         SELECT
           COUNT(*) AS total_forms,
           SUM(CASE WHEN flag_duplicate THEN 1 ELSE 0 END) AS duplicates,
@@ -547,8 +558,8 @@ async def qc_summary(
           COUNT(DISTINCT ra_key) AS ra_count,
           (SELECT COUNT(*) FROM mda_individuals) AS total_individuals,
           (SELECT MIN(uploaded_at) FROM mda_households) AS data_as_of
-        FROM mda_households
-    """))
+        FROM mda_households {where}
+    """), params)
     row = result.fetchone()
     if row is None:
         return {
@@ -623,10 +634,17 @@ async def qc_ra_performance(
 
 @router.get("/qc/refusals-by-lga")
 async def qc_refusals_by_lga(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    result = await db.execute(text("""
+    params: dict = {}
+    filters: list = []
+    if lga:  filters.append("lga = :lga");  params["lga"] = lga
+    if ward: filters.append("hq_user = :ward"); params["ward"] = ward
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    result = await db.execute(text(f"""
         SELECT
           lga,
           COUNT(*) AS total_forms,
@@ -635,12 +653,11 @@ async def qc_refusals_by_lga(
             100.0 * SUM(CASE WHEN flag_refusal THEN 1 ELSE 0 END)
             / NULLIF(COUNT(*), 0), 1
           ) AS refusal_pct
-        FROM mda_households
+        FROM mda_households {where}
         GROUP BY lga
         ORDER BY refusal_pct DESC
-    """))
+    """), params)
     rows = result.fetchall()
-    keys = ["lga", "total_forms", "refusals", "refusal_pct"]
     return [
         {
             "lga": r[0],
@@ -658,10 +675,17 @@ async def qc_refusals_by_lga(
 
 @router.get("/qc/duration-by-lga")
 async def qc_duration_by_lga(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
-    result = await db.execute(text("""
+    params: dict = {}
+    filters: list = ["form_duration_min IS NOT NULL"]
+    if lga:  filters.append("lga = :lga");  params["lga"] = lga
+    if ward: filters.append("hq_user = :ward"); params["ward"] = ward
+    where = "WHERE " + " AND ".join(filters)
+    result = await db.execute(text(f"""
         SELECT
           lga,
           COUNT(*) AS total,
@@ -670,11 +694,10 @@ async def qc_duration_by_lga(
           ROUND(AVG(form_duration_min)::numeric, 1) AS avg_min,
           ROUND(MIN(form_duration_min)::numeric, 1) AS min_min,
           ROUND(MAX(form_duration_min)::numeric, 1) AS max_min
-        FROM mda_households
-        WHERE form_duration_min IS NOT NULL
+        FROM mda_households {where}
         GROUP BY lga
         ORDER BY avg_min ASC
-    """))
+    """), params)
     rows = result.fetchall()
     return [
         {
@@ -873,6 +896,134 @@ async def mda_coverage_lga(db: AsyncSession = Depends(get_db), _u: User = Depend
     rows = result.fetchall()
     keys = ["lga","forms","actual_treated","baseline_total","coverage_pct","teams","days_reported"]
     return [dict(zip(keys, row)) for row in rows]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/individuals/age-summary
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/individuals/age-summary")
+async def individuals_age_summary(
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """Age-band breakdown from mda_individuals table (sheet 2 of MDA workbook)."""
+    result = await db.execute(text("""
+        SELECT
+            COUNT(*) FILTER (WHERE age_in_months BETWEEN 1 AND 11)                         AS total_1_11,
+            COUNT(*) FILTER (WHERE age_in_months BETWEEN 1 AND 11 AND treatment_status='1') AS treated_1_11,
+            COUNT(*) FILTER (WHERE age_in_months BETWEEN 12 AND 59)                        AS total_12_59,
+            COUNT(*) FILTER (WHERE age_in_months BETWEEN 12 AND 59 AND treatment_status='1') AS treated_12_59,
+            COUNT(*) FILTER (WHERE treatment_status='1')                                    AS total_treated,
+            COUNT(*)                                                                         AS grand_total
+        FROM mda_individuals
+        WHERE age_in_months IS NOT NULL AND age_in_months BETWEEN 1 AND 59
+    """))
+    row = result.fetchone()
+    bl = await db.execute(text("SELECT COALESCE(SUM(total_treated),0) AS total FROM mda_baseline"))
+    bl_row = bl.fetchone()
+    return {
+        "total_1_11":    int(row.total_1_11 or 0),
+        "treated_1_11":  int(row.treated_1_11 or 0),
+        "total_12_59":   int(row.total_12_59 or 0),
+        "treated_12_59": int(row.treated_12_59 or 0),
+        "total_treated": int(row.total_treated or 0),
+        "grand_total":   int(row.grand_total or 0),
+        "baseline_total": int(bl_row.total) if bl_row else 0,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/qc/heatmap-geojson
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/qc/heatmap-geojson")
+async def qc_heatmap_geojson(
+    flag: str = "all",
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """GeoJSON of flagged GPS points for heatmap rendering in geo view."""
+    where_map = {
+        "outside_lga":  "flag_gps_outside_lga = TRUE",
+        "outside_ward": "flag_gps_outside_ward = TRUE",
+        "duplicate":    "flag_duplicate_gps = TRUE",
+        "all": "(flag_gps_outside_lga = TRUE OR flag_gps_outside_ward = TRUE OR flag_duplicate_gps = TRUE)",
+    }
+    where = where_map.get(flag, where_map["all"])
+    result = await db.execute(text(f"""
+        SELECT latitude, longitude, lga, hq_user,
+               CASE WHEN flag_duplicate_gps      THEN 'duplicate'
+                    WHEN flag_gps_outside_lga    THEN 'outside_lga'
+                    WHEN flag_gps_outside_ward   THEN 'outside_ward'
+                    ELSE 'other' END AS flag_type
+        FROM mda_households
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND latitude  BETWEEN 10 AND 16
+          AND longitude BETWEEN  3 AND  8
+          AND {where}
+        LIMIT 15000
+    """))
+    rows = result.fetchall()
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [float(r.longitude), float(r.latitude)]},
+            "properties": {"lga": r.lga, "hq_user": r.hq_user, "flag_type": r.flag_type},
+        }
+        for r in rows
+    ]
+    return {"type": "FeatureCollection", "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/teams/movement-geojson
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/teams/movement-geojson")
+async def teams_movement_geojson(
+    hq_user: Optional[str] = None,
+    date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """Timestamped GPS points for team movement visualisation."""
+    params: dict = {}
+    filters = [
+        "latitude IS NOT NULL", "longitude IS NOT NULL",
+        "latitude BETWEEN 10 AND 16", "longitude BETWEEN 3 AND 8",
+        "started_time IS NOT NULL",
+    ]
+    if hq_user:
+        filters.append("hq_user = :hq_user")
+        params["hq_user"] = hq_user
+    if date:
+        filters.append("DATE(started_time AT TIME ZONE 'UTC' + INTERVAL '1 hour') = :date::date")
+        params["date"] = date
+    where = " AND ".join(filters)
+    result = await db.execute(text(f"""
+        SELECT latitude, longitude, hq_user, lga, started_time,
+               EXTRACT(HOUR FROM started_time AT TIME ZONE 'UTC' + INTERVAL '1 hour') AS local_hour
+        FROM mda_households
+        WHERE {where}
+        ORDER BY hq_user, started_time
+        LIMIT 20000
+    """), params)
+    rows = result.fetchall()
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [float(r.longitude), float(r.latitude)]},
+            "properties": {
+                "hq_user":      r.hq_user,
+                "lga":          r.lga,
+                "started_time": r.started_time.isoformat() if r.started_time else None,
+                "local_hour":   int(r.local_hour) if r.local_hour is not None else None,
+            },
+        }
+        for r in rows
+    ]
+    return {"type": "FeatureCollection", "features": features}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

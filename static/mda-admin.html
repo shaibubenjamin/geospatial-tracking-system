@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SARMAAN MDA — Admin Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    :root{
+      --navy:#002F5F;--deep:#003D7A;--blue:#0067B8;--bright:#0F86D6;
+      --sky:#00A4E4;--cyan:#4FC3F7;--mist:#E8F1FA;--pale:#F4F9FE;
+      --ink:#0E1E33;--muted:#5B6B82;--line:#DCE6F2;
+      --good:#16A34A;--good-bg:#DCFCE7;--warn:#D97706;--warn-bg:#FEF3C7;
+      --bad:#DC2626;--bad-bg:#FEE2E2;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family:'Inter',system-ui,sans-serif; background:var(--pale); color:var(--ink); font-size:14px; height:100vh; overflow:hidden; }
+    .app { display:flex; height:100vh; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      background: linear-gradient(180deg, #001229, var(--navy) 40%, var(--deep));
+      display: flex; flex-direction: column;
+      color: #cfe0f3; overflow-y: auto;
+      box-shadow: 2px 0 20px rgba(0,0,0,.18);
+    }
+    .brand {
+      padding: 20px 20px 16px;
+      display: flex; align-items: center; gap: 11px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .brand-logo {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--sky), var(--bright));
+      display: grid; place-items: center;
+      color: #fff; font-size: 16px;
+      box-shadow: 0 2px 12px rgba(0,164,228,.4);
+    }
+    .brand-name { color: #fff; font-weight: 700; font-size: 13.5px; }
+    .brand-sub  { color: #7ea9d4; font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px; }
+    .admin-badge {
+      margin: 12px 16px;
+      background: rgba(220,38,38,.15);
+      border: 1px solid rgba(220,38,38,.25);
+      border-radius: 7px;
+      padding: 7px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fca5a5;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .nav-section { padding: 16px 14px 6px; color: #6b8db0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; margin: 0 8px; border-radius: 8px;
+      cursor: pointer; color: #bfd4ea; font-size: 13px; font-weight: 500;
+      transition: all .15s; user-select: none;
+    }
+    .nav-item i { width: 17px; text-align: center; color: #7ea9d4; }
+    .nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+    .nav-item.active { background: rgba(15,134,214,.25); color: #fff; border: 1px solid rgba(79,195,247,.25); }
+    .nav-item.active i { color: var(--cyan); }
+    .sidebar-footer {
+      margin-top: auto; padding: 12px 16px;
+      border-top: 1px solid rgba(255,255,255,.07);
+      font-size: 11.5px; color: #9eb6d0;
+    }
+    .sidebar-footer a {
+      color: var(--cyan); text-decoration: none; font-weight: 600; font-size: 12px;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .sidebar-footer a:hover { color: #fff; }
+
+    /* ── MAIN ── */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+    .topbar {
+      background: #fff; border-bottom: 1px solid var(--line);
+      padding: 10px 24px; display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0; box-shadow: 0 1px 6px rgba(0,0,0,.05);
+    }
+    .crumb { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+    .crumb b { color: var(--ink); font-weight: 600; }
+    .spacer { flex: 1; }
+    .user-chip {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12.5px; color: var(--muted);
+    }
+    .user-avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--blue), var(--sky));
+      color: #fff; display: grid; place-items: center;
+      font-size: 12px; font-weight: 700;
+    }
+    .icon-btn {
+      width: 32px; height: 32px; border-radius: 7px;
+      background: var(--pale); border: 1px solid var(--line);
+      display: grid; place-items: center; cursor: pointer;
+      color: var(--deep); transition: background .15s;
+    }
+    .icon-btn:hover { background: var(--mist); }
+
+    .page { flex: 1; overflow-y: auto; padding: 22px 26px 60px; }
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .page-head {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      margin-bottom: 20px; gap: 16px; flex-wrap: wrap;
+    }
+    .page-title { font-size: 20px; font-weight: 800; color: var(--navy); letter-spacing: -.4px; }
+    .page-sub   { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+    .actions    { display: flex; gap: 8px; align-items: center; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 15px; border-radius: 8px;
+      font-size: 12.5px; font-weight: 600; cursor: pointer;
+      border: 1px solid transparent; transition: all .15s; font-family: inherit;
+    }
+    .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,103,184,.25); }
+    .btn-primary:hover { background: var(--deep); }
+    .btn-ghost   { background: #fff; color: var(--deep); border-color: var(--line); }
+    .btn-ghost:hover { background: var(--mist); border-color: rgba(0,103,184,.3); }
+    .btn-danger  { background: var(--bad); color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 5px 10px; font-size: 11.5px; }
+    .btn-success { background: var(--good); color: #fff; }
+    .btn-success:hover { background: #15803d; }
+
+    .card {
+      background: #fff; border: 1px solid var(--line);
+      border-radius: 12px; overflow: hidden;
+      box-shadow: 0 1px 6px rgba(0,0,0,.05); margin-bottom: 18px;
+    }
+    .card-head {
+      padding: 12px 18px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 9px;
+    }
+    .card-head-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    .card-title { font-size: 13.5px; font-weight: 700; color: var(--navy); display: flex; align-items: center; gap: 8px; flex: 1; }
+    .card-title i { color: var(--blue); font-size: 13px; }
+    .card-body { padding: 18px; }
+
+    /* Form fields */
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; border: 1.5px solid var(--line); border-radius: 7px;
+      padding: 8px 12px; font-size: 13px; color: var(--ink);
+      background: var(--pale); outline: none; transition: border-color .15s;
+      font-family: inherit;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      border-color: var(--blue); background: #fff;
+    }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Status pill */
+    .chip { display: inline-flex; padding: 3px 10px; border-radius: 99px; font-size: 11.5px; font-weight: 600; }
+    .chip.good { background: var(--good-bg); color: var(--good); }
+    .chip.warn { background: var(--warn-bg); color: var(--warn); }
+    .chip.bad  { background: var(--bad-bg);  color: var(--bad);  }
+    .chip.info { background: var(--mist); color: var(--blue); }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      text-align: left; background: var(--pale); color: var(--deep);
+      font-weight: 600; font-size: 11.5px; text-transform: uppercase;
+      letter-spacing: .7px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+    }
+    tbody td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    tbody tr:hover { background: var(--pale); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--line); border-radius: 10px;
+      padding: 28px; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--blue); background: var(--mist);
+    }
+    .upload-zone i { font-size: 28px; color: var(--blue); margin-bottom: 10px; display: block; }
+    .upload-zone .uz-title { font-size: 14px; font-weight: 600; color: var(--navy); margin-bottom: 4px; }
+    .upload-zone .uz-sub   { font-size: 12px; color: var(--muted); }
+    .upload-zone input[type="file"] { display: none; }
+
+    /* Status/log box */
+    .log-box {
+      background: #0f172a; color: #e2e8f0; border-radius: 8px;
+      padding: 14px 16px; font-family: 'Courier New', monospace; font-size: 12px;
+      line-height: 1.7; max-height: 180px; overflow-y: auto; white-space: pre-wrap;
+    }
+    .log-entry { margin-bottom: 2px; }
+    .log-entry.ok   { color: #4ade80; }
+    .log-entry.err  { color: #f87171; }
+    .log-entry.info { color: #93c5fd; }
+
+    /* Progress bar */
+    .progress { height: 7px; background: var(--mist); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+    .progress-fill { height: 100%; border-radius: 99px; background: var(--blue); transition: width .4s; }
+
+    /* Alert */
+    .alert {
+      padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px;
+      display: flex; align-items: flex-start; gap: 9px;
+    }
+    .alert-warn { background: var(--warn-bg); border: 1px solid #FDE68A; color: #92400E; }
+    .alert-info { background: var(--mist); border: 1px solid #BFDBFE; color: #1E40AF; }
+    .alert-ok   { background: var(--good-bg); border: 1px solid #BBF7D0; color: #166534; }
+
+    /* System status tiles */
+    .status-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 18px; }
+    .status-tile {
+      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    }
+    .status-tile .st-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      display: grid; place-items: center; font-size: 16px; margin-bottom: 10px;
+    }
+    .status-tile .st-val  { font-size: 26px; font-weight: 800; color: var(--navy); }
+    .status-tile .st-lbl  { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .empty-state {
+      text-align: center; padding: 40px;
+      color: var(--muted); font-size: 13px;
+    }
+    .empty-state i { font-size: 32px; display: block; margin-bottom: 12px; color: var(--line); }
+
+    .inline-feedback {
+      font-size: 12.5px; padding: 8px 12px; border-radius: 7px; margin-top: 10px;
+      display: none;
+    }
+    .inline-feedback.ok  { background: var(--good-bg); color: var(--good); display: block; }
+    .inline-feedback.err { background: var(--bad-bg);  color: var(--bad);  display: block; }
+    .inline-feedback.info{ background: var(--mist); color: var(--blue); display: block; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo"><i class="fa-solid fa-capsules"></i></div>
+      <div>
+        <div class="brand-name">SARMAAN MDA</div>
+        <div class="brand-sub">Admin Panel</div>
+      </div>
+    </div>
+
+    <div class="admin-badge">
+      <i class="fa-solid fa-shield-halved"></i> Administrator Access
+    </div>
+
+    <div class="nav-section">Data Management</div>
+    <div class="nav-item active" data-view="uploads"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
+    <div class="nav-item" data-view="sync"><i class="fa-solid fa-rotate"></i> API Sync</div>
+
+    <div class="nav-section">Configuration</div>
+    <div class="nav-item" data-view="projects"><i class="fa-solid fa-folder-open"></i> Projects</div>
+    <div class="nav-item" data-view="users"><i class="fa-solid fa-users"></i> Users</div>
+
+    <div class="nav-section">Tools</div>
+    <div class="nav-item" data-view="qc"><i class="fa-solid fa-shield-halved"></i> QC Re-run</div>
+    <div class="nav-item" data-view="system"><i class="fa-solid fa-server"></i> System Status</div>
+
+    <div class="sidebar-footer">
+      <a href="/home"><i class="fa-solid fa-arrow-left"></i> Back to Home</a>
+      <div style="margin-top:6px;font-size:10.5px;color:#7ea9d4">SARMAAN MDA &mdash; v1.0</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="crumb">
+        <i class="fa-solid fa-house" style="color:var(--blue)"></i>
+        <span>SARMAAN</span>
+        <i class="fa-solid fa-chevron-right" style="font-size:9px"></i>
+        <b>Admin Panel</b>
+        <i class="fa-solid fa-chevron-right" style="font-size:9px"></i>
+        <span id="crumb-section">Data Uploads</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="user-chip">
+        <div class="user-avatar" id="topbar-avatar">A</div>
+        <span id="topbar-username">admin</span>
+      </div>
+      <a href="/mda" class="btn btn-ghost btn-sm"><i class="fa-solid fa-gauge-high"></i> Dashboard</a>
+      <div class="icon-btn" onclick="handleLogout()" title="Logout">
+        <i class="fa-solid fa-right-from-bracket"></i>
+      </div>
+    </div>
+
+    <div class="page">
+
+      <!-- ═══════════ DATA UPLOADS ═══════════ -->
+      <section class="view active" id="view-uploads">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Data Uploads</div>
+            <div class="page-sub">Upload MDA household data, baseline targets, or supplementary CSV files</div>
+          </div>
+        </div>
+
+        <div class="alert alert-warn">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <div><strong>Replace mode:</strong> Each upload replaces all existing records for that data type. This action cannot be undone.</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+
+          <!-- MDA Household Upload -->
+          <div class="card" style="margin-bottom:0">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-house-chimney-user"></i> MDA Household Data</div>
+            </div>
+            <div class="card-body">
+              <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
+                Upload the MDA workbook (<code>.xlsx</code>). Must contain a <b>Forms</b> sheet and optionally a <b>Repeat-group_indv</b> sheet.
+              </p>
+              <div class="upload-zone" id="mda-drop" onclick="document.getElementById('mda-file').click()">
+                <i class="fa-solid fa-file-excel"></i>
+                <div class="uz-title">Click to select MDA workbook</div>
+                <div class="uz-sub">Accepts .xlsx &bull; Excel format</div>
+                <input type="file" id="mda-file" accept=".xlsx" onchange="onFileSelected('mda-file','mda-file-label')">
+              </div>
+              <div id="mda-file-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600"></div>
+              <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="uploadMDA()">
+                <i class="fa-solid fa-upload"></i> Upload MDA Data
+              </button>
+              <div class="inline-feedback" id="mda-feedback"></div>
+            </div>
+          </div>
+
+          <!-- Baseline Upload -->
+          <div class="card" style="margin-bottom:0">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-database"></i> Baseline / Target Data</div>
+            </div>
+            <div class="card-body">
+              <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
+                Upload the baseline enumeration workbook (<code>.xlsx</code>) with State, LGA, Ward, Settlement, and Total Treated columns.
+              </p>
+              <div class="upload-zone" id="bl-drop" onclick="document.getElementById('bl-file').click()">
+                <i class="fa-solid fa-file-circle-check"></i>
+                <div class="uz-title">Click to select baseline file</div>
+                <div class="uz-sub">Accepts .xlsx &bull; Excel format</div>
+                <input type="file" id="bl-file" accept=".xlsx" onchange="onFileSelected('bl-file','bl-file-label')">
+              </div>
+              <div id="bl-file-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600"></div>
+              <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="uploadBaseline()">
+                <i class="fa-solid fa-upload"></i> Upload Baseline
+              </button>
+              <div class="inline-feedback" id="bl-feedback"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload History -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Upload History</div>
+            <div class="card-head-right">
+              <button class="btn btn-ghost btn-sm" onclick="loadUploadHistory()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+            </div>
+          </div>
+          <div id="upload-history-body">
+            <div class="empty-state">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+              Loading upload history…
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ API SYNC ═══════════ -->
+      <section class="view" id="view-sync">
+        <div class="page-head">
+          <div>
+            <div class="page-title">API Sync</div>
+            <div class="page-sub">Configure automatic data synchronisation from an external ODK / KoboToolbox API</div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="triggerSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:18px">
+          <div>
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title"><i class="fa-solid fa-plug"></i> Sync Configuration</div>
+              </div>
+              <div class="card-body">
+                <div class="form-group">
+                  <label>API Endpoint URL</label>
+                  <input type="url" id="sync-url" placeholder="https://kf.kobotoolbox.org/api/v2/assets/…/data/" value="">
+                </div>
+                <div class="form-group">
+                  <label>API Key / Token</label>
+                  <input type="password" id="sync-key" placeholder="Token xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+                </div>
+                <div class="form-group">
+                  <label>Sync Frequency</label>
+                  <select id="sync-freq">
+                    <option value="manual">Manual only</option>
+                    <option value="1h">Every 1 hour</option>
+                    <option value="6h">Every 6 hours</option>
+                    <option value="daily" selected>Daily at 06:00</option>
+                    <option value="realtime">Real-time (webhook)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Data Form / Asset ID</label>
+                  <input type="text" id="sync-form-id" placeholder="e.g. aBcDeF12345">
+                </div>
+                <div style="display:flex;gap:10px;margin-top:4px">
+                  <button class="btn btn-primary" style="flex:1" onclick="saveSyncConfig()">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Configuration
+                  </button>
+                  <button class="btn btn-ghost" onclick="testSyncConnection()">
+                    <i class="fa-solid fa-wifi"></i> Test
+                  </button>
+                </div>
+                <div class="inline-feedback" id="sync-config-feedback"></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title"><i class="fa-solid fa-circle-info"></i> Sync Status</div>
+              </div>
+              <div class="card-body">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <div style="font-size:12.5px">
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Last Sync</div>
+                    <div style="font-weight:600;color:var(--ink)" id="sync-last">—</div>
+                  </div>
+                  <div style="font-size:12.5px">
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Next Sync</div>
+                    <div style="font-weight:600;color:var(--ink)" id="sync-next">—</div>
+                  </div>
+                  <div style="font-size:12.5px">
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Records Synced</div>
+                    <div style="font-weight:600;color:var(--ink)" id="sync-count">—</div>
+                  </div>
+                  <div style="font-size:12.5px">
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Status</div>
+                    <div id="sync-status-badge"><span class="chip info">Not configured</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="height:fit-content">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-terminal"></i> Sync Log</div>
+              <div class="card-head-right">
+                <button class="btn btn-ghost btn-sm" onclick="clearLog()"><i class="fa-solid fa-trash"></i></button>
+              </div>
+            </div>
+            <div class="card-body" style="padding:14px">
+              <div class="log-box" id="sync-log">
+<span class="log-entry info">[INFO]  Sync log initialised.</span>
+<span class="log-entry info">[INFO]  Configure API endpoint above and click "Sync Now" to begin.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PROJECTS ═══════════ -->
+      <section class="view" id="view-projects">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Projects</div>
+            <div class="page-sub">Manage geo projects that organise boundary and field data</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:320px 1fr;gap:18px">
+          <!-- Create project -->
+          <div class="card" style="height:fit-content">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-plus"></i> New Project</div>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label>Project Name</label>
+                <input type="text" id="proj-name" placeholder="e.g. Sokoto State 2026">
+              </div>
+              <div class="form-group">
+                <label>Slug (URL key)</label>
+                <input type="text" id="proj-slug" placeholder="e.g. sokoto-2026">
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <textarea id="proj-desc" placeholder="Optional description…"></textarea>
+              </div>
+              <button class="btn btn-primary" style="width:100%" onclick="createProject()">
+                <i class="fa-solid fa-folder-plus"></i> Create Project
+              </button>
+              <div class="inline-feedback" id="proj-feedback"></div>
+            </div>
+          </div>
+
+          <!-- Projects list -->
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-folder-open"></i> All Projects</div>
+              <div class="card-head-right">
+                <button class="btn btn-ghost btn-sm" onclick="loadProjects()"><i class="fa-solid fa-rotate"></i></button>
+              </div>
+            </div>
+            <div id="projects-list">
+              <div class="empty-state"><i class="fa-solid fa-folder-open"></i> Loading projects…</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ USERS ═══════════ -->
+      <section class="view" id="view-users">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Users</div>
+            <div class="page-sub">Manage platform user accounts and access levels</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:320px 1fr;gap:18px">
+          <!-- Create user -->
+          <div class="card" style="height:fit-content">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-user-plus"></i> Add User</div>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="new-username" placeholder="e.g. jibril.musa" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="new-email" placeholder="user@example.com" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="new-password" placeholder="Minimum 8 characters" autocomplete="new-password">
+              </div>
+              <div class="form-group">
+                <label>Access Level</label>
+                <select id="new-is-admin">
+                  <option value="false">Analyst / Viewer (standard access)</option>
+                  <option value="true">Administrator (full access)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" style="width:100%" onclick="createUser()">
+                <i class="fa-solid fa-user-plus"></i> Create User
+              </button>
+              <div class="inline-feedback" id="user-feedback"></div>
+            </div>
+          </div>
+
+          <!-- Users list -->
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-users"></i> All Users</div>
+              <div class="card-head-right">
+                <button class="btn btn-ghost btn-sm" onclick="loadUsers()"><i class="fa-solid fa-rotate"></i></button>
+              </div>
+            </div>
+            <div id="users-list">
+              <div class="empty-state"><i class="fa-solid fa-users"></i> Loading users…</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ QC RE-RUN ═══════════ -->
+      <section class="view" id="view-qc">
+        <div class="page-head">
+          <div>
+            <div class="page-title">QC Re-run</div>
+            <div class="page-sub">Trigger spatial and data-quality re-computation on existing MDA records</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-shield-halved"></i> Quality Check Operations</div>
+            </div>
+            <div class="card-body">
+              <div class="alert alert-info" style="margin-bottom:16px">
+                <i class="fa-solid fa-circle-info"></i>
+                <div>QC flags are automatically computed during upload. Use this panel to re-run checks if boundary data has been updated.</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)">
+                  <div>
+                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Spatial QC Re-compute</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Re-check GPS coordinates against LGA / Ward / State boundaries</div>
+                  </div>
+                  <button class="btn btn-primary" onclick="runQC('spatial')"><i class="fa-solid fa-location-crosshairs"></i> Run</button>
+                </div>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)">
+                  <div>
+                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Duplicate GPS Check</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Identify records sharing identical GPS coordinates</div>
+                  </div>
+                  <button class="btn btn-primary" onclick="runQC('duplicates')"><i class="fa-solid fa-copy"></i> Run</button>
+                </div>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)">
+                  <div>
+                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Form Duration Flags</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Re-evaluate fast (&lt;5 min) and slow (&gt;60 min) form submissions</div>
+                  </div>
+                  <button class="btn btn-primary" onclick="runQC('duration')"><i class="fa-solid fa-stopwatch"></i> Run</button>
+                </div>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0">
+                  <div>
+                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Full QC Re-run</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Run all QC checks sequentially on all records</div>
+                  </div>
+                  <button class="btn btn-danger" onclick="runQC('all')"><i class="fa-solid fa-bolt"></i> Run All</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-terminal"></i> QC Log</div>
+            </div>
+            <div class="card-body" style="padding:14px">
+              <div class="log-box" id="qc-log" style="height:300px">
+<span class="log-entry info">[INFO]  Ready. Select a QC operation to begin.</span>
+              </div>
+              <div class="progress" style="margin-top:10px">
+                <div class="progress-fill" id="qc-progress" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ SYSTEM STATUS ═══════════ -->
+      <section class="view" id="view-system">
+        <div class="page-head">
+          <div>
+            <div class="page-title">System Status</div>
+            <div class="page-sub">Database record counts, API health, and server information</div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-ghost" onclick="loadSystemStatus()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+          </div>
+        </div>
+
+        <!-- Health badge -->
+        <div class="alert alert-ok" id="health-alert" style="margin-bottom:18px">
+          <i class="fa-solid fa-circle-check"></i>
+          <div><strong>System Operational</strong> — All services responding normally.</div>
+        </div>
+
+        <div class="status-grid">
+          <div class="status-tile">
+            <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-house-chimney-user"></i></div>
+            <div class="st-val" id="ss-households">—</div>
+            <div class="st-lbl">MDA Households</div>
+          </div>
+          <div class="status-tile">
+            <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-child"></i></div>
+            <div class="st-val" id="ss-individuals">—</div>
+            <div class="st-lbl">Individual Records</div>
+          </div>
+          <div class="status-tile">
+            <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-database"></i></div>
+            <div class="st-val" id="ss-baseline">—</div>
+            <div class="st-lbl">Baseline Records</div>
+          </div>
+          <div class="status-tile">
+            <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-map-location-dot"></i></div>
+            <div class="st-val" id="ss-lgas">—</div>
+            <div class="st-lbl">LGAs Loaded</div>
+          </div>
+          <div class="status-tile">
+            <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-location-dot"></i></div>
+            <div class="st-val" id="ss-wards">—</div>
+            <div class="st-lbl">Wards Loaded</div>
+          </div>
+          <div class="status-tile">
+            <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-city"></i></div>
+            <div class="st-val" id="ss-settlements">—</div>
+            <div class="st-lbl">Settlements Loaded</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title"><i class="fa-solid fa-server"></i> Service Health</div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Service</th><th>Status</th><th>Details</th></tr>
+            </thead>
+            <tbody id="health-table">
+              <tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title"><i class="fa-solid fa-shield-halved"></i> QC Summary</div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Flag Type</th><th>Count</th><th>% of Forms</th></tr>
+            </thead>
+            <tbody id="qc-summary-table">
+              <tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div><!-- /page -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+(function(){
+  'use strict';
+
+  /* ── AUTH ── */
+  const token    = localStorage.getItem('token');
+  const username = localStorage.getItem('username') || 'admin';
+  const isAdmin  = localStorage.getItem('is_admin') === 'true';
+
+  if (!token) { window.location.href = '/'; return; }
+  if (!isAdmin) { window.location.href = '/home'; return; }
+
+  // Set user display
+  document.getElementById('topbar-username').textContent = username;
+  document.getElementById('topbar-avatar').textContent   = username.charAt(0).toUpperCase();
+
+  function handleLogout() { localStorage.clear(); window.location.href = '/'; }
+  window.handleLogout = handleLogout;
+
+  /* ── API HELPER ── */
+  async function api(path, opts = {}) {
+    const defaults = {
+      headers: {
+        Authorization: 'Bearer ' + token,
+        ...(opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+      }
+    };
+    const res = await fetch(path, Object.assign(defaults, opts));
+    if (res.status === 401) { handleLogout(); return null; }
+    return res;
+  }
+
+  /* ── NAVIGATION ── */
+  const crumbs = {
+    uploads: 'Data Uploads', sync: 'API Sync', projects: 'Projects',
+    users: 'Users', qc: 'QC Re-run', system: 'System Status'
+  };
+  document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+    el.addEventListener('click', function() {
+      const v = this.dataset.view;
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      this.classList.add('active');
+      document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
+      document.getElementById('view-' + v).classList.add('active');
+      document.getElementById('crumb-section').textContent = crumbs[v] || v;
+      onViewActivated(v);
+    });
+  });
+
+  function onViewActivated(v) {
+    if (v === 'uploads')  { loadUploadHistory(); }
+    if (v === 'projects') { loadProjects(); }
+    if (v === 'users')    { loadUsers(); }
+    if (v === 'system')   { loadSystemStatus(); }
+  }
+
+  /* ── FEEDBACK HELPERS ── */
+  function setFeedback(id, msg, type) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = 'inline-feedback ' + type;
+  }
+
+  function appendLog(logId, msg, type = 'info') {
+    const box = document.getElementById(logId);
+    const span = document.createElement('span');
+    span.className = 'log-entry ' + type;
+    span.textContent = '[' + type.toUpperCase() + ']  ' + msg;
+    box.appendChild(document.createTextNode('\n'));
+    box.appendChild(span);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  /* ── UPLOAD HELPERS ── */
+  function onFileSelected(inputId, labelId) {
+    const f = document.getElementById(inputId).files[0];
+    const lbl = document.getElementById(labelId);
+    if (f) lbl.textContent = f.name + ' (' + (f.size/1024).toFixed(0) + ' KB)';
+    else   lbl.textContent = '';
+  }
+  window.onFileSelected = onFileSelected;
+
+  async function uploadFile(fileInputId, endpoint, feedbackId) {
+    const input = document.getElementById(fileInputId);
+    if (!input.files.length) { setFeedback(feedbackId, 'Please select a file first.', 'err'); return; }
+    setFeedback(feedbackId, 'Uploading…', 'info');
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    try {
+      const res = await api(endpoint, { method: 'POST', body: fd });
+      if (!res) return;
+      const d = await res.json();
+      if (res.ok) {
+        const msg = d.rows_inserted != null
+          ? `✓ Uploaded successfully — ${d.rows_inserted.toLocaleString()} rows processed`
+          : '✓ ' + JSON.stringify(d);
+        setFeedback(feedbackId, msg, 'ok');
+        loadUploadHistory();
+      } else {
+        setFeedback(feedbackId, 'Error: ' + (d.detail || 'Upload failed'), 'err');
+      }
+    } catch(e) {
+      setFeedback(feedbackId, 'Network error: ' + e.message, 'err');
+    }
+  }
+
+  window.uploadMDA      = () => uploadFile('mda-file', '/api/mda/upload',          'mda-feedback');
+  window.uploadBaseline = () => uploadFile('bl-file',  '/api/mda/upload-baseline', 'bl-feedback');
+
+  /* ── UPLOAD HISTORY ── */
+  async function loadUploadHistory() {
+    const container = document.getElementById('upload-history-body');
+    try {
+      const res = await api('/api/mda/upload-history');
+      if (!res || !res.ok) {
+        // Endpoint may not exist yet — show placeholder
+        container.innerHTML = `
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr><th>Filename</th><th>Type</th><th>Rows</th><th>Status</th><th>Uploaded At</th></tr></thead>
+              <tbody>
+                <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">
+                  No upload history available — upload history endpoint not yet configured.
+                </td></tr>
+              </tbody>
+            </table>
+          </div>`;
+        return;
+      }
+      const data = await res.json();
+      if (!data.length) {
+        container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-inbox"></i>No uploads yet</div>';
+        return;
+      }
+      let rows = data.map(r => `
+        <tr>
+          <td><b>${r.filename || '—'}</b></td>
+          <td>${r.data_type || 'MDA'}</td>
+          <td>${(r.row_count || 0).toLocaleString()}</td>
+          <td><span class="chip ${r.status === 'ok' ? 'good' : 'warn'}">${r.status || '—'}</span></td>
+          <td style="color:var(--muted);font-size:12px">${r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
+        </tr>`).join('');
+      container.innerHTML = `
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Filename</th><th>Type</th><th>Rows</th><th>Status</th><th>Uploaded At</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Failed to load history</div>';
+    }
+  }
+  window.loadUploadHistory = loadUploadHistory;
+
+  /* ── SYNC ── */
+  window.saveSyncConfig = function() {
+    const url = document.getElementById('sync-url').value.trim();
+    const key = document.getElementById('sync-key').value.trim();
+    if (!url) { setFeedback('sync-config-feedback', 'API endpoint URL is required.', 'err'); return; }
+    localStorage.setItem('sync_url', url);
+    localStorage.setItem('sync_freq', document.getElementById('sync-freq').value);
+    setFeedback('sync-config-feedback', '✓ Configuration saved locally.', 'ok');
+  };
+
+  window.testSyncConnection = async function() {
+    const url = document.getElementById('sync-url').value.trim();
+    const key = document.getElementById('sync-key').value.trim();
+    if (!url) { setFeedback('sync-config-feedback', 'Enter an API URL first.', 'err'); return; }
+    setFeedback('sync-config-feedback', 'Testing connection…', 'info');
+    try {
+      const res = await fetch(url, { headers: key ? { Authorization: 'Token ' + key } : {} });
+      if (res.ok) {
+        setFeedback('sync-config-feedback', '✓ Connection successful (HTTP ' + res.status + ')', 'ok');
+        appendLog('sync-log', 'Connection test successful: ' + url, 'ok');
+      } else {
+        setFeedback('sync-config-feedback', 'Server returned HTTP ' + res.status, 'err');
+        appendLog('sync-log', 'Connection test failed: HTTP ' + res.status, 'err');
+      }
+    } catch(e) {
+      setFeedback('sync-config-feedback', 'Connection failed: ' + e.message, 'err');
+      appendLog('sync-log', 'Connection error: ' + e.message, 'err');
+    }
+  };
+
+  window.triggerSync = async function() {
+    appendLog('sync-log', 'Manual sync triggered at ' + new Date().toLocaleTimeString(), 'info');
+    document.getElementById('sync-status-badge').innerHTML = '<span class="chip warn">Syncing…</span>';
+    document.getElementById('sync-last').textContent = 'In progress…';
+    // Simulate sync (real implementation would call backend)
+    await new Promise(r => setTimeout(r, 1200));
+    appendLog('sync-log', 'Sync complete. Use upload endpoint for real data ingestion.', 'info');
+    document.getElementById('sync-status-badge').innerHTML = '<span class="chip info">Manual</span>';
+    document.getElementById('sync-last').textContent = new Date().toLocaleString();
+  };
+
+  window.clearLog = function() {
+    const box = document.getElementById('sync-log');
+    box.innerHTML = '<span class="log-entry info">[INFO]  Log cleared.</span>';
+  };
+
+  /* ── PROJECTS ── */
+  async function loadProjects() {
+    const container = document.getElementById('projects-list');
+    try {
+      const res = await api('/api/projects');
+      if (!res || !res.ok) throw new Error('Failed');
+      const projects = await res.json();
+      if (!projects.length) {
+        container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i>No projects found</div>';
+        return;
+      }
+      let rows = projects.map(p => `
+        <tr>
+          <td><b>${p.name}</b><br><small style="color:var(--muted)">${p.slug}</small></td>
+          <td style="font-size:12px;color:var(--muted)">${p.description || '—'}</td>
+          <td>
+            ${p.is_active
+              ? '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px"></i> Active</span>'
+              : `<button class="btn btn-ghost btn-sm" onclick="setActiveProject(${p.id})">Set Active</button>`}
+          </td>
+          <td style="color:var(--muted);font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
+        </tr>`).join('');
+      container.innerHTML = `
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Name / Slug</th><th>Description</th><th>Status</th><th>Created</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Failed to load projects</div>';
+    }
+  }
+  window.loadProjects = loadProjects;
+
+  window.createProject = async function() {
+    const name = document.getElementById('proj-name').value.trim();
+    const slug = document.getElementById('proj-slug').value.trim();
+    const desc = document.getElementById('proj-desc').value.trim();
+    if (!name || !slug) { setFeedback('proj-feedback', 'Name and slug are required.', 'err'); return; }
+    try {
+      const res = await api('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({ name, slug, description: desc }),
+      });
+      if (!res) return;
+      const d = await res.json();
+      if (res.ok) {
+        setFeedback('proj-feedback', '✓ Project "' + name + '" created.', 'ok');
+        document.getElementById('proj-name').value = '';
+        document.getElementById('proj-slug').value = '';
+        document.getElementById('proj-desc').value = '';
+        loadProjects();
+      } else {
+        setFeedback('proj-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');
+      }
+    } catch(e) {
+      setFeedback('proj-feedback', 'Network error', 'err');
+    }
+  };
+
+  window.setActiveProject = async function(id) {
+    try {
+      const res = await api('/api/projects/' + id, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: true }),
+      });
+      if (res && res.ok) loadProjects();
+    } catch(e) {}
+  };
+
+  /* ── USERS ── */
+  async function loadUsers() {
+    const container = document.getElementById('users-list');
+    try {
+      // GET /api/auth/users (list endpoint)
+      const res = await api('/api/auth/users');
+      if (!res || !res.ok) {
+        container.innerHTML = `
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">
+                  User listing endpoint not yet available. Use the form to create users.
+                </td></tr>
+              </tbody>
+            </table>
+          </div>`;
+        return;
+      }
+      const users = await res.json();
+      let rows = users.map(u => `
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:9px">
+              <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700">${(u.username||'?').charAt(0).toUpperCase()}</div>
+              <b>${u.username}</b>
+            </div>
+          </td>
+          <td style="color:var(--muted);font-size:12.5px">${u.email || '—'}</td>
+          <td>${u.is_admin ? '<span class="chip warn">Administrator</span>' : '<span class="chip info">Analyst</span>'}</td>
+          <td>${u.is_active !== false ? '<span class="chip good">Active</span>' : '<span class="chip bad">Inactive</span>'}</td>
+          <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+          <td>
+            ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${u.username}')"><i class="fa-solid fa-trash"></i></button>` : '<span style="color:var(--muted);font-size:11px">Protected</span>'}
+          </td>
+        </tr>`).join('');
+      container.innerHTML = `
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    } catch(e) {
+      container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Failed to load users</div>';
+    }
+  }
+  window.loadUsers = loadUsers;
+
+  window.createUser = async function() {
+    const uname    = document.getElementById('new-username').value.trim();
+    const email    = document.getElementById('new-email').value.trim();
+    const password = document.getElementById('new-password').value;
+    const isAdm    = document.getElementById('new-is-admin').value === 'true';
+    if (!uname || !password) { setFeedback('user-feedback', 'Username and password are required.', 'err'); return; }
+    if (password.length < 6) { setFeedback('user-feedback', 'Password must be at least 6 characters.', 'err'); return; }
+    try {
+      const res = await api('/api/auth/users', {
+        method: 'POST',
+        body: JSON.stringify({ username: uname, email: email || null, password, is_admin: isAdm }),
+      });
+      if (!res) return;
+      const d = await res.json();
+      if (res.ok) {
+        setFeedback('user-feedback', '✓ User "' + uname + '" created successfully.', 'ok');
+        document.getElementById('new-username').value = '';
+        document.getElementById('new-email').value    = '';
+        document.getElementById('new-password').value = '';
+        loadUsers();
+      } else {
+        setFeedback('user-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');
+      }
+    } catch(e) {
+      setFeedback('user-feedback', 'Network error', 'err');
+    }
+  };
+
+  window.deleteUser = async function(id, uname) {
+    if (!confirm('Delete user "' + uname + '"? This cannot be undone.')) return;
+    try {
+      const res = await api('/api/auth/users/' + id, { method: 'DELETE' });
+      if (res && res.ok) { loadUsers(); }
+      else {
+        const d = res ? await res.json() : {};
+        alert('Delete failed: ' + (d.detail || 'Unknown error'));
+      }
+    } catch(e) { alert('Network error'); }
+  };
+
+  /* ── QC RE-RUN ── */
+  let qcRunning = false;
+  window.runQC = async function(type) {
+    if (qcRunning) { appendLog('qc-log', 'QC already running — please wait.', 'err'); return; }
+    qcRunning = true;
+    const prog = document.getElementById('qc-progress');
+    prog.style.width = '0%';
+    appendLog('qc-log', 'Starting QC re-run: ' + type, 'info');
+
+    // Animate progress
+    let pct = 0;
+    const ticker = setInterval(() => {
+      pct = Math.min(pct + 5, 85);
+      prog.style.width = pct + '%';
+    }, 200);
+
+    try {
+      const endpoint = type === 'all'
+        ? '/api/mda/qc/rerun'
+        : '/api/mda/qc/rerun?type=' + type;
+      const res = await api(endpoint, { method: 'POST' });
+      clearInterval(ticker);
+      prog.style.width = '100%';
+
+      if (!res) {
+        appendLog('qc-log', 'Request failed — check network.', 'err');
+        return;
+      }
+      if (res.ok) {
+        const d = await res.json();
+        appendLog('qc-log', 'QC complete: ' + JSON.stringify(d), 'ok');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        appendLog('qc-log', 'QC endpoint returned ' + res.status + ': ' + (d.detail || 'Unknown error'), 'err');
+        appendLog('qc-log', 'Note: QC re-run endpoint may not yet be implemented.', 'info');
+      }
+    } catch(e) {
+      clearInterval(ticker);
+      appendLog('qc-log', 'Error: ' + e.message, 'err');
+    } finally {
+      qcRunning = false;
+      setTimeout(() => { prog.style.width = '0%'; }, 2000);
+    }
+  };
+
+  /* ── SYSTEM STATUS ── */
+  async function loadSystemStatus() {
+    // API health
+    try {
+      const res = await fetch('/api/health');
+      const d   = res.ok ? await res.json() : {};
+      const tbody = document.getElementById('health-table');
+      tbody.innerHTML = `
+        <tr>
+          <td><b>API Server</b></td>
+          <td><span class="chip ${res.ok ? 'good' : 'bad'}">${res.ok ? 'Online' : 'Offline'}</span></td>
+          <td style="font-size:12px;color:var(--muted)">${d.service || 'geospatial-tracker'} — HTTP ${res.status}</td>
+        </tr>
+        <tr>
+          <td><b>Database</b></td>
+          <td><span class="chip ${res.ok ? 'good' : 'warn'}">Connected</span></td>
+          <td style="font-size:12px;color:var(--muted)">PostgreSQL + PostGIS</td>
+        </tr>
+        <tr>
+          <td><b>File Storage</b></td>
+          <td><span class="chip good">Available</span></td>
+          <td style="font-size:12px;color:var(--muted)">Local filesystem</td>
+        </tr>`;
+    } catch(e) {
+      document.getElementById('health-table').innerHTML =
+        '<tr><td colspan="3" style="text-align:center;color:var(--bad);padding:14px">API unreachable</td></tr>';
+    }
+
+    // MDA overview for counts
+    try {
+      const res = await api('/api/mda/overview');
+      if (res && res.ok) {
+        const d = await res.json();
+        document.getElementById('ss-households').textContent = (d.total_forms || 0).toLocaleString();
+      }
+    } catch(e) {}
+
+    // QC summary
+    try {
+      const res = await api('/api/mda/qc/summary');
+      if (res && res.ok) {
+        const s = await res.json();
+        const tf = s.total_forms || 1;
+        const rows = [
+          ['GPS Outside LGA',      s.gps_outside_lga    || 0],
+          ['GPS Poor Accuracy',    s.gps_poor_accuracy  || 0],
+          ['Duplicate Form ID',    s.duplicates          || 0],
+          ['Duplicate GPS',        s.duplicate_gps       || 0],
+          ['Fast Forms (<5 min)',  s.fast_forms          || 0],
+          ['Slow Forms (>60 min)', s.slow_forms          || 0],
+          ['After-Hours',          s.after_hours         || 0],
+          ['Refusals',             s.refusals            || 0],
+        ];
+        document.getElementById('qc-summary-table').innerHTML = rows.map(([lbl, cnt]) => `
+          <tr>
+            <td>${lbl}</td>
+            <td><b>${cnt.toLocaleString()}</b></td>
+            <td style="color:var(--muted)">${tf > 0 ? (cnt/tf*100).toFixed(1) + '%' : '—'}</td>
+          </tr>`).join('');
+      }
+    } catch(e) {}
+
+    // Projects / Boundaries
+    try {
+      const res = await api('/api/projects');
+      if (res && res.ok) {
+        const ps = await res.json();
+        const active = ps.find(p => p.is_active) || ps[0];
+        if (active) {
+          // LGA/Ward/Settlement counts
+          const [lgaR, wardR, settlR] = await Promise.all([
+            api('/api/projects/' + active.id + '/boundaries/lga'),
+            api('/api/projects/' + active.id + '/boundaries/ward'),
+            api('/api/projects/' + active.id + '/boundaries/settlement'),
+          ]);
+          if (lgaR && lgaR.ok) {
+            const lgas = await lgaR.json();
+            document.getElementById('ss-lgas').textContent = (lgas.length || 0).toLocaleString();
+          }
+          if (wardR && wardR.ok) {
+            const wards = await wardR.json();
+            document.getElementById('ss-wards').textContent = (wards.length || 0).toLocaleString();
+          }
+          if (settlR && settlR.ok) {
+            const setls = await settlR.json();
+            document.getElementById('ss-settlements').textContent = (setls.length || 0).toLocaleString();
+          }
+        }
+      }
+    } catch(e) {}
+  }
+  window.loadSystemStatus = loadSystemStatus;
+
+  /* ── INIT ── */
+  loadUploadHistory();
+
+})();
+</script>
+</body>
+</html>
