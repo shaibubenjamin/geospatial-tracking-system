@@ -42,7 +42,10 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .sidebar.collapsed .nav-section{opacity:0;height:0;padding:0;pointer-events:none}
 .sidebar.collapsed .nav-item{justify-content:center;padding:12px 0;margin:2px 8px;gap:0;font-size:0}
 .sidebar.collapsed .nav-item i{width:auto;font-size:16px}
+.sidebar.collapsed .sidebar-footer{padding:14px 0}
 .sidebar.collapsed .sidebar-footer>*:not(#admin-nav-link){opacity:0;height:0;overflow:hidden;pointer-events:none}
+.sidebar.collapsed #admin-nav-link{margin-top:0;text-align:center}
+.sidebar.collapsed #admin-nav-link a{gap:0;justify-content:center;width:100%}
 .sidebar.collapsed #admin-nav-link a span{display:none}
 /* Collapse toggle button */
 .sidebar-toggle{position:absolute;top:18px;left:0;z-index:50;background:var(--blue);color:#fff;border:none;border-radius:0 8px 8px 0;width:20px;height:32px;display:grid;place-items:center;cursor:pointer;font-size:11px;opacity:0;transition:opacity .2s,left .25s}
@@ -306,7 +309,7 @@ tbody tr:hover{background:var(--pale)}
       <div style="color:#90c9a0;font-size:10.5px;margin-top:2px">Sokoto State 2026</div>
       <div id="admin-nav-link" style="display:none;margin-top:10px">
         <a href="/mda-admin" style="color:var(--cyan);text-decoration:none;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
-          <i class="fa-solid fa-screwdriver-wrench"></i> Admin Panel
+          <i class="fa-solid fa-screwdriver-wrench"></i><span>Admin Panel</span>
         </a>
       </div>
     </div>
