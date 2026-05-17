@@ -181,7 +181,9 @@ async def get_grid_geojson(
     db: AsyncSession,
     unique_cod: str,
 ) -> Dict[str, Any]:
-    """Return GeoJSON for grid cells of a specific settlement."""
+    """Return GeoJSON for grid cells of a specific settlement.
+    has_point = TRUE when ≥1 mda_household GPS point falls within the grid polygon.
+    """
     result = await db.execute(
         text("""
             SELECT
@@ -192,13 +194,9 @@ async def get_grid_geojson(
                 g.settlement_name,
                 ST_AsGeoJSON(g.geom)::json AS geometry,
                 CASE WHEN EXISTS (
-                    SELECT 1 FROM points_raw p
-                    WHERE p.project_id = g.project_id
-                      AND ST_DWithin(
-                            p.geom::geography,
-                            ST_Centroid(g.geom)::geography,
-                            20
-                          )
+                    SELECT 1 FROM mda_households h
+                    WHERE h.geom IS NOT NULL
+                      AND ST_Within(h.geom, g.geom)
                 ) THEN TRUE ELSE FALSE END AS has_point
             FROM grids g
             WHERE g.project_id = :project_id
@@ -233,50 +231,60 @@ async def get_points_geojson(
     lgacode: Optional[str] = None,
     limit: int = 5000,
 ) -> Dict[str, Any]:
-    """Return GeoJSON for GPS points, filtered by settlement/ward/LGA."""
+    """
+    Return GeoJSON for MDA household GPS points, coloured by grid intersection.
+    Each feature has in_grid=true (green) if the point falls inside any grid cell,
+    or in_grid=false (red) if it does not intersect any grid.
+    All layers are in EPSG:4326 — no reprojection needed.
+    """
     params: Dict[str, Any] = {"project_id": project_id, "limit": limit}
-    join_clause = ""
-    filters = []
+    extra_join = ""
+    extra_filter = "h.geom IS NOT NULL"
 
     if unique_cod:
-        join_clause = """
-            JOIN settlements s ON s.project_id = p.project_id
-              AND ST_Within(p.geom, s.geom)
-              AND s.unique_cod = :unique_cod
+        # Spatially filter to points within the named settlement polygon
+        extra_join = """
+            JOIN settlements s
+              ON s.project_id = :project_id
+             AND s.unique_cod  = :unique_cod
+             AND ST_Within(h.geom, s.geom)
         """
         params["unique_cod"] = unique_cod
     elif wardcode:
-        join_clause = """
-            JOIN wards w ON w.project_id = p.project_id
-              AND ST_Within(p.geom, w.geom)
-              AND w.wardcode = :wardcode
+        extra_join = """
+            JOIN wards w
+              ON w.project_id = :project_id
+             AND w.wardcode    = :wardcode
+             AND ST_Within(h.geom, w.geom)
         """
         params["wardcode"] = wardcode
     elif lgacode:
-        join_clause = """
-            JOIN lgas l ON l.project_id = p.project_id
-              AND ST_Within(p.geom, l.geom)
-              AND l.lgacode = :lgacode
+        extra_join = """
+            JOIN lgas l
+              ON l.project_id = :project_id
+             AND l.lgacode     = :lgacode
+             AND ST_Within(h.geom, l.geom)
         """
         params["lgacode"] = lgacode
 
     result = await db.execute(
         text(f"""
             SELECT
-                p.id,
-                p.latitude,
-                p.longitude,
-                p.collection_date,
-                p.timestamp,
-                p.research_assistant,
-                p.lga_name,
-                p.ward_name,
-                p.settlement_name,
-                ST_AsGeoJSON(p.geom)::json AS geometry
-            FROM points_raw p
-            {join_clause}
-            WHERE p.project_id = :project_id
-            ORDER BY p.timestamp DESC NULLS LAST
+                h.id,
+                h.latitude,
+                h.longitude,
+                h.date_trt          AS collection_date,
+                h.started_time      AS timestamp,
+                h.hq_user           AS research_assistant,
+                h.lga               AS lga_name,
+                h.ward_name,
+                -- in_grid: pre-computed flag (TRUE = point inside a grid cell = green dot)
+                h.in_grid,
+                ST_AsGeoJSON(h.geom, 6)::json AS geometry
+            FROM mda_households h
+            {extra_join}
+            WHERE {extra_filter}
+            ORDER BY h.started_time DESC NULLS LAST
             LIMIT :limit
         """),
         params,
@@ -288,15 +296,15 @@ async def get_points_geojson(
             "type": "Feature",
             "geometry": row.geometry,
             "properties": {
-                "id": row.id,
-                "latitude": row.latitude,
-                "longitude": row.longitude,
-                "collection_date": str(row.collection_date) if row.collection_date else None,
-                "timestamp": str(row.timestamp) if row.timestamp else None,
-                "research_assistant": row.research_assistant,
-                "lga_name": row.lga_name,
-                "ward_name": row.ward_name,
-                "settlement_name": row.settlement_name,
+                "id":                  row.id,
+                "latitude":            row.latitude,
+                "longitude":           row.longitude,
+                "collection_date":     str(row.collection_date) if row.collection_date else None,
+                "timestamp":           str(row.timestamp)       if row.timestamp       else None,
+                "research_assistant":  row.research_assistant,
+                "lga_name":            row.lga_name,
+                "ward_name":           row.ward_name,
+                "in_grid":             bool(row.in_grid),
             },
         })
     return {"type": "FeatureCollection", "features": features}
@@ -308,8 +316,8 @@ async def spatial_join_points_to_grids(
     db: AsyncSession,
 ) -> List[str]:
     """
-    Find all grids intersected by new points (with 20m buffer).
-    Returns list of affected unique_cods.
+    Find all grids intersected by new MDA household GPS points (by household id).
+    Returns list of affected settlement unique_cods.
     """
     if not point_ids:
         return []
@@ -318,18 +326,18 @@ async def spatial_join_points_to_grids(
         text("""
             SELECT DISTINCT g.unique_cod
             FROM grids g
-            JOIN points_raw p ON p.project_id = g.project_id
-              AND ST_DWithin(
-                    p.geom::geography,
-                    ST_Centroid(g.geom)::geography,
-                    20
-                  )
+            JOIN mda_households h
+              ON h.geom IS NOT NULL
+             AND ST_Within(h.geom, g.geom)
             WHERE g.project_id = :project_id
-              AND p.id = ANY(:point_ids)
+              AND h.id = ANY(:point_ids)
         """),
         {"project_id": project_id, "point_ids": point_ids},
     )
     return [row.unique_cod for row in result.fetchall()]
+
+
+VISIT_THRESHOLD_PCT = 70  # Settlement is "visited" when completeness >= this %
 
 
 async def compute_settlement_analytics(
@@ -338,11 +346,17 @@ async def compute_settlement_analytics(
     db: AsyncSession,
 ) -> int:
     """
-    Recompute settlement_analytics for affected settlements.
+    Recompute settlement_analytics using MDA household GPS points (mda_households.geom).
+
+    - Visited grid  = grid cell that contains ≥1 mda_household point (ST_Within)
+    - Completeness  = visited_grids / total_grids × 100
+    - is_visited    = completeness_pct >= VISIT_THRESHOLD_PCT (70%)
+                      The map still renders each grid cell's individual green/red status.
+
     If unique_cods is None, recompute ALL settlements.
-    Returns count of updated rows.
     """
-    params: Dict[str, Any] = {"project_id": project_id}
+    params: Dict[str, Any] = {"project_id": project_id,
+                               "visit_threshold": VISIT_THRESHOLD_PCT}
     filter_clause = ""
     if unique_cods:
         filter_clause = "AND s.unique_cod = ANY(:unique_cods)"
@@ -357,7 +371,7 @@ async def compute_settlement_analytics(
                is_visited, point_count, last_computed)
             SELECT
                 s.project_id,
-                s.id AS settlement_id,
+                s.id                 AS settlement_id,
                 s.unique_cod,
                 s.lgacode,
                 s.wardcode,
@@ -365,48 +379,63 @@ async def compute_settlement_analytics(
                 s.lga_name,
                 s.ward_name,
                 COUNT(DISTINCT g.id) AS total_grids,
+
+                -- Visited grids: each grid cell that contains ≥1 MDA household GPS point
                 COUNT(DISTINCT CASE
                     WHEN EXISTS (
-                        SELECT 1 FROM points_raw p
-                        WHERE p.project_id = s.project_id
-                          AND ST_DWithin(
-                                p.geom::geography,
-                                ST_Centroid(g.geom)::geography,
-                                20
-                              )
+                        SELECT 1 FROM mda_households h
+                        WHERE h.geom IS NOT NULL
+                          AND ST_Within(h.geom, g.geom)
                     ) THEN g.id END
                 ) AS visited_grids,
+
+                -- Completeness %
                 CASE WHEN COUNT(DISTINCT g.id) > 0
                      THEN ROUND(100.0 * COUNT(DISTINCT CASE
                           WHEN EXISTS (
-                              SELECT 1 FROM points_raw p
-                              WHERE p.project_id = s.project_id
-                                AND ST_DWithin(
-                                      p.geom::geography,
-                                      ST_Centroid(g.geom)::geography,
-                                      20
-                                    )
+                              SELECT 1 FROM mda_households h
+                              WHERE h.geom IS NOT NULL
+                                AND ST_Within(h.geom, g.geom)
                           ) THEN g.id END
                      ) / NULLIF(COUNT(DISTINCT g.id), 0), 2)
                      ELSE 0 END AS completeness_pct,
-                COUNT(DISTINCT p2.id) > 0 AS is_visited,
-                COUNT(DISTINCT p2.id) AS point_count,
+
+                -- is_visited: completeness >= threshold OR any point within settlement polygon
+                CASE
+                    WHEN COUNT(DISTINCT g.id) > 0
+                    THEN (
+                        COUNT(DISTINCT CASE WHEN EXISTS (
+                            SELECT 1 FROM mda_households h
+                            WHERE h.geom IS NOT NULL AND ST_Within(h.geom, g.geom)
+                        ) THEN g.id END) * 100.0
+                        / NULLIF(COUNT(DISTINCT g.id), 0)
+                    ) >= :visit_threshold
+                    ELSE EXISTS (
+                        SELECT 1 FROM mda_households h2
+                        WHERE h2.geom IS NOT NULL AND ST_Within(h2.geom, s.geom)
+                    )
+                END AS is_visited,
+
+                -- Total household GPS points inside the settlement polygon
+                (SELECT COUNT(*) FROM mda_households h3
+                 WHERE h3.geom IS NOT NULL AND ST_Within(h3.geom, s.geom)
+                ) AS point_count,
+
                 NOW() AS last_computed
             FROM settlements s
-            LEFT JOIN grids g ON g.unique_cod = s.unique_cod AND g.project_id = s.project_id
-            LEFT JOIN points_raw p2 ON p2.project_id = s.project_id
-              AND ST_Within(p2.geom, s.geom)
+            LEFT JOIN grids g
+                   ON g.unique_cod  = s.unique_cod
+                  AND g.project_id  = s.project_id
             WHERE s.project_id = :project_id {filter_clause}
             GROUP BY s.project_id, s.id, s.unique_cod, s.lgacode, s.wardcode,
                      s.settlement_name, s.lga_name, s.ward_name
-            ON CONFLICT (project_id, settlement_id)
-            DO UPDATE SET
-                total_grids = EXCLUDED.total_grids,
-                visited_grids = EXCLUDED.visited_grids,
+            ON CONFLICT (project_id, settlement_id) DO UPDATE SET
+                total_grids      = EXCLUDED.total_grids,
+                visited_grids    = EXCLUDED.visited_grids,
                 completeness_pct = EXCLUDED.completeness_pct,
-                is_visited = EXCLUDED.is_visited,
-                point_count = EXCLUDED.point_count,
-                last_computed = EXCLUDED.last_computed
+                is_visited       = EXCLUDED.is_visited,
+                point_count      = EXCLUDED.point_count,
+                last_computed    = EXCLUDED.last_computed
         """),
         params,
     )

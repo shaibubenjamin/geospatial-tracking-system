@@ -1,145 +1,242 @@
-# Geospatial Coverage & Data Quality Monitoring System
+# SARMAAN MDA Monitoring Dashboard
+### Sokoto State Mass Drug Administration — Geospatial Coverage & Data Quality Platform
 
-A production-grade geospatial field data coverage and quality monitoring platform built with FastAPI, PostGIS, and MapLibre GL JS.
+Built with FastAPI · PostGIS · MapLibre GL JS · Chart.js
 
-## Features
+---
 
-- **Multi-project support** — Sokoto, Kano, and any future programs
-- **LGA → Ward → Settlement → Grid drill-down** navigation with live visitation bars
-- **MapLibre GL JS dashboard** with 5 toggleable layers and satellite/street/terrain basemaps
-- **Shapefile import** — LGA, Ward, Settlement, Grid boundaries (ZIP upload via admin panel)
-- **CSV GPS data ingestion** — validation preview, deduplication, incremental processing
-- **PostGIS spatial analytics** — grid intersection (20m buffer), completeness %, visitation %
-- **QC engine** — out-of-bound detection, time violations (outside 07:00–19:00), stacked point clustering
-- **Coverage timeline** with forecast toggle (Chart.js)
-- **JWT authentication** with admin/user roles
-- **Docker Compose** — PostGIS 15.4, FastAPI, Redis
+## Getting Started (New Team Member)
 
-## Quick Start
+### Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Docker Desktop | ≥ 4.x | https://www.docker.com/products/docker-desktop |
+| Git | any | https://git-scm.com |
+| Python | 3.10+ | https://www.python.org (for setup scripts only) |
+
+---
+
+### Step 1 — Clone the repository
 
 ```bash
-# 1. Copy environment file
-cp .env.example .env
-
-# 2. Start all services
-docker-compose up -d
-
-# 3. Open browser
-open http://localhost:8080
-# Login: admin / admin123
+git clone https://github.com/shaibubenjamin/geospatial-tracking-system.git
+cd geospatial-tracking-system
 ```
+
+---
+
+### Step 2 — Configure environment
+
+```bash
+# Copy the example env file (values are correct for local Docker)
+cp .env.example .env
+```
+
+The `.env.example` already contains all defaults needed for local development — no changes required unless deploying to a server.
+
+---
+
+### Step 3 — Start all services
+
+```bash
+docker-compose up -d
+```
+
+This starts three containers:
+
+| Container | External Port | Description |
+|-----------|-------------|-------------|
+| `geo_tracker_api` | **8090** → 8080 | FastAPI application |
+| `geo_tracker_db`  | **5433** → 5432 | PostGIS 15-3.4 database |
+| `geo_tracker_redis` | **6380** → 6379 | Redis cache |
+
+Wait ~15 seconds for the database to initialize, then open:
+
+```
+http://localhost:8090
+```
+
+---
+
+### Step 4 — Log in
+
+| Username | Password | Role |
+|----------|----------|------|
+| `admin`  | `admin123` | Administrator — full access |
+| `analyst` | `analyst123` | Analyst — view-only |
+| `viewer`  | `viewer123` | Viewer — view-only |
+
+> ⚠️ Change these passwords before deploying to any shared environment.
+
+---
+
+### Step 5 — Load boundaries and compute analytics
+
+The database starts empty. Run the boundary reload script to load the Sokoto shapefiles and compute settlement analytics.
+
+First install the Python dependency:
+
+```bash
+pip install psycopg2-binary
+```
+
+Then run (PowerShell on Windows):
+
+```powershell
+$env:DATABASE_URL_SYNC = "postgresql://geouser:geopass@localhost:5433/geospatial_tracker"
+$env:PYTHONIOENCODING = "utf-8"
+python scripts/reload_boundaries_and_compute.py
+```
+
+Or on Linux/macOS:
+
+```bash
+DATABASE_URL_SYNC="postgresql://geouser:geopass@localhost:5433/geospatial_tracker" \
+python scripts/reload_boundaries_and_compute.py
+```
+
+Expected output (takes ~30 seconds):
+
+```
+[1/5] Clearing existing boundaries ...
+[2a/5] Loading LGA boundaries — 23 inserted
+[2b/5] Loading Ward boundaries — 213 inserted
+[2c/5] Loading Settlement boundaries — 9473 inserted
+[2d/5] Loading Grid cells — 86511 inserted
+[3/5] Populating mda_households.geom ...
+[4/5] Computing settlement analytics ...
+[5/5] Summary: 23 LGAs · 213 Wards · 9473 Settlements · 86511 Grids
+✓ Done.
+```
+
+> **Shapefile location**: the script expects shapefiles at:
+> `C:\Users\Benjamin.shaibu\Downloads\SOKOTO MDA RESOURCE\SOKOTO MDA RESOURCE\`
+> Update the paths at the top of `scripts/reload_boundaries_and_compute.py` if your paths differ.
+
+---
+
+### Step 6 — (Optional) Upload MDA household data
+
+To populate the dashboard with field data, upload the MDA Excel workbook via the dashboard:
+
+1. Open `http://localhost:8090/mda`
+2. Click the **Upload** button (cloud icon) in the top bar
+3. Select the `SARMAAN Sokoto MLOS.xlsx` workbook
+4. Click **Upload MDA Data**
+
+After uploading, run the ward spatial join script to assign ward names:
+
+```powershell
+$env:DATABASE_URL_SYNC = "postgresql://geouser:geopass@localhost:5433/geospatial_tracker"
+$env:PYTHONIOENCODING = "utf-8"
+python scripts/update_ward_spatial.py
+```
+
+And pre-compute the `in_grid` flag for GPS points:
+
+```powershell
+python scripts/add_in_grid_column.py
+```
+
+---
+
+## Dashboard Pages
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:8090/` | Login |
+| `http://localhost:8090/home` | Welcome landing page |
+| `http://localhost:8090/mda` | SARMAAN MDA dashboard |
+| `http://localhost:8090/mda-admin` | Admin panel (admin only) |
+
+---
 
 ## Project Structure
 
 ```
-/app
-  main.py                          # FastAPI app + startup (table creation, seed data)
-  config.py                        # Environment config
-  database.py                      # Async SQLAlchemy + PostGIS engine
-  models.py                        # All ORM models with GeoAlchemy2 geometry columns
-  schemas.py                       # Pydantic request/response schemas
-  /routes
-    auth.py                        # Login, JWT, user management
-    projects.py                    # CRUD for geo_projects
-    boundaries.py                  # Shapefile upload + GeoJSON endpoints
-    ingestion.py                   # CSV upload, validation, background processing
-    analytics.py                   # Coverage/completeness metrics, timeline, compute trigger
-    qc.py                          # QC flag summary and listing
-  /services
-    spatial_engine.py              # PostGIS GeoJSON queries, spatial joins, analytics compute
-    aggregation_engine.py          # Settlement → Ward → LGA metric rollups
-    qc_engine.py                   # Out-of-bound, time violation, stacked point checks
-    boundary_importer.py           # pyshp + pyproj shapefile → PostGIS import
-/static
-  login.html                       # JWT login page
-  dashboard.html                   # MapLibre GL JS main dashboard
-  admin.html                       # Admin panel (projects, boundaries, data, compute)
-  /css/styles.css                  # Dark green theme
-  /js/dashboard.js                 # Map logic, drill-down nav, charts
-  /js/admin.js                     # Admin panel logic
+geospatial-tracking-system/
+├── app/
+│   ├── main.py                  # FastAPI entry point, startup, seeding
+│   ├── config.py                # Environment config
+│   ├── database.py              # Async SQLAlchemy + PostGIS engine
+│   ├── models.py                # ORM models
+│   ├── schemas.py               # Pydantic schemas
+│   └── routes/
+│       ├── auth.py              # JWT login, user management
+│       ├── mda.py               # MDA-specific API endpoints (overview, QC, coverage)
+│       ├── projects.py          # Project CRUD
+│       ├── boundaries.py        # GeoJSON boundary endpoints
+│       ├── analytics.py         # Settlement/ward/LGA analytics
+│       └── ingestion.py         # Excel/CSV upload
+│   └── services/
+│       ├── spatial_engine.py    # PostGIS queries, ST_Within, grid analytics
+│       └── qc_engine.py         # Data quality flag computation
+├── static/
+│   ├── login.html               # Login page
+│   ├── home.html                # Landing page
+│   ├── mda.html                 # Main MDA dashboard (MapLibre + Chart.js)
+│   └── mda-admin.html           # Admin panel
+├── scripts/
+│   ├── reload_boundaries_and_compute.py  # Load shapefiles + compute analytics
+│   ├── update_ward_spatial.py            # Assign ward_name to households via ST_Within
+│   └── add_in_grid_column.py             # Pre-compute in_grid flag
+├── docker-compose.yml
+├── Dockerfile
+└── .env.example
 ```
 
-## API Endpoints
+---
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/auth/login` | Login → JWT token |
-| GET | `/api/projects` | List all projects |
-| POST | `/api/projects` | Create project (admin) |
-| POST | `/api/projects/{id}/boundaries/lga` | Upload LGA shapefile ZIP |
-| POST | `/api/projects/{id}/boundaries/ward` | Upload Ward shapefile ZIP |
-| POST | `/api/projects/{id}/boundaries/settlement` | Upload Settlement shapefile ZIP |
-| POST | `/api/projects/{id}/boundaries/grid` | Upload Grid shapefile ZIP |
-| GET | `/api/projects/{id}/boundaries/lga/geojson` | LGA GeoJSON with analytics |
-| GET | `/api/projects/{id}/boundaries/ward/geojson` | Ward GeoJSON (filter by lgacode) |
-| GET | `/api/projects/{id}/boundaries/settlement/geojson` | Settlement GeoJSON (filter by lgacode/wardcode) |
-| GET | `/api/projects/{id}/boundaries/grid/geojson` | Grid cells GeoJSON (by unique_cod) |
-| POST | `/api/projects/{id}/ingest/validate` | Validate CSV without inserting |
-| POST | `/api/projects/{id}/ingest/upload` | Upload CSV → background processing |
-| GET | `/api/projects/{id}/analytics/summary` | Project-level summary stats |
-| GET | `/api/projects/{id}/analytics/lgas` | LGA metrics |
-| GET | `/api/projects/{id}/analytics/wards` | Ward metrics (filter by lgacode) |
-| GET | `/api/projects/{id}/analytics/settlements` | Settlement metrics |
-| GET | `/api/projects/{id}/analytics/timeline` | Coverage over time |
-| GET | `/api/projects/{id}/analytics/points/geojson` | GPS points GeoJSON |
-| POST | `/api/projects/{id}/analytics/compute` | Trigger full/incremental analytics |
-| GET | `/api/projects/{id}/qc/summary` | QC flag counts by type |
-| GET | `/api/projects/{id}/qc/flags` | Paginated QC flag list |
+## Key Technical Details
 
-## Shapefile Field Requirements
+### Coordinate System
+All geometry columns use **EPSG:4326** (WGS84 lat/lon). Shapefiles are reprojected from EPSG:3857 on import.
 
-All shapefiles are in **EPSG:3857** (Web Mercator) — reprojected to EPSG:4326 on import.
+### Spatial Logic
+- **Grid visitation**: `ST_Within(household.geom, grid.geom)` — a grid cell is green when ≥1 household GPS point falls inside it
+- **Settlement completeness**: `visited_grids / total_grids × 100` ≥ 70% → settlement marked as visited
+- **Ward/LGA completeness**: rolled up from settlement-level analytics
 
-| Layer | Required Fields |
-|-------|----------------|
-| LGA | `lgacode_` |
-| Ward | `lgacode_`, `Wardcode` |
-| Settlement | `lgacode_`, `Wardcode`, `unique_cod` |
-| Grid | `lgacode_`, `Wardcode`, `unique_cod` |
-
-## QC Checks
-
-- **Out of Bound** — Point claims LGA X but doesn't spatially fall there
-- **Time Violation** — Collection timestamp outside 07:00–19:00 UTC
-- **Stacked Points** — Clusters of >5 points within 5m radius (DBSCAN)
-
-## Docker Services
-
-| Service | Port | Description |
-|---------|------|-------------|
-| `api` | 8080 | FastAPI application |
-| `db` | 5432 | PostGIS 15-3.4 database |
-| `redis` | 6379 | Redis (optional caching) |
-
-## Environment Variables
-
-```env
-DATABASE_URL=postgresql+asyncpg://geouser:geopass@db:5432/geospatial_tracker
-DATABASE_URL_SYNC=postgresql://geouser:geopass@db:5432/geospatial_tracker
-SECRET_KEY=change-this-in-production
-ACCESS_TOKEN_EXPIRE_MINUTES=480
-ALGORITHM=HS256
-ENVIRONMENT=production
+### Database Connection (local)
+```
+Host:     localhost
+Port:     5433
+Database: geospatial_tracker
+User:     geouser
+Password: geopass
 ```
 
-## User Accounts
+Connect with any PostgreSQL client (DBeaver, psql, TablePlus) using these credentials.
 
-The following user accounts are seeded automatically on first startup:
+---
 
-| Username | Password | Role | Access |
-|----------|----------|------|--------|
-| `admin` | `admin123` | Administrator | Full admin access — data uploads, user management, admin panel |
-| `analyst` | `analyst123` | Analyst | View-only access to MDA dashboard and analytics |
-| `viewer` | `viewer123` | Viewer | View-only access to MDA dashboard and analytics |
+## Common Commands
 
-> **Security note:** Change all default passwords immediately in production environments.
+```bash
+# View running containers
+docker-compose ps
 
-### Pages
+# View API logs
+docker-compose logs -f api
 
-| URL | Description | Access |
-|-----|-------------|--------|
-| `/` | Login page | Public |
-| `/home` | Welcome / landing page | All authenticated users |
-| `/mda` | SARMAAN MDA dashboard | All authenticated users |
-| `/mda-admin` | MDA Admin panel | Admin only |
-| `/admin` | General geo admin panel | Admin only |
+# Restart API (after code changes)
+docker-compose restart api
+
+# Connect to database
+docker exec -it geo_tracker_db psql -U geouser -d geospatial_tracker
+
+# Stop everything
+docker-compose down
+
+# Stop and delete all data (fresh start)
+docker-compose down -v
+```
+
+---
+
+## GitHub Repository
+
+```
+https://github.com/shaibubenjamin/geospatial-tracking-system
+```
