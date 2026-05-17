@@ -55,6 +55,30 @@ async def lifespan(app: FastAPI):
             db.add(admin)
             logger.info("Created default admin user (admin/admin123)")
 
+        # Seed viewer user
+        result = await db.execute(select(User).where(User.username == "viewer"))
+        if not result.scalar_one_or_none():
+            viewer = User(
+                username="viewer",
+                email="viewer@geospatial.local",
+                hashed_password=hash_password("viewer123"),
+                is_admin=False,
+            )
+            db.add(viewer)
+            logger.info("Created viewer user (viewer/viewer123)")
+
+        # Seed analyst user
+        result = await db.execute(select(User).where(User.username == "analyst"))
+        if not result.scalar_one_or_none():
+            analyst = User(
+                username="analyst",
+                email="analyst@geospatial.local",
+                hashed_password=hash_password("analyst123"),
+                is_admin=False,
+            )
+            db.add(analyst)
+            logger.info("Created analyst user (analyst/analyst123)")
+
         # Seed Sokoto project
         result = await db.execute(select(GeoProject).where(GeoProject.slug == "sokoto"))
         if not result.scalar_one_or_none():
@@ -128,9 +152,19 @@ async def quality_page():
     return FileResponse(os.path.join(static_dir, "quality.html"))
 
 
+@app.get("/home")
+async def home_page():
+    return FileResponse(os.path.join(static_dir, "home.html"))
+
+
 @app.get("/mda")
 async def mda_dashboard():
     return FileResponse(os.path.join(static_dir, "mda.html"))
+
+
+@app.get("/mda-admin")
+async def mda_admin_page():
+    return FileResponse(os.path.join(static_dir, "mda-admin.html"))
 
 
 @app.get("/api/health")

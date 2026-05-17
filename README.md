@@ -122,6 +122,24 @@ ALGORITHM=HS256
 ENVIRONMENT=production
 ```
 
-## Default Credentials
+## User Accounts
 
-Login: `admin` / `admin123` — change immediately in production.
+The following user accounts are seeded automatically on first startup:
+
+| Username | Password | Role | Access |
+|----------|----------|------|--------|
+| `admin` | `admin123` | Administrator | Full admin access — data uploads, user management, admin panel |
+| `analyst` | `analyst123` | Analyst | View-only access to MDA dashboard and analytics |
+| `viewer` | `viewer123` | Viewer | View-only access to MDA dashboard and analytics |
+
+> **Security note:** Change all default passwords immediately in production environments.
+
+### Pages
+
+| URL | Description | Access |
+|-----|-------------|--------|
+| `/` | Login page | Public |
+| `/home` | Welcome / landing page | All authenticated users |
+| `/mda` | SARMAAN MDA dashboard | All authenticated users |
+| `/mda-admin` | MDA Admin panel | Admin only |
+| `/admin` | General geo admin panel | Admin only |
