@@ -543,8 +543,10 @@ async def upload_mda(
 
 @router.get("/qc/summary")
 async def qc_summary(
-    lga: Optional[str] = None,
-    ward: Optional[str] = None,
+    lga:       Optional[str] = None,
+    ward:      Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):
@@ -556,6 +558,8 @@ async def qc_summary(
     if ward:
         filters.append("ward_name = :ward")
         params["ward"] = ward
+    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
     result = await db.execute(text(f"""
         SELECT
@@ -772,16 +776,20 @@ async def submissions_by_ward(
 
 @router.get("/qc/teams-summary")
 async def qc_teams_summary(
-    lga:  Optional[str] = None,
-    ward: Optional[str] = None,
+    lga:       Optional[str] = None,
+    ward:      Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _u: User = Depends(get_current_user),
 ):
     """Per-team: total forms, forms with ≥1 error, error rate, and error type counts."""
     filters: list = ["hq_user IS NOT NULL"]
     params: dict = {}
-    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if lga:       filters.append("lga = :lga");       params["lga"]  = lga
+    if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
+    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = "WHERE " + " AND ".join(filters)
     result = await db.execute(text(f"""
         SELECT
@@ -887,14 +895,18 @@ async def gps_duplicate(db: AsyncSession = Depends(get_db), _u: User = Depends(g
 
 @router.get("/overview")
 async def mda_overview(
-    lga:  Optional[str] = None,
-    ward: Optional[str] = None,
+    lga:       Optional[str] = None,
+    ward:      Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _u: User = Depends(get_current_user),
 ):
     filters, params = [], {}
-    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if lga:       filters.append("lga = :lga");       params["lga"]  = lga
+    if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
+    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = ("WHERE " + " AND ".join(filters)) if filters else ""
     result = await db.execute(text(f"""
         SELECT
@@ -937,15 +949,19 @@ async def mda_overview(
 
 @router.get("/trends/daily")
 async def mda_trends_daily(
-    lga:  Optional[str] = None,
-    ward: Optional[str] = None,
+    lga:       Optional[str] = None,
+    ward:      Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _u: User = Depends(get_current_user),
 ):
     filters = ["check_treatment_date IS NOT NULL"]
     params: dict = {}
-    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if lga:       filters.append("lga = :lga");       params["lga"]  = lga
+    if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
+    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = "WHERE " + " AND ".join(filters)
     result = await db.execute(text(f"""
         SELECT
@@ -1008,8 +1024,22 @@ async def mda_teams(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/coverage/lga")
-async def mda_coverage_lga(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
-    result = await db.execute(text("""
+async def mda_coverage_lga(
+    lga:       Optional[str] = None,
+    ward:      Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    filters: list = []
+    params: dict = {}
+    if lga:       filters.append("h.lga = :lga");           params["lga"]  = lga
+    if ward:      filters.append("h.ward_name = :ward");    params["ward"] = ward
+    if date_from: filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    result = await db.execute(text(f"""
         SELECT
           h.lga,
           COUNT(*) AS forms,
@@ -1025,9 +1055,10 @@ async def mda_coverage_lga(db: AsyncSession = Depends(get_db), _u: User = Depend
           SELECT UPPER(TRIM(lga)) AS lga, SUM(total_treated) AS baseline_total
           FROM mda_baseline GROUP BY UPPER(TRIM(lga))
         ) b ON UPPER(TRIM(h.lga)) = b.lga
+        {where}
         GROUP BY h.lga, b.baseline_total
         ORDER BY coverage_pct DESC
-    """))
+    """), params)
     rows = result.fetchall()
     keys = ["lga","forms","actual_treated","baseline_total","coverage_pct","teams","days_reported"]
     return [dict(zip(keys, row)) for row in rows]
@@ -1215,6 +1246,35 @@ async def teams_movement_geojson(
         for r in rows
     ]
     return {"type": "FeatureCollection", "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/campaign-dates  — dataset date boundaries for filter inputs
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/campaign-dates")
+async def campaign_dates(
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """Returns min/max completed_time dates plus list of all distinct dates."""
+    result = await db.execute(text("""
+        SELECT
+          MIN(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS min_date,
+          MAX(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS max_date,
+          array_agg(DISTINCT (completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
+                    ORDER BY (completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS dates
+        FROM mda_households
+        WHERE completed_time IS NOT NULL
+    """))
+    row = result.fetchone()
+    if not row or not row[0]:
+        return {"min_date": None, "max_date": None, "dates": []}
+    return {
+        "min_date": str(row[0]),
+        "max_date": str(row[1]),
+        "dates":    [str(d) for d in (row[2] or [])],
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
