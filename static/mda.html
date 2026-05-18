@@ -93,6 +93,19 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .filter select,.filter input{border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;outline:none;transition:border-color .15s}
 .filter select:focus,.filter input:focus{border-color:var(--blue)}
 
+/* ── Multi-date picker ── */
+.dp-wrap{position:relative;min-width:160px}
+.dp-btn{border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;transition:border-color .15s;user-select:none}
+.dp-btn:hover,.dp-btn.open{border-color:var(--blue)}
+.dp-btn i{color:var(--muted);font-size:10px;flex-shrink:0;transition:transform .15s}
+.dp-btn.open i{transform:rotate(180deg)}
+.dp-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:200;background:#fff;border:1.5px solid var(--line);border-radius:9px;box-shadow:0 6px 24px rgba(0,0,0,.13);padding:6px;min-width:180px;max-height:280px;overflow-y:auto}
+.dp-panel.open{display:block}
+.dp-opt{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:5px;cursor:pointer;font-size:12.5px;user-select:none;white-space:nowrap}
+.dp-opt:hover{background:var(--mist)}
+.dp-opt.all-opt{font-weight:700;color:var(--deep);border-bottom:1px solid var(--line);margin-bottom:3px;padding-bottom:7px}
+.dp-opt input[type=checkbox]{accent-color:var(--blue);width:13px;height:13px;cursor:pointer;flex-shrink:0}
+
 /* ===== KPI CARDS ===== */
 .kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 .kpi-grid.cols-6{grid-template-columns:repeat(3,1fr)}
@@ -352,8 +365,13 @@ tbody tr:hover{background:var(--pale)}
         </div>
 
         <div class="filters">
-          <div class="filter" style="min-width:120px"><label>From Date</label><input type="date" id="f-date-from" onchange="applyFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;outline:none;width:100%"></div>
-          <div class="filter" style="min-width:120px"><label>To Date</label><input type="date" id="f-date-to" onchange="applyFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;outline:none;width:100%"></div>
+          <div class="filter dp-wrap" id="f-dates-wrap"><label>Date(s)</label>
+            <div class="dp-btn" id="f-dates-btn" onclick="dpToggle('f-dates')">All Dates <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="dp-panel" id="f-dates-panel">
+              <label class="dp-opt all-opt"><input type="checkbox" id="f-dates-all" checked onchange="dpAllToggle('f-dates',this)"> All Dates</label>
+              <div id="f-dates-list"></div>
+            </div>
+          </div>
           <div class="filter"><label>LGA</label><select id="f-lga" onchange="loadWardOptions(this.value,'f-ward').then(applyFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="f-ward" onchange="applyFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary" onclick="applyFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
@@ -543,8 +561,13 @@ tbody tr:hover{background:var(--pale)}
 
         <!-- Coverage filters -->
         <div class="filters" style="margin-bottom:12px">
-          <div class="filter" style="min-width:110px"><label>From Date</label><input type="date" id="cov-f-date-from" onchange="applyCovFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
-          <div class="filter" style="min-width:110px"><label>To Date</label><input type="date" id="cov-f-date-to" onchange="applyCovFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
+          <div class="filter dp-wrap" id="cov-dates-wrap"><label>Date(s)</label>
+            <div class="dp-btn" id="cov-dates-btn" onclick="dpToggle('cov-dates')">All Dates <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="dp-panel" id="cov-dates-panel">
+              <label class="dp-opt all-opt"><input type="checkbox" id="cov-dates-all" checked onchange="dpAllToggle('cov-dates',this)"> All Dates</label>
+              <div id="cov-dates-list"></div>
+            </div>
+          </div>
           <div class="filter"><label>LGA</label><select id="cov-f-lga" onchange="loadWardOptions(this.value,'cov-f-ward').then(applyCovFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="cov-f-ward" onchange="applyCovFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyCovFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
@@ -612,8 +635,13 @@ tbody tr:hover{background:var(--pale)}
 
         <!-- QC summary filters -->
         <div class="filters" style="margin-bottom:12px">
-          <div class="filter" style="min-width:110px"><label>From Date</label><input type="date" id="qc-f-date-from" onchange="applyQCFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
-          <div class="filter" style="min-width:110px"><label>To Date</label><input type="date" id="qc-f-date-to" onchange="applyQCFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
+          <div class="filter dp-wrap" id="qc-dates-wrap"><label>Date(s)</label>
+            <div class="dp-btn" id="qc-dates-btn" onclick="dpToggle('qc-dates')">All Dates <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="dp-panel" id="qc-dates-panel">
+              <label class="dp-opt all-opt"><input type="checkbox" id="qc-dates-all" checked onchange="dpAllToggle('qc-dates',this)"> All Dates</label>
+              <div id="qc-dates-list"></div>
+            </div>
+          </div>
           <div class="filter"><label>LGA</label><select id="qc-f-lga" onchange="loadWardOptions(this.value,'qc-f-ward').then(applyQCFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="qc-f-ward" onchange="applyQCFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyQCFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
@@ -753,9 +781,9 @@ tbody tr:hover{background:var(--pale)}
           </div>
           <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
             <div class="kpi-icon-strip"><i class="fa-solid fa-layer-group" style="font-size:13px"></i></div>
-            <div class="lbl">Avg Grid Completeness</div>
+            <div class="lbl">Overall Grid Completeness</div>
             <div class="val" style="font-size:22px;color:var(--warn)" id="geo-avg-completeness">&mdash;</div>
-            <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements &ge;60% complete · <i>grids visited ÷ total grids per settlement</i></div>
+            <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements &ge;60% complete · <i>total grids visited ÷ total grids across all settlements</i></div>
           </div>
           <!-- hidden but still set by JS for back-compat -->
           <span id="geo-ward-active-count" style="display:none"></span>
@@ -850,7 +878,9 @@ tbody tr:hover{background:var(--pale)}
               <select id="geo-team-select" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter to a specific team">
                 <option value="">All Teams</option>
               </select>
-              <input type="date" id="geo-movement-date" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer" onchange="geoFilterMovement()" title="Filter by date">
+              <select id="geo-movement-date" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter by date">
+                <option value="">All Dates</option>
+              </select>
               <button class="geo-ctrl-btn" id="geo-btn-clear" onclick="geoClearOverlays()" title="Clear all overlays" style="margin-left:auto;color:var(--muted)">
                 <i class="fa-solid fa-eraser"></i> Clear
               </button>
@@ -1206,8 +1236,7 @@ tbody tr:hover{background:var(--pale)}
   async function applyFilter() {
     FILTER.lga  = (document.getElementById('f-lga')  || {}).value || '';
     FILTER.ward = (document.getElementById('f-ward') || {}).value || '';
-    const df = document.getElementById('f-date-from')?.value || '';
-    const dt = document.getElementById('f-date-to')?.value   || '';
+    const { date_from: df, date_to: dt } = dpGetDates('f-dates');
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
     const txt = document.getElementById('active-filter-text');
@@ -1234,7 +1263,8 @@ tbody tr:hover{background:var(--pale)}
   function resetFilter() {
     FILTER = { lga: '', ward: '' };
     CHART_FILTER = { lga: null, date: null, ageGroup: null };
-    ['f-lga','f-ward','f-date-from','f-date-to'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    ['f-lga','f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    dpReset('f-dates');
     const wSel = document.getElementById('f-ward'); if (wSel) while (wSel.options.length > 1) wSel.remove(1);
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
@@ -1280,26 +1310,119 @@ tbody tr:hover{background:var(--pale)}
   window.loadWardOptions  = loadWardOptions;
   window.preloadAllWards  = preloadAllWards;
 
-  /* ── Campaign date boundaries — set min/max on all date inputs ── */
+  /* ── Multi-date picker ── */
+  // Populate all date pickers from campaign-dates API
   async function preloadCampaignDates() {
     const data = await api('/api/mda/campaign-dates');
     if (!data || !data.min_date) return;
-    const { min_date, max_date } = data;
-    const dateInputIds = [
-      'f-date-from','f-date-to',
-      'cov-f-date-from','cov-f-date-to',
-      'qc-f-date-from','qc-f-date-to',
-    ];
-    dateInputIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.min = min_date;
-      el.max = max_date;
-    });
-    // Store dates for the geo movement date input (applied when movement is activated)
     window._campaignDates = data;
+    const pickers = ['f-dates', 'cov-dates', 'qc-dates'];
+    pickers.forEach(pid => dpPopulate(pid, data.dates || []));
   }
   window.preloadCampaignDates = preloadCampaignDates;
+
+  // Build the checkbox list inside a picker panel
+  function dpPopulate(pid, dates) {
+    const list = document.getElementById(pid + '-list');
+    if (!list) return;
+    list.innerHTML = dates.map(d => {
+      const label = new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+      return `<label class="dp-opt"><input type="checkbox" data-date="${d}" onchange="dpItemChange('${pid}',this)"> ${label}</label>`;
+    }).join('');
+  }
+
+  // Toggle panel open/close
+  function dpToggle(pid) {
+    const btn   = document.getElementById(pid + '-btn');
+    const panel = document.getElementById(pid + '-panel');
+    if (!btn || !panel) return;
+    const isOpen = panel.classList.contains('open');
+    // Close all other pickers first
+    document.querySelectorAll('.dp-panel.open').forEach(p => {
+      p.classList.remove('open');
+      const b = document.getElementById(p.id.replace('-panel','-btn'));
+      if (b) b.classList.remove('open');
+    });
+    if (!isOpen) { panel.classList.add('open'); btn.classList.add('open'); }
+  }
+  window.dpToggle = dpToggle;
+
+  // "All Dates" checkbox toggled
+  function dpAllToggle(pid, allCb) {
+    const list = document.getElementById(pid + '-list');
+    if (!list) return;
+    list.querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = allCb.checked; });
+    dpUpdateLabel(pid);
+  }
+  window.dpAllToggle = dpAllToggle;
+
+  // Individual date checkbox toggled
+  function dpItemChange(pid, cb) {
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (!list) return;
+    const all  = [...list.querySelectorAll('input[type=checkbox][data-date]')];
+    const none = all.every(c => !c.checked);
+    // If none checked, re-check "All"
+    if (none && allCb) { allCb.checked = true; all.forEach(c => c.checked = true); }
+    // Uncheck "All" if any specific date is (un)checked
+    if (allCb) allCb.checked = all.every(c => c.checked);
+    dpUpdateLabel(pid);
+  }
+  window.dpItemChange = dpItemChange;
+
+  // Update the button label to reflect selection
+  function dpUpdateLabel(pid) {
+    const btn  = document.getElementById(pid + '-btn');
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (!btn || !list) return;
+    const all     = [...list.querySelectorAll('input[type=checkbox][data-date]')];
+    const checked = all.filter(c => c.checked);
+    let label;
+    if (!all.length || (allCb && allCb.checked) || checked.length === all.length) {
+      label = 'All Dates';
+    } else if (checked.length === 0) {
+      label = 'No dates';
+    } else {
+      label = checked.length + ' of ' + all.length + ' dates';
+    }
+    // Update button text (preserve icon)
+    btn.childNodes[0].textContent = label + ' ';
+  }
+
+  // Get date_from / date_to for a picker — returns {} if all selected
+  function dpGetDates(pid) {
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (!list) return {};
+    if (allCb && allCb.checked) return {};
+    const checked = [...list.querySelectorAll('input[type=checkbox][data-date]')]
+      .filter(c => c.checked).map(c => c.dataset.date).sort();
+    if (!checked.length) return {};
+    return { date_from: checked[0], date_to: checked[checked.length - 1] };
+  }
+
+  // Reset a picker back to "All Dates"
+  function dpReset(pid) {
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (allCb) allCb.checked = true;
+    if (list) list.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = true);
+    dpUpdateLabel(pid);
+  }
+  window.dpReset = dpReset;
+
+  // Close picker when clicking outside
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.dp-wrap')) {
+      document.querySelectorAll('.dp-panel.open').forEach(p => {
+        p.classList.remove('open');
+        const b = document.getElementById(p.id.replace('-panel','-btn'));
+        if (b) b.classList.remove('open');
+      });
+    }
+  }, true);
 
 
   /* ── Fuzzy string similarity (normalised edit distance) ── */
@@ -1361,10 +1484,11 @@ tbody tr:hover{background:var(--pale)}
   let COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
 
   async function applyCovFilter() {
-    COV_FILTER.lga       = (document.getElementById('cov-f-lga')       || {}).value || '';
-    COV_FILTER.ward      = (document.getElementById('cov-f-ward')      || {}).value || '';
-    COV_FILTER.date_from = (document.getElementById('cov-f-date-from') || {}).value || '';
-    COV_FILTER.date_to   = (document.getElementById('cov-f-date-to')   || {}).value || '';
+    COV_FILTER.lga  = (document.getElementById('cov-f-lga')  || {}).value || '';
+    COV_FILTER.ward = (document.getElementById('cov-f-ward') || {}).value || '';
+    const { date_from, date_to } = dpGetDates('cov-dates');
+    COV_FILTER.date_from = date_from || '';
+    COV_FILTER.date_to   = date_to   || '';
     const hasFilter = COV_FILTER.lga || COV_FILTER.ward || COV_FILTER.date_from || COV_FILTER.date_to;
     const label = document.getElementById('cov-filter-label');
     const resetBtn = document.getElementById('cov-reset-btn');
@@ -1419,7 +1543,8 @@ tbody tr:hover{background:var(--pale)}
 
   function resetCovFilter() {
     COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
-    ['cov-f-lga','cov-f-ward','cov-f-date-from','cov-f-date-to'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    ['cov-f-lga','cov-f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    dpReset('cov-dates');
     const cwSel = document.getElementById('cov-f-ward'); if (cwSel) while (cwSel.options.length > 1) cwSel.remove(1);
     document.getElementById('cov-filter-label') && (document.getElementById('cov-filter-label').style.display='none');
     document.getElementById('cov-reset-btn')    && (document.getElementById('cov-reset-btn').style.display='none');
@@ -1673,8 +1798,7 @@ tbody tr:hover{background:var(--pale)}
     const params = [];
     if (qcFilterLGA)  params.push('lga='  + encodeURIComponent(qcFilterLGA));
     if (qcFilterWard) params.push('ward=' + encodeURIComponent(qcFilterWard));
-    const qcDf = document.getElementById('qc-f-date-from')?.value || '';
-    const qcDt = document.getElementById('qc-f-date-to')?.value   || '';
+    const { date_from: qcDf, date_to: qcDt } = dpGetDates('qc-dates');
     if (qcDf) params.push('date_from=' + encodeURIComponent(qcDf));
     if (qcDt) params.push('date_to='   + encodeURIComponent(qcDt));
     const qs = params.length ? '?' + params.join('&') : '';
@@ -1869,8 +1993,7 @@ tbody tr:hover{background:var(--pale)}
   }
 
   async function _reloadOverviewKPIs() {
-    const df = document.getElementById('f-date-from')?.value || '';
-    const dt = document.getElementById('f-date-to')?.value   || '';
+    const { date_from: df, date_to: dt } = dpGetDates('f-dates');
     const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
     const [ov, daily] = await Promise.all([
       api('/api/mda/overview' + qs),
@@ -2150,8 +2273,7 @@ tbody tr:hover{background:var(--pale)}
   }
 
   async function buildAgeBandChart() {
-    const df = document.getElementById('f-date-from')?.value || '';
-    const dt = document.getElementById('f-date-to')?.value   || '';
+    const { date_from: df, date_to: dt } = dpGetDates('f-dates');
     const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
     const d  = await api('/api/mda/individuals/age-summary' + qs) || {};
     _renderAgeSummary(d);
@@ -2669,7 +2791,7 @@ tbody tr:hover{background:var(--pale)}
   async function _loadGeoCompleteness() {
     const result = await api('/api/mda/geo/completeness');
     if (!result) return;
-    setEl('geo-avg-completeness', result.avg_completeness.toFixed(1) + '%');
+    setEl('geo-avg-completeness', result.overall_completeness.toFixed(1) + '%');
     setEl('geo-completed-count', result.completed_60.toLocaleString());
   }
   async function loadGeoMetricsWard(lgacode) {
@@ -3189,10 +3311,14 @@ tbody tr:hover{background:var(--pale)}
     geoMap.getSource('movement-pts-src').setData(fc);
     if (dateSel) {
       dateSel.style.display = 'block';
-      // Apply campaign date boundaries now that the input is visible
-      if (window._campaignDates) {
-        dateSel.min = window._campaignDates.min_date || '';
-        dateSel.max = window._campaignDates.max_date || '';
+      // Populate with campaign dates if not already done
+      if (dateSel.options.length <= 1 && window._campaignDates?.dates?.length) {
+        window._campaignDates.dates.forEach(d => {
+          const o = document.createElement('option');
+          o.value = d;
+          o.textContent = new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short' });
+          dateSel.appendChild(o);
+        });
       }
     }
     if (teamSel) {
@@ -3316,8 +3442,7 @@ tbody tr:hover{background:var(--pale)}
     const wardSel = document.getElementById('qc-f-ward');
     qcFilterLGA  = lgaSel  ? lgaSel.value  : '';
     qcFilterWard = wardSel ? wardSel.value : '';
-    const qcDf = document.getElementById('qc-f-date-from')?.value || '';
-    const qcDt = document.getElementById('qc-f-date-to')?.value   || '';
+    const { date_from: qcDf, date_to: qcDt } = dpGetDates('qc-dates');
     const label    = document.getElementById('qc-filter-label');
     const resetBtn = document.getElementById('qc-reset-btn');
     const txt      = document.getElementById('qc-filter-text');
@@ -3337,7 +3462,7 @@ tbody tr:hover{background:var(--pale)}
     const wardSel = document.getElementById('qc-f-ward');
     if (lgaSel)  lgaSel.value  = '';
     if (wardSel) { wardSel.value = ''; while (wardSel.options.length > 1) wardSel.remove(1); }
-    ['qc-f-date-from','qc-f-date-to'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+    dpReset('qc-dates');
     document.getElementById('qc-filter-label') && (document.getElementById('qc-filter-label').style.display = 'none');
     document.getElementById('qc-reset-btn')    && (document.getElementById('qc-reset-btn').style.display = 'none');
     ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
