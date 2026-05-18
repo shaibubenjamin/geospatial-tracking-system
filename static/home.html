@@ -436,7 +436,7 @@
 
   <!-- Topbar -->
   <nav class="topbar">
-    <a href="/home" class="topbar-brand">
+    <a href="/" class="topbar-brand">
       <div class="topbar-logo"><i class="fa-solid fa-leaf"></i></div>
       <div>
         <div class="topbar-name">SARMAAN MDA</div>
@@ -444,22 +444,27 @@
       </div>
     </a>
     <div class="topbar-spacer"></div>
-    <div class="topbar-user">
+    <!-- Authenticated user chip (only shown if signed in) -->
+    <div class="topbar-user" id="auth-user-chip" style="display:none">
       <div class="topbar-avatar" id="user-avatar">?</div>
       <div>
         <div class="topbar-username" id="user-name">—</div>
         <div class="topbar-role" id="user-role">—</div>
       </div>
     </div>
-    <button class="topbar-logout" onclick="handleLogout()">
+    <button class="topbar-logout" id="auth-signout-btn" onclick="handleLogout()" style="display:none">
       <i class="fa-solid fa-right-from-bracket"></i> Sign out
     </button>
+    <!-- Public sign-in entry (only shown if NOT signed in) -->
+    <a href="/login" class="topbar-logout" id="public-signin-btn">
+      <i class="fa-solid fa-right-to-bracket"></i> Admin sign in
+    </a>
   </nav>
 
   <!-- Hero -->
   <div class="hero">
     <div class="hero-inner">
-      <div class="welcome-greeting">Welcome back, <strong id="hero-username">—</strong></div>
+      <div class="welcome-greeting" id="welcome-greeting"><strong>Public view</strong> &mdash; no sign-in required</div>
       <div class="hero-eyebrow">
         <i class="fa-solid fa-circle-dot" style="font-size:8px"></i>
         Active Campaign &nbsp;·&nbsp; Sokoto State 2026
@@ -474,14 +479,25 @@
       </p>
 
       <div class="action-cards">
-        <a href="/mda" class="action-card action-card-primary">
+        <!-- Public CTA: View Dashboard -->
+        <a href="/dashboard" class="action-card action-card-primary" id="cta-view-dashboard">
           <div class="action-card-icon"><i class="fa-solid fa-gauge-high"></i></div>
           <div class="action-card-text">
-            <div class="action-card-label">Open Dashboard</div>
-            <div class="action-card-hint">Coverage · QC · Maps · Teams</div>
+            <div class="action-card-label" id="cta-view-label">View Dashboard</div>
+            <div class="action-card-hint" id="cta-view-hint">Coverage · QC · Maps · Teams &middot; view-only</div>
           </div>
           <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.75"></i>
         </a>
+        <!-- Public CTA: Admin Portal (sign-in) — shown when not authenticated -->
+        <a href="/login" class="action-card action-card-secondary" id="cta-admin-portal">
+          <div class="action-card-icon"><i class="fa-solid fa-shield-halved"></i></div>
+          <div class="action-card-text">
+            <div class="action-card-label">Admin Portal</div>
+            <div class="action-card-hint">Sign in for full access &middot; data uploads · users</div>
+          </div>
+          <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.75"></i>
+        </a>
+        <!-- Authenticated CTA: Admin Panel — shown when signed-in user is admin -->
         <a href="/mda-admin" class="action-card action-card-secondary" id="admin-card" style="display:none">
           <div class="action-card-icon"><i class="fa-solid fa-screwdriver-wrench"></i></div>
           <div class="action-card-text">
@@ -658,25 +674,46 @@
   </footer>
 
   <script>
-    const token    = localStorage.getItem('token');
-    const username = localStorage.getItem('username') || 'User';
-    const isAdmin  = localStorage.getItem('is_admin') === 'true';
-
-    if (!token) window.location.href = '/';
-
-    document.getElementById('hero-username').textContent = username;
-    document.getElementById('user-name').textContent     = username;
-    document.getElementById('user-avatar').textContent   = username.charAt(0).toUpperCase();
-    document.getElementById('user-role').textContent     = isAdmin ? 'Administrator' : 'Analyst / Viewer';
-
-    if (isAdmin) document.getElementById('admin-card').style.display = 'flex';
+    const token        = localStorage.getItem('token');
+    const username     = localStorage.getItem('username') || '';
+    const isAdmin      = localStorage.getItem('is_admin') === 'true';
+    const isSuperadmin = localStorage.getItem('is_superadmin') === 'true';
+    const isAuthed     = Boolean(token);
 
     function handleLogout() { localStorage.clear(); window.location.href = '/'; }
 
+    // Adjust topbar and CTAs based on auth state
+    if (isAuthed) {
+      // Authenticated: show user chip + sign-out, hide the public sign-in link
+      document.getElementById('auth-user-chip').style.display    = 'flex';
+      document.getElementById('auth-signout-btn').style.display  = 'flex';
+      document.getElementById('public-signin-btn').style.display = 'none';
+      document.getElementById('user-name').textContent   = username;
+      document.getElementById('user-avatar').textContent = (username || '?').charAt(0).toUpperCase();
+      document.getElementById('user-role').textContent   = isSuperadmin ? 'Superadmin' : (isAdmin ? 'Administrator' : 'Analyst / Viewer');
+
+      // Welcome greeting reflects authenticated state
+      const greet = document.getElementById('welcome-greeting');
+      if (greet) greet.innerHTML = 'Welcome back, <strong>' + (username || 'user') + '</strong>';
+
+      // Primary CTA goes to the dashboard (same route — JS auto-detects auth)
+      const cta = document.getElementById('cta-view-dashboard');
+      if (cta) cta.setAttribute('href', '/dashboard');
+      const lbl = document.getElementById('cta-view-label');
+      if (lbl) lbl.textContent = 'Open Dashboard';
+      const hint = document.getElementById('cta-view-hint');
+      if (hint) hint.textContent = 'Coverage · QC · Maps · Teams · full controls';
+
+      // Hide the public "Admin Portal" sign-in CTA, reveal the Admin Panel shortcut for admins
+      document.getElementById('cta-admin-portal').style.display = 'none';
+      if (isAdmin) document.getElementById('admin-card').style.display = 'flex';
+    }
+
     async function loadStats() {
       try {
-        const res = await fetch('/api/mda/overview', { headers: { Authorization: 'Bearer ' + token } });
-        if (res.status === 401) { handleLogout(); return; }
+        const headers = isAuthed ? { Authorization: 'Bearer ' + token } : {};
+        const res = await fetch('/api/mda/overview', { headers });
+        if (res.status === 401 && isAuthed) { handleLogout(); return; }
         if (!res.ok) return;
         const d   = await res.json();
         const fmt = n => n == null ? '—' : Number(n).toLocaleString();

@@ -172,6 +172,7 @@ class User(Base):
     email = Column(Text, unique=True)
     hashed_password = Column(Text, nullable=False)
     is_admin = Column(Boolean, default=False)
+    is_superadmin = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 

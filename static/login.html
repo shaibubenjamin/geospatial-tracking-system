@@ -423,9 +423,10 @@
   </div>
 
   <script>
-    // Redirect if already logged in
+    // Redirect if already logged in — superadmins to Admin Panel, others to Dashboard
     if (localStorage.getItem('token')) {
-      window.location.href = '/home';
+      const dest = localStorage.getItem('is_superadmin') === 'true' ? '/mda-admin' : '/dashboard';
+      window.location.href = dest;
     }
 
     // Password toggle
@@ -465,10 +466,12 @@
           errBox.classList.add('visible');
           return;
         }
-        localStorage.setItem('token',    data.access_token);
-        localStorage.setItem('username', data.username);
-        localStorage.setItem('is_admin', data.is_admin);
-        window.location.href = '/home';
+        localStorage.setItem('token',         data.access_token);
+        localStorage.setItem('username',      data.username);
+        localStorage.setItem('is_admin',      data.is_admin);
+        localStorage.setItem('is_superadmin', data.is_superadmin ? 'true' : 'false');
+        // Superadmins land on the Admin Panel (data control). Everyone else on the dashboard.
+        window.location.href = data.is_superadmin ? '/mda-admin' : '/dashboard';
       } catch {
         document.getElementById('error-msg').textContent = 'Network error — is the server running?';
         errBox.classList.add('visible');

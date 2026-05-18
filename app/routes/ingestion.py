@@ -15,7 +15,7 @@ from sqlalchemy import select, text
 from app.database import get_db
 from app.models import GeoProject, UploadBatch, PointRaw, User
 from app.schemas import ValidationSummary, UploadBatchOut
-from app.routes.auth import get_current_user, require_admin
+from app.routes.auth import get_current_user, require_superadmin
 from app.services.spatial_engine import (
     spatial_join_points_to_grids,
     compute_settlement_analytics,
@@ -105,7 +105,7 @@ async def upload_csv(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _super: User = Depends(require_superadmin),
 ):
     """Upload and persist GPS point data from CSV."""
     result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(docker info *)",
       "Bash(docker-compose build *)",
-      "Bash(docker-compose ps *)"
+      "Bash(docker-compose ps *)",
+      "Bash(docker-compose logs *)",
+      "Bash(curl -s http://localhost:8090/)",
+      "Bash(curl -s http://localhost:8090/login)"
     ]
   }
 }

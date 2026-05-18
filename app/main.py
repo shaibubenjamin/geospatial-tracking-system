@@ -14,6 +14,7 @@ from sqlalchemy import select, text
 from app.database import create_all_tables, AsyncSessionLocal
 from app.routes.auth import hash_password
 from app.models import User, GeoProject
+from app.config import SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD, SUPERADMIN_EMAIL
 from app.routes import auth, projects, boundaries, ingestion, analytics, qc
 from app.routes import mda as mda_route
 
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_gps_outside_state BOOLEAN DEFAULT FALSE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS check_treatment_date DATE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS hq_user TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 await db.execute(text(stmt))
@@ -43,6 +45,19 @@ async def lifespan(app: FastAPI):
         await db.commit()
 
     async with AsyncSessionLocal() as db:
+        # Seed default superadmin from env (only if no user with this username exists)
+        result = await db.execute(select(User).where(User.username == SUPERADMIN_USERNAME))
+        if not result.scalar_one_or_none():
+            superadmin = User(
+                username=SUPERADMIN_USERNAME,
+                email=SUPERADMIN_EMAIL,
+                hashed_password=hash_password(SUPERADMIN_PASSWORD),
+                is_admin=True,
+                is_superadmin=True,
+            )
+            db.add(superadmin)
+            logger.info(f"Created superadmin user ({SUPERADMIN_USERNAME})")
+
         # Seed default admin user
         result = await db.execute(select(User).where(User.username == "admin"))
         if not result.scalar_one_or_none():
@@ -131,34 +146,42 @@ if os.path.exists(static_dir):
 
 @app.get("/")
 async def root():
-    index = os.path.join(static_dir, "login.html")
+    """Landing page = welcome page with two clear entry points.
+
+    Shows the SARMAAN programme overview and live campaign stats, plus:
+      • "View Dashboard" → /dashboard (public, view-only)
+      • "Admin Portal"   → /login (sign in)
+
+    If the visitor is already authenticated, the page reskins itself
+    to show "Open Dashboard" + (for admins) "Admin Panel" instead.
+    """
+    index = os.path.join(static_dir, "home.html")
     if os.path.exists(index):
         return FileResponse(index)
     return {"message": "Geospatial Coverage API", "docs": "/docs"}
 
 
-@app.get("/dashboard")
-async def dashboard():
-    return FileResponse(os.path.join(static_dir, "dashboard.html"))
-
-
-@app.get("/admin")
-async def admin():
-    return FileResponse(os.path.join(static_dir, "admin.html"))
-
-
-@app.get("/quality")
-async def quality_page():
-    return FileResponse(os.path.join(static_dir, "quality.html"))
-
-
 @app.get("/home")
 async def home_page():
+    """Same welcome page; this is where /login redirects after sign-in."""
     return FileResponse(os.path.join(static_dir, "home.html"))
+
+
+@app.get("/login")
+async def login_page():
+    """Admin Portal sign-in."""
+    return FileResponse(os.path.join(static_dir, "login.html"))
+
+
+@app.get("/dashboard")
+async def dashboard_page():
+    """Dashboard. PUBLIC_MODE auto-detected from absence of auth token in browser."""
+    return FileResponse(os.path.join(static_dir, "mda.html"))
 
 
 @app.get("/mda")
 async def mda_dashboard():
+    """Alias for /dashboard, kept for backwards compatibility."""
     return FileResponse(os.path.join(static_dir, "mda.html"))
 
 

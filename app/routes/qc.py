@@ -6,7 +6,7 @@ from sqlalchemy import select, text
 from app.database import get_db
 from app.models import QCFlag, User
 from app.schemas import QCFlagOut, QCSummary
-from app.routes.auth import get_current_user
+from app.routes.auth import get_current_user, get_current_user_optional
 from app.services.qc_engine import get_qc_summary
 
 router = APIRouter(prefix="/projects/{project_id}/qc", tags=["qc"])
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/projects/{project_id}/qc", tags=["qc"])
 async def qc_summary(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     data = await get_qc_summary(project_id, db)
     return QCSummary(**data)
@@ -29,7 +29,7 @@ async def list_flags(
     limit: int = Query(100, le=1000),
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     query = select(QCFlag).where(QCFlag.project_id == project_id)
     if flag_type:
@@ -43,7 +43,7 @@ async def list_flags(
 async def field_qc_checks(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Run four field data quality checks against the raw points table:

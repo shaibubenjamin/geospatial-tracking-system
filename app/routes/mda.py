@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 from app.database import get_db
 from app.models import User
-from app.routes.auth import get_current_user, require_admin
+from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin
 from app.config import DATABASE_URL_SYNC
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ def _get_sync_conn():
 async def upload_mda(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     """
     Replace all MDA data with the uploaded Excel workbook.
@@ -548,7 +548,7 @@ async def qc_summary(
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     params: dict = {}
     filters: list = []
@@ -619,7 +619,7 @@ async def qc_summary(
 @router.get("/qc/ra-performance")
 async def qc_ra_performance(
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     result = await db.execute(text("""
         SELECT
@@ -661,7 +661,7 @@ async def qc_refusals_by_lga(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     params: dict = {}
     filters: list = []
@@ -702,7 +702,7 @@ async def qc_duration_by_lga(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     params: dict = {}
     filters: list = ["form_duration_min IS NOT NULL"]
@@ -746,7 +746,7 @@ async def submissions_by_ward(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Ward-level submission & treatment counts, used for chart drill-down."""
     filters = ["ward_name IS NOT NULL"]
@@ -781,7 +781,7 @@ async def qc_teams_summary(
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Per-team: total forms, forms with ≥1 error, error rate, and error type counts."""
     filters: list = ["hq_user IS NOT NULL"]
@@ -870,22 +870,22 @@ async def _gps_geojson(db: AsyncSession, where_clause: str, limit: int = 20000):
 
 
 @router.get("/qc/gps/outside-lga")
-async def gps_outside_lga(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+async def gps_outside_lga(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
     return await _gps_geojson(db, "flag_gps_outside_lga = TRUE")
 
 
 @router.get("/qc/gps/outside-ward")
-async def gps_outside_ward(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+async def gps_outside_ward(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
     return await _gps_geojson(db, "flag_gps_outside_ward = TRUE")
 
 
 @router.get("/qc/gps/outside-state")
-async def gps_outside_state(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+async def gps_outside_state(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
     return await _gps_geojson(db, "flag_gps_outside_state = TRUE")
 
 
 @router.get("/qc/gps/duplicate")
-async def gps_duplicate(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
+async def gps_duplicate(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
     return await _gps_geojson(db, "flag_duplicate_gps = TRUE")
 
 
@@ -900,7 +900,7 @@ async def mda_overview(
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     filters, params = [], {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
@@ -954,7 +954,7 @@ async def mda_trends_daily(
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     filters = ["check_treatment_date IS NOT NULL"]
     params: dict = {}
@@ -985,7 +985,7 @@ async def mda_teams(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     filters = ["hq_user IS NOT NULL"]
     params: dict = {}
@@ -1030,7 +1030,7 @@ async def mda_coverage_lga(
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     filters: list = []
     params: dict = {}
@@ -1072,7 +1072,7 @@ async def mda_coverage_lga(
 async def mda_coverage_ward(
     lga: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Ward-level coverage vs baseline, optionally filtered by LGA."""
     params: dict = {}
@@ -1115,7 +1115,7 @@ async def individuals_age_summary(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Age-band breakdown from mda_individuals, filterable by LGA and ward."""
     hh_filters = ["h.lga IS NOT NULL"]
@@ -1163,7 +1163,7 @@ async def individuals_age_summary(
 async def qc_heatmap_geojson(
     flag: str = "all",
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """GeoJSON of flagged GPS points for heatmap rendering in geo view."""
     where_map = {
@@ -1207,7 +1207,7 @@ async def teams_movement_geojson(
     hq_user: Optional[str] = None,
     date: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Timestamped GPS points for team movement visualisation."""
     params: dict = {}
@@ -1255,7 +1255,7 @@ async def teams_movement_geojson(
 @router.get("/campaign-dates")
 async def campaign_dates(
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Returns min/max completed_time dates plus list of all distinct dates."""
     result = await db.execute(text("""
@@ -1284,7 +1284,7 @@ async def campaign_dates(
 @router.get("/geo/completeness")
 async def geo_completeness(
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Returns average grid completeness % across all settlements and
@@ -1318,7 +1318,7 @@ async def geo_completeness(
 @router.get("/settlement-status/download")
 async def download_settlement_status(
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Download Excel file: LGA, Ward, Settlement, Visited (Yes/No), Completeness %."""
     result = await db.execute(text("""
@@ -1384,7 +1384,7 @@ async def download_settlement_status(
 async def get_ward_list(
     lga: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _u: User = Depends(get_current_user),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Return wards derived from GPS spatial intersection with ward boundaries.
@@ -1425,7 +1425,7 @@ async def get_ward_list(
 @router.post("/upload-mlos")
 async def upload_mlos(
     file: UploadFile = File(...),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     """
     Upload SARMAAN MLOS Excel file (columns: state_name, lga_name, ward_name,
@@ -1514,7 +1514,7 @@ async def upload_mlos(
 @router.post("/upload-baseline")
 async def upload_baseline(
     file: UploadFile = File(...),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     """Upload settlement_total_treated_pivot.xlsx (replaces existing baseline)."""
     if not file.filename.lower().endswith(".xlsx"):
