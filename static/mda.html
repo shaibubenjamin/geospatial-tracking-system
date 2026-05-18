@@ -542,7 +542,7 @@ tbody tr:hover{background:var(--pale)}
             </div>
           </div>
           <div style="max-height:360px;overflow-y:auto">
-            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th title="Jump to map view for this LGA"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="lga-table-body"></tbody></table>
+            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th style="text-align:center" title="Jump to map view for this LGA"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="lga-table-body"></tbody></table>
           </div>
         </div>
       </section>
@@ -615,7 +615,7 @@ tbody tr:hover{background:var(--pale)}
             </div>
           </div>
           <div style="max-height:400px;overflow-y:auto">
-            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th title="Jump to map"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="cov-lga-table-body"></tbody></table>
+            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th style="text-align:center" title="Jump to map"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="cov-lga-table-body"></tbody></table>
           </div>
         </div>
       </section>
@@ -1195,15 +1195,16 @@ tbody tr:hover{background:var(--pale)}
     tb.innerHTML = '';
     rows.forEach(r => {
       const cov = parseFloat(r.coverage_pct) || 0;
+      const lgaName = r.lga || '';
       const geoBtn = showGeoLink !== false
-        ? '<button class="lga-nav-btn" onclick="event.stopPropagation();navToGeoLGA(' + JSON.stringify(r.lga||'') + ')" title="View this LGA on the map"><i class="fa-solid fa-eye"></i></button>'
+        ? '<button class="lga-nav-btn" data-lga-nav title="View this LGA on the map"><i class="fa-solid fa-eye"></i></button>'
         : '';
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
-      tr.title = 'Click to filter dashboard to ' + (r.lga || 'this LGA');
-      tr.onclick = () => { const sel=document.getElementById('f-lga'); if(sel) sel.value=r.lga||''; loadWardOptions(r.lga||'','f-ward').then(applyFilter); };
+      tr.title = 'Click to filter dashboard to ' + (lgaName || 'this LGA');
+      tr.onclick = () => { const sel=document.getElementById('f-lga'); if(sel) sel.value=lgaName; loadWardOptions(lgaName,'f-ward').then(applyFilter); };
       tr.innerHTML =
-        '<td><b>' + (r.lga || '—') + '</b></td>' +
+        '<td><b>' + (lgaName || '—') + '</b></td>' +
         '<td>' + fmt(r.baseline_total) + '</td>' +
         '<td>' + fmt(r.actual_treated) + '</td>' +
         '<td>' + fmt(r.forms) + '</td>' +
@@ -1211,6 +1212,13 @@ tbody tr:hover{background:var(--pale)}
           '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%"></div></div></div></td>' +
         '<td><span class="chip ' + covCls(cov) + '">' + (cov >= 80 ? '✓ On target' : cov >= 60 ? '⚠ Watch' : '✗ Below') + '</span></td>' +
         '<td style="text-align:center">' + geoBtn + '</td>';
+      const navBtn = tr.querySelector('[data-lga-nav]');
+      if (navBtn) {
+        navBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          navToGeoLGA(lgaName);
+        });
+      }
       tb.appendChild(tr);
     });
     if (!rows.length) {
