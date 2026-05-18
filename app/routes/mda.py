@@ -1293,7 +1293,7 @@ async def geo_completeness(
     """
     result = await db.execute(text("""
         SELECT
-          ROUND(AVG(completeness_pct)::numeric, 1) AS avg_completeness,
+          ROUND(100.0 * SUM(visited_grids)::numeric / NULLIF(SUM(total_grids), 0), 1) AS overall_completeness,
           COUNT(*) FILTER (WHERE completeness_pct >= 60)  AS completed_60,
           COUNT(*) FILTER (WHERE completeness_pct >= 70)  AS completed_70,
           COUNT(*) AS total_settlements
@@ -1302,12 +1302,12 @@ async def geo_completeness(
     """))
     row = result.fetchone()
     if not row:
-        return {"avg_completeness": 0.0, "completed_60": 0, "completed_70": 0, "total_settlements": 0}
+        return {"overall_completeness": 0.0, "completed_60": 0, "completed_70": 0, "total_settlements": 0}
     return {
-        "avg_completeness":  float(row[0] or 0),
-        "completed_60":      int(row[1] or 0),
-        "completed_70":      int(row[2] or 0),
-        "total_settlements": int(row[3] or 0),
+        "overall_completeness": float(row[0] or 0),
+        "completed_60":         int(row[1] or 0),
+        "completed_70":         int(row[2] or 0),
+        "total_settlements":    int(row[3] or 0),
     }
 
 
