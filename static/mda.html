@@ -352,7 +352,8 @@ tbody tr:hover{background:var(--pale)}
         </div>
 
         <div class="filters">
-          <div class="filter"><label>Date Range</label><select id="f-date"><option value="">Campaign to date</option><option value="7d">Last 7 days</option><option value="1d">Yesterday</option></select></div>
+          <div class="filter" style="min-width:120px"><label>From Date</label><input type="date" id="f-date-from" onchange="applyFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;outline:none;width:100%"></div>
+          <div class="filter" style="min-width:120px"><label>To Date</label><input type="date" id="f-date-to" onchange="applyFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;outline:none;width:100%"></div>
           <div class="filter"><label>LGA</label><select id="f-lga" onchange="loadWardOptions(this.value,'f-ward').then(applyFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="f-ward" onchange="applyFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary" onclick="applyFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
@@ -542,6 +543,8 @@ tbody tr:hover{background:var(--pale)}
 
         <!-- Coverage filters -->
         <div class="filters" style="margin-bottom:12px">
+          <div class="filter" style="min-width:110px"><label>From Date</label><input type="date" id="cov-f-date-from" onchange="applyCovFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
+          <div class="filter" style="min-width:110px"><label>To Date</label><input type="date" id="cov-f-date-to" onchange="applyCovFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
           <div class="filter"><label>LGA</label><select id="cov-f-lga" onchange="loadWardOptions(this.value,'cov-f-ward').then(applyCovFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="cov-f-ward" onchange="applyCovFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyCovFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
@@ -609,6 +612,8 @@ tbody tr:hover{background:var(--pale)}
 
         <!-- QC summary filters -->
         <div class="filters" style="margin-bottom:12px">
+          <div class="filter" style="min-width:110px"><label>From Date</label><input type="date" id="qc-f-date-from" onchange="applyQCFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
+          <div class="filter" style="min-width:110px"><label>To Date</label><input type="date" id="qc-f-date-to" onchange="applyQCFilter()" style="border:1.5px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;background:#fff;outline:none;width:100%"></div>
           <div class="filter"><label>LGA</label><select id="qc-f-lga" onchange="loadWardOptions(this.value,'qc-f-ward').then(applyQCFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="qc-f-ward" onchange="applyQCFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyQCFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
@@ -687,25 +692,29 @@ tbody tr:hover{background:var(--pale)}
             </div>
           </div>
           <div style="overflow-x:auto">
-            <table id="qc-teams-table" style="width:100%;border-collapse:collapse;font-size:12.5px">
+            <table id="qc-teams-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">
               <thead>
-                <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">
-                  <th style="padding:10px 14px;text-align:left;font-weight:700">Team (hq_user)</th>
-                  <th style="padding:10px 14px;text-align:left;font-weight:700">LGA</th>
-                  <th style="padding:10px 14px;text-align:right;font-weight:700">Total Records</th>
-                  <th style="padding:10px 14px;text-align:right;font-weight:700">Records with Error</th>
-                  <th style="padding:10px 14px;text-align:right;font-weight:700">Error Rate</th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700">Dup Forms</th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700">GPS Issues</th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700">After Hours</th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700">Fast Forms</th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700">Refusals</th>
+                <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2">
+                  <th style="padding:10px 14px;text-align:left;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('hq_user')">Team (hq_user) <span id="qcts-hq_user"></span></th>
+                  <th style="padding:10px 14px;text-align:left;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('lga')">LGA <span id="qcts-lga"></span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('total_forms')">Total Records <span id="qcts-total_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('forms_with_error')">Records w/ Error <span id="qcts-forms_with_error"></span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('error_rate')">Error Rate <span id="qcts-error_rate">▼</span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_forms')">Dup Forms <span id="qcts-dup_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('gps_issues')">GPS Issues <span id="qcts-gps_issues"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('after_hours')">After Hours <span id="qcts-after_hours"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast Forms <span id="qcts-fast_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('refusals')">Refusals <span id="qcts-refusals"></span></th>
                 </tr>
               </thead>
-              <tbody id="qc-teams-tbody">
-                <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
-              </tbody>
             </table>
+            <div style="max-height:400px;overflow-y:auto;overflow-x:visible">
+              <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">
+                <tbody id="qc-teams-tbody">
+                  <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -774,6 +783,9 @@ tbody tr:hover{background:var(--pale)}
                   <span id="geo-bc-lga" onclick="geoGoLGA()" style="display:none;cursor:pointer;color:var(--blue);font-weight:600"></span>
                   <span id="geo-bc-ward-sep" style="display:none;color:var(--muted)">›</span>
                   <span id="geo-bc-ward" style="display:none;color:var(--navy);font-weight:700"></span>
+                  <button id="geo-view-cov-btn" onclick="geoViewCoverage()" style="display:none;margin-left:8px;padding:3px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-size:11px;font-weight:600" title="View LGA-level treatment coverage for this LGA">
+                    <i class="fa-solid fa-table-cells-large"></i> Coverage
+                  </button>
                 </div>
                 <span id="geo-nav-count" style="font-size:11px;color:var(--muted)"></span>
               </div>
@@ -1139,6 +1151,7 @@ tbody tr:hover{background:var(--pale)}
     populateLGAFilter();
     populateCovFilters();
     await preloadAllWards();
+    await preloadCampaignDates();
   }
 
   function setEl(id, val) {
@@ -1153,7 +1166,7 @@ tbody tr:hover{background:var(--pale)}
     rows.forEach(r => {
       const cov = parseFloat(r.coverage_pct) || 0;
       const geoBtn = showGeoLink !== false
-        ? '<button class="lga-nav-btn" onclick="navToGeoLGA(' + JSON.stringify(r.lga||'') + ')" title="View this LGA on the map"><i class="fa-solid fa-eye"></i></button>'
+        ? '<button class="lga-nav-btn" onclick="event.stopPropagation();navToGeoLGA(' + JSON.stringify(r.lga||'') + ')" title="View this LGA on the map"><i class="fa-solid fa-eye"></i></button>'
         : '';
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
@@ -1190,20 +1203,28 @@ tbody tr:hover{background:var(--pale)}
     });
   }
 
-  function applyFilter() {
+  async function applyFilter() {
     FILTER.lga  = (document.getElementById('f-lga')  || {}).value || '';
     FILTER.ward = (document.getElementById('f-ward') || {}).value || '';
+    const df = document.getElementById('f-date-from')?.value || '';
+    const dt = document.getElementById('f-date-to')?.value   || '';
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
     const txt = document.getElementById('active-filter-text');
-    const hasFilter = FILTER.lga || FILTER.ward;
+    const hasFilter = FILTER.lga || FILTER.ward || df || dt;
     if (hasFilter) {
       if (label) label.style.display = 'inline-flex';
       if (resetBtn) resetBtn.style.display = 'inline-flex';
-      if (txt) txt.textContent = [FILTER.lga, FILTER.ward].filter(Boolean).join(' › ');
+      if (txt) txt.textContent = [FILTER.lga, FILTER.ward, df && ('From: '+df), dt && ('To: '+dt)].filter(Boolean).join(' · ');
     } else {
       resetFilter();
       return;
+    }
+    // When dates are set, re-fetch coverage data from API so charts reflect the date range
+    if (df || dt) {
+      const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
+      const fresh = await api('/api/mda/coverage/lga' + qs);
+      if (fresh) lgaCovData = fresh;
     }
     delete built['teams'];
     delete built['trends'];
@@ -1213,7 +1234,7 @@ tbody tr:hover{background:var(--pale)}
   function resetFilter() {
     FILTER = { lga: '', ward: '' };
     CHART_FILTER = { lga: null, date: null, ageGroup: null };
-    ['f-lga','f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    ['f-lga','f-ward','f-date-from','f-date-to'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
     const wSel = document.getElementById('f-ward'); if (wSel) while (wSel.options.length > 1) wSel.remove(1);
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
@@ -1258,6 +1279,27 @@ tbody tr:hover{background:var(--pale)}
   }
   window.loadWardOptions  = loadWardOptions;
   window.preloadAllWards  = preloadAllWards;
+
+  /* ── Campaign date boundaries — set min/max on all date inputs ── */
+  async function preloadCampaignDates() {
+    const data = await api('/api/mda/campaign-dates');
+    if (!data || !data.min_date) return;
+    const { min_date, max_date } = data;
+    const dateInputIds = [
+      'f-date-from','f-date-to',
+      'cov-f-date-from','cov-f-date-to',
+      'qc-f-date-from','qc-f-date-to',
+    ];
+    dateInputIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.min = min_date;
+      el.max = max_date;
+    });
+    // Store dates for the geo movement date input (applied when movement is activated)
+    window._campaignDates = data;
+  }
+  window.preloadCampaignDates = preloadCampaignDates;
 
 
   /* ── Fuzzy string similarity (normalised edit distance) ── */
@@ -1316,22 +1358,29 @@ tbody tr:hover{background:var(--pale)}
   window.navToGeoLGA = navToGeoLGA;
 
   /* ── Coverage Analysis filter state ── */
-  let COV_FILTER = { lga: '', ward: '' };
+  let COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
 
-  function applyCovFilter() {
-    COV_FILTER.lga  = (document.getElementById('cov-f-lga')  || {}).value || '';
-    COV_FILTER.ward = (document.getElementById('cov-f-ward') || {}).value || '';
-    const hasFilter = COV_FILTER.lga || COV_FILTER.ward;
+  async function applyCovFilter() {
+    COV_FILTER.lga       = (document.getElementById('cov-f-lga')       || {}).value || '';
+    COV_FILTER.ward      = (document.getElementById('cov-f-ward')      || {}).value || '';
+    COV_FILTER.date_from = (document.getElementById('cov-f-date-from') || {}).value || '';
+    COV_FILTER.date_to   = (document.getElementById('cov-f-date-to')   || {}).value || '';
+    const hasFilter = COV_FILTER.lga || COV_FILTER.ward || COV_FILTER.date_from || COV_FILTER.date_to;
     const label = document.getElementById('cov-filter-label');
     const resetBtn = document.getElementById('cov-reset-btn');
     const txt = document.getElementById('cov-filter-text');
     if (label)    label.style.display    = hasFilter ? 'inline-flex' : 'none';
     if (resetBtn) resetBtn.style.display = hasFilter ? 'inline-flex' : 'none';
-    if (txt) txt.textContent = [COV_FILTER.lga, COV_FILTER.ward].filter(Boolean).join(' › ');
-    // Re-render with filtered data
-    const filtered = lgaCovData.filter(r =>
-      (!COV_FILTER.lga || r.lga === COV_FILTER.lga)
-    );
+    if (txt) txt.textContent = [COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.date_from && ('From ' + COV_FILTER.date_from), COV_FILTER.date_to && ('To ' + COV_FILTER.date_to)].filter(Boolean).join(' · ');
+    // If date filter active, re-fetch from API; otherwise filter locally
+    let filtered;
+    if (COV_FILTER.date_from || COV_FILTER.date_to) {
+      const qs = _filterQS(COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.date_from, COV_FILTER.date_to);
+      const fresh = await api('/api/mda/coverage/lga' + qs);
+      filtered = fresh || [];
+    } else {
+      filtered = lgaCovData.filter(r => (!COV_FILTER.lga || r.lga === COV_FILTER.lga));
+    }
     buildLGATable('cov-lga-table-body', filtered, true);
     // Rebuild coverage bar chart with filtered data
     destroyChart('c_covLgaBar');
@@ -1369,8 +1418,8 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function resetCovFilter() {
-    COV_FILTER = { lga: '', ward: '' };
-    ['cov-f-lga','cov-f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
+    ['cov-f-lga','cov-f-ward','cov-f-date-from','cov-f-date-to'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
     const cwSel = document.getElementById('cov-f-ward'); if (cwSel) while (cwSel.options.length > 1) cwSel.remove(1);
     document.getElementById('cov-filter-label') && (document.getElementById('cov-filter-label').style.display='none');
     document.getElementById('cov-reset-btn')    && (document.getElementById('cov-reset-btn').style.display='none');
@@ -1624,6 +1673,10 @@ tbody tr:hover{background:var(--pale)}
     const params = [];
     if (qcFilterLGA)  params.push('lga='  + encodeURIComponent(qcFilterLGA));
     if (qcFilterWard) params.push('ward=' + encodeURIComponent(qcFilterWard));
+    const qcDf = document.getElementById('qc-f-date-from')?.value || '';
+    const qcDt = document.getElementById('qc-f-date-to')?.value   || '';
+    if (qcDf) params.push('date_from=' + encodeURIComponent(qcDf));
+    if (qcDt) params.push('date_to='   + encodeURIComponent(qcDt));
     const qs = params.length ? '?' + params.join('&') : '';
 
     const [summary, refusals, durations, teamQC] = await Promise.all([
@@ -1744,27 +1797,56 @@ tbody tr:hover{background:var(--pale)}
 
     // ── QC Teams table ──
     if (teamQC && teamQC.length) {
-      const tbody = document.getElementById('qc-teams-tbody');
-      if (tbody) {
-        const errColour = r => r.error_rate >= 30 ? 'var(--bad)' : r.error_rate >= 15 ? 'var(--warn)' : 'var(--good)';
-        tbody.innerHTML = teamQC.map(r => `
-          <tr style="border-bottom:1px solid var(--line)">
-            <td style="padding:10px 14px;font-weight:700;color:var(--navy)">${r.hq_user || '—'}</td>
-            <td style="padding:10px 14px;color:var(--muted)">${r.lga || '—'}</td>
-            <td style="padding:10px 14px;text-align:right">${(r.total_forms||0).toLocaleString()}</td>
-            <td style="padding:10px 14px;text-align:right;color:${errColour(r)};font-weight:700">${(r.forms_with_error||0).toLocaleString()}</td>
-            <td style="padding:10px 14px;text-align:right">
-              <span style="background:${r.error_rate>=30?'var(--bad-bg)':r.error_rate>=15?'var(--warn-bg)':'var(--good-bg)'};color:${errColour(r)};padding:2px 8px;border-radius:99px;font-weight:700;font-size:11.5px">${r.error_rate}%</span>
-            </td>
-            <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_forms||0}</td>
-            <td style="padding:10px 14px;text-align:center;color:var(--muted)">${(r.gps_outside_lga||0)+(r.poor_gps||0)}</td>
-            <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.after_hours||0}</td>
-            <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.fast_forms||0}</td>
-            <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.refusals||0}</td>
-          </tr>`).join('');
-      }
+      qcTeamsData = teamQC.map(r => ({ ...r, gps_issues: (r.gps_outside_lga||0)+(r.poor_gps||0) }));
+      renderQCTeamsTable();
     }
   }
+
+  let qcTeamsData = [];
+  let qcTeamsSort = { col: 'error_rate', asc: false };
+
+  function renderQCTeamsTable() {
+    const tbody = document.getElementById('qc-teams-tbody');
+    if (!tbody) return;
+    const { col, asc } = qcTeamsSort;
+    const sorted = [...qcTeamsData].sort((a, b) => {
+      const va = a[col] ?? (typeof a[col] === 'string' ? '' : 0);
+      const vb = b[col] ?? (typeof b[col] === 'string' ? '' : 0);
+      if (typeof va === 'string') return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+      return asc ? va - vb : vb - va;
+    });
+    // Update sort indicators in header
+    ['hq_user','lga','total_forms','forms_with_error','error_rate','dup_forms','gps_issues','after_hours','fast_forms','refusals'].forEach(c => {
+      const el = document.getElementById('qcts-' + c);
+      if (el) el.textContent = c === col ? (asc ? '▲' : '▼') : '';
+    });
+    const errColour = r => r.error_rate >= 30 ? 'var(--bad)' : r.error_rate >= 15 ? 'var(--warn)' : 'var(--good)';
+    tbody.innerHTML = sorted.map(r => `
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:10px 14px;font-weight:700;color:var(--navy);white-space:nowrap">${r.hq_user || '—'}</td>
+        <td style="padding:10px 14px;color:var(--muted);white-space:nowrap">${r.lga || '—'}</td>
+        <td style="padding:10px 14px;text-align:right">${(r.total_forms||0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right;color:${errColour(r)};font-weight:700">${(r.forms_with_error||0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right">
+          <span style="background:${r.error_rate>=30?'var(--bad-bg)':r.error_rate>=15?'var(--warn-bg)':'var(--good-bg)'};color:${errColour(r)};padding:2px 8px;border-radius:99px;font-weight:700;font-size:11.5px">${r.error_rate}%</span>
+        </td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_forms||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.gps_issues||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.after_hours||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.fast_forms||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.refusals||0}</td>
+      </tr>`).join('');
+  }
+
+  function sortQCTeams(col) {
+    if (qcTeamsSort.col === col) {
+      qcTeamsSort.asc = !qcTeamsSort.asc;
+    } else {
+      qcTeamsSort = { col, asc: col === 'hq_user' || col === 'lga' };
+    }
+    renderQCTeamsTable();
+  }
+  window.sortQCTeams = sortQCTeams;
 
   /* ── CHART BUILDERS (lazy per view) ── */
   const built = {};
@@ -1787,7 +1869,9 @@ tbody tr:hover{background:var(--pale)}
   }
 
   async function _reloadOverviewKPIs() {
-    const qs = _filterQS(FILTER.lga, FILTER.ward);
+    const df = document.getElementById('f-date-from')?.value || '';
+    const dt = document.getElementById('f-date-to')?.value   || '';
+    const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
     const [ov, daily] = await Promise.all([
       api('/api/mda/overview' + qs),
       api('/api/mda/trends/daily' + qs),
@@ -1812,10 +1896,12 @@ tbody tr:hover{background:var(--pale)}
     if (ageSel) _renderAgeSummary(ageSel);
   }
 
-  function _filterQS(lga, ward) {
+  function _filterQS(lga, ward, dateFrom, dateTo) {
     const p = [];
-    if (lga)  p.push('lga='  + encodeURIComponent(lga));
-    if (ward) p.push('ward=' + encodeURIComponent(ward));
+    if (lga)      p.push('lga='       + encodeURIComponent(lga));
+    if (ward)     p.push('ward='      + encodeURIComponent(ward));
+    if (dateFrom) p.push('date_from=' + encodeURIComponent(dateFrom));
+    if (dateTo)   p.push('date_to='   + encodeURIComponent(dateTo));
     return p.length ? '?' + p.join('&') : '';
   }
 
@@ -1828,10 +1914,29 @@ tbody tr:hover{background:var(--pale)}
     // Update chart card title to show drill-down context
     const titleEl = el.closest('.card')?.querySelector('.card-title');
     if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Submissions by Ward — ' + lga +
-      ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:3px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;cursor:pointer;color:var(--muted);font-weight:600">&#8592; All LGAs</button>';
+      ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> All LGAs</button>';
 
     const data = await api('/api/mda/submissions/ward?lga=' + encodeURIComponent(lga)) || [];
     if (!data.length) { showToast('No ward data for ' + lga); return; }
+
+    // Dynamic height: 34px per ward keeps bars full-size regardless of ward count
+    const wrap = el.parentElement;  // .chart-wrap — Chart.js reads *this* for canvas size
+    const rowH  = 34;
+    const totalH = Math.max(300, data.length * rowH);
+    const maxViewport = 500;
+    // Grow the chart-wrap to the full height so Chart.js renders all bars at correct size
+    wrap.style.height = totalH + 'px';
+    wrap.style.overflow = 'visible';
+    // Inject a scrollable viewport wrapper above the chart-wrap (if not already present)
+    if (!document.getElementById('ward-chart-scroller')) {
+      const scroller = document.createElement('div');
+      scroller.id = 'ward-chart-scroller';
+      scroller.style.cssText = 'max-height:' + maxViewport + 'px;overflow-y:auto;overflow-x:hidden;margin:0 -18px;padding:0 18px';
+      wrap.parentNode.insertBefore(scroller, wrap);
+      scroller.appendChild(wrap);
+    } else {
+      document.getElementById('ward-chart-scroller').style.maxHeight = maxViewport + 'px';
+    }
 
     const maxVal = Math.max(...data.map(r => r.forms || 0), 1);
     new Chart(el, {
@@ -1848,11 +1953,20 @@ tbody tr:hover{background:var(--pale)}
           if (!elems.length) return;
           const ward = data[elems[0].index]?.ward_name;
           if (!ward) return;
-          const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = ward;
-          FILTER.ward = ward;
-          delete built['teams']; delete built['trends'];
-          _reloadOverviewKPIs();
-          showToast(ward + ' ward selected — dashboard filtered. Click again to deselect.');
+          if (FILTER.ward === ward) {
+            // same ward clicked again — reset to LGA drill-down
+            FILTER.ward = '';
+            const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = '';
+            delete built['teams']; delete built['trends'];
+            _reloadOverviewKPIs();
+            showToast('Ward filter cleared — showing all wards in ' + (FILTER.lga || 'selected LGA'));
+          } else {
+            const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = ward;
+            FILTER.ward = ward;
+            delete built['teams']; delete built['trends'];
+            _reloadOverviewKPIs();
+            showToast(ward + ' ward selected — dashboard filtered. Click again to deselect.');
+          }
         },
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
@@ -1871,6 +1985,16 @@ tbody tr:hover{background:var(--pale)}
     // Restore original LGA chart
     const el = document.getElementById('c_lgaBar');
     if (el) { const c = Chart.getChart(el); if (c) c.destroy(); }
+    // Remove the ward-chart scroller wrapper and restore chart-wrap to card
+    const scroller = document.getElementById('ward-chart-scroller');
+    if (scroller) {
+      const wrap = document.getElementById('c_lgaBar')?.parentElement;
+      if (wrap) scroller.parentNode.insertBefore(wrap, scroller);
+      scroller.remove();
+    }
+    // Reset chart-wrap inline styles back to CSS defaults
+    const wrap = el?.parentElement;
+    if (wrap) { wrap.style.height = ''; wrap.style.overflow = ''; }
     const titleEl = el?.closest('.card')?.querySelector('.card-title');
     if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Household Form Submissions by LGA';
     CHART_FILTER.lga = null;
@@ -2026,7 +2150,9 @@ tbody tr:hover{background:var(--pale)}
   }
 
   async function buildAgeBandChart() {
-    const qs = _filterQS(FILTER.lga, FILTER.ward);
+    const df = document.getElementById('f-date-from')?.value || '';
+    const dt = document.getElementById('f-date-to')?.value   || '';
+    const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
     const d  = await api('/api/mda/individuals/age-summary' + qs) || {};
     _renderAgeSummary(d);
   }
@@ -2706,6 +2832,7 @@ tbody tr:hover{background:var(--pale)}
     const lgaEl   = document.getElementById('geo-bc-lga');
     const wardSep = document.getElementById('geo-bc-ward-sep');
     const wardEl  = document.getElementById('geo-bc-ward');
+    const covBtn  = document.getElementById('geo-view-cov-btn');
     if (!lgaEl) return;
 
     if (geoNavLevel === 'lga') {
@@ -2713,18 +2840,35 @@ tbody tr:hover{background:var(--pale)}
       if (lgaEl)   lgaEl.style.display   = 'none';
       if (wardSep) wardSep.style.display = 'none';
       if (wardEl)  wardEl.style.display  = 'none';
+      if (covBtn)  covBtn.style.display  = 'none';
     } else if (geoNavLevel === 'ward') {
       if (lgaSep)  { lgaSep.style.display  = 'inline'; }
       if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
       if (wardSep) { wardSep.style.display = 'none'; }
       if (wardEl)  { wardEl.style.display  = 'none'; }
+      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (geoCurrentLGA?.lga_name || 'this LGA'); }
     } else {
       if (lgaSep)  { lgaSep.style.display  = 'inline'; }
       if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
       if (wardSep) { wardSep.style.display = 'inline'; }
       if (wardEl)  { wardEl.style.display  = 'inline'; wardEl.textContent = geoCurrentWard ? geoCurrentWard.ward_name : ''; }
+      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (geoCurrentLGA?.lga_name || 'this LGA'); }
     }
   }
+
+  function geoViewCoverage() {
+    const lgaName = geoCurrentLGA?.lga_name;
+    switchView('coverage');  // queues buildCharts('coverage') in rAF slot 1
+    if (!lgaName) { showToast('Navigate to an LGA first'); return; }
+    // Apply filter in rAF slot 2 — guaranteed to run AFTER buildCharts
+    requestAnimationFrame(() => {
+      const sel = document.getElementById('cov-f-lga');
+      if (sel) sel.value = lgaName;
+      loadWardOptions(lgaName, 'cov-f-ward').then(() => applyCovFilter());
+      showToast('Showing coverage for ' + lgaName);
+    });
+  }
+  window.geoViewCoverage = geoViewCoverage;
 
   async function geoGoRoot() {
     geoCurrentLGA = null; geoCurrentWard = null; geoNavLevel = 'lga';
@@ -3043,7 +3187,14 @@ tbody tr:hover{background:var(--pale)}
     const lines = _buildMovementLayers(fc.features, colourMap);
     geoMap.getSource('movement-lines-src').setData({type:'FeatureCollection',features:lines});
     geoMap.getSource('movement-pts-src').setData(fc);
-    if (dateSel) dateSel.style.display = 'block';
+    if (dateSel) {
+      dateSel.style.display = 'block';
+      // Apply campaign date boundaries now that the input is visible
+      if (window._campaignDates) {
+        dateSel.min = window._campaignDates.min_date || '';
+        dateSel.max = window._campaignDates.max_date || '';
+      }
+    }
     if (teamSel) {
       teamSel.style.display='block';
       while(teamSel.options.length>1) teamSel.remove(1);
@@ -3067,7 +3218,8 @@ tbody tr:hover{background:var(--pale)}
 
   /* Combined team + date filter for movement overlay */
   async function geoFilterMovement() {
-    if (!geoMap || !geoMapBuilt) return;
+    if (!geoMap || !geoMapBuilt || !movementActive) return;
+    if (!geoMap.getSource('movement-lines-src')) initOverlaySources();
     const team    = (document.getElementById('geo-team-select')?.value)  || '';
     const dateVal = (document.getElementById('geo-movement-date')?.value) || '';
 
@@ -3164,13 +3316,15 @@ tbody tr:hover{background:var(--pale)}
     const wardSel = document.getElementById('qc-f-ward');
     qcFilterLGA  = lgaSel  ? lgaSel.value  : '';
     qcFilterWard = wardSel ? wardSel.value : '';
+    const qcDf = document.getElementById('qc-f-date-from')?.value || '';
+    const qcDt = document.getElementById('qc-f-date-to')?.value   || '';
     const label    = document.getElementById('qc-filter-label');
     const resetBtn = document.getElementById('qc-reset-btn');
     const txt      = document.getElementById('qc-filter-text');
-    const hasFilter = qcFilterLGA || qcFilterWard;
+    const hasFilter = qcFilterLGA || qcFilterWard || qcDf || qcDt;
     if (label)    label.style.display    = hasFilter ? 'inline-flex' : 'none';
     if (resetBtn) resetBtn.style.display = hasFilter ? 'inline-flex' : 'none';
-    if (txt) txt.textContent = [qcFilterLGA, qcFilterWard].filter(Boolean).join(' › ');
+    if (txt) txt.textContent = [qcFilterLGA, qcFilterWard, qcDf && ('From ' + qcDf), qcDt && ('To ' + qcDt)].filter(Boolean).join(' · ');
     // Destroy and reload QC charts with new params
     ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
     delete built['quality'];
@@ -3183,6 +3337,7 @@ tbody tr:hover{background:var(--pale)}
     const wardSel = document.getElementById('qc-f-ward');
     if (lgaSel)  lgaSel.value  = '';
     if (wardSel) { wardSel.value = ''; while (wardSel.options.length > 1) wardSel.remove(1); }
+    ['qc-f-date-from','qc-f-date-to'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
     document.getElementById('qc-filter-label') && (document.getElementById('qc-filter-label').style.display = 'none');
     document.getElementById('qc-reset-btn')    && (document.getElementById('qc-reset-btn').style.display = 'none');
     ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
