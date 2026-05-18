@@ -258,20 +258,20 @@
       </div>
     </div>
 
-    <div class="admin-badge">
-      <i class="fa-solid fa-shield-halved"></i> Administrator Access
+    <div class="admin-badge" id="role-badge">
+      <i class="fa-solid fa-shield-halved"></i> <span id="role-badge-label">Administrator Access</span>
     </div>
 
-    <div class="nav-section">Data Management</div>
-    <div class="nav-item active" data-view="uploads"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
-    <div class="nav-item" data-view="sync"><i class="fa-solid fa-rotate"></i> API Sync</div>
+    <div class="nav-section super-only" style="display:none">Data Management</div>
+    <div class="nav-item super-only" data-view="uploads" style="display:none"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
+    <div class="nav-item super-only" data-view="sync" style="display:none"><i class="fa-solid fa-rotate"></i> API Sync</div>
 
     <div class="nav-section">Configuration</div>
-    <div class="nav-item" data-view="projects"><i class="fa-solid fa-folder-open"></i> Projects</div>
-    <div class="nav-item" data-view="users"><i class="fa-solid fa-users"></i> Users</div>
+    <div class="nav-item super-only" data-view="projects" style="display:none"><i class="fa-solid fa-folder-open"></i> Projects</div>
+    <div class="nav-item active" data-view="users"><i class="fa-solid fa-users"></i> Users</div>
 
-    <div class="nav-section">Tools</div>
-    <div class="nav-item" data-view="qc"><i class="fa-solid fa-shield-halved"></i> QC Re-run</div>
+    <div class="nav-section super-only" style="display:none">Tools</div>
+    <div class="nav-item super-only" data-view="qc" style="display:none"><i class="fa-solid fa-shield-halved"></i> QC Re-run</div>
     <div class="nav-item" data-view="system"><i class="fa-solid fa-server"></i> System Status</div>
 
     <div class="sidebar-footer">
@@ -562,9 +562,10 @@
               </div>
               <div class="form-group">
                 <label>Access Level</label>
-                <select id="new-is-admin">
-                  <option value="false">Analyst / Viewer (standard access)</option>
-                  <option value="true">Administrator (full access)</option>
+                <select id="new-role">
+                  <option value="user">Analyst / Viewer (standard access)</option>
+                  <option value="admin" class="super-only-opt">Administrator</option>
+                  <option value="superadmin" class="super-only-opt">Superadmin (full data + user control)</option>
                 </select>
               </div>
               <button class="btn btn-primary" style="width:100%" onclick="createUser()">
@@ -750,18 +751,41 @@
   'use strict';
 
   /* ── AUTH ── */
-  const token    = localStorage.getItem('token');
-  const username = localStorage.getItem('username') || 'admin';
-  const isAdmin  = localStorage.getItem('is_admin') === 'true';
+  const token       = localStorage.getItem('token');
+  const username    = localStorage.getItem('username') || 'admin';
+  const isAdmin     = localStorage.getItem('is_admin') === 'true';
+  const isSuperadmin= localStorage.getItem('is_superadmin') === 'true';
 
-  if (!token) { window.location.href = '/'; return; }
+  if (!token) { window.location.href = '/login'; return; }
   if (!isAdmin) { window.location.href = '/home'; return; }
 
   // Set user display
   document.getElementById('topbar-username').textContent = username;
   document.getElementById('topbar-avatar').textContent   = username.charAt(0).toUpperCase();
 
-  function handleLogout() { localStorage.clear(); window.location.href = '/'; }
+  // Reveal superadmin-only nav and update role badge
+  if (isSuperadmin) {
+    document.querySelectorAll('.super-only').forEach(el => { el.style.display = ''; });
+    const lbl = document.getElementById('role-badge-label');
+    if (lbl) lbl.textContent = 'Superadmin Access';
+    const badge = document.getElementById('role-badge');
+    if (badge) badge.style.background = 'rgba(200,160,0,.18)';
+  }
+
+  // Default landing view: superadmin sees Data Uploads; admin sees Users.
+  (function setDefaultView() {
+    const target = isSuperadmin ? 'uploads' : 'users';
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
+    const navEl = document.querySelector(`.nav-item[data-view="${target}"]`);
+    const viewEl = document.getElementById('view-' + target);
+    if (navEl) navEl.classList.add('active');
+    if (viewEl) viewEl.classList.add('active');
+    const crumb = document.getElementById('crumb-section');
+    if (crumb) crumb.textContent = target === 'uploads' ? 'Data Uploads' : 'Users';
+  })();
+
+  function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
   window.handleLogout = handleLogout;
 
   /* ── API HELPER ── */
@@ -1038,7 +1062,25 @@
         return;
       }
       const users = await res.json();
-      let rows = users.map(u => `
+      let rows = users.map(u => {
+        const roleChip = u.is_superadmin
+          ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Superadmin</span>'
+          : (u.is_admin
+              ? '<span class="chip warn">Administrator</span>'
+              : '<span class="chip info">Analyst / Viewer</span>');
+        const usernameEsc = String(u.username || '').replace(/'/g, "\\'");
+        const actions = [];
+        if (isSuperadmin && !u.is_superadmin) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="promoteUser(${u.id})" title="Promote to Superadmin"><i class="fa-solid fa-arrow-up"></i> Promote</button>`);
+        }
+        if (isSuperadmin && u.is_superadmin && u.username !== username) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="demoteUser(${u.id})" title="Demote to Admin"><i class="fa-solid fa-arrow-down"></i> Demote</button>`);
+        }
+        if (u.username !== 'admin' && u.username !== username && (isSuperadmin || !u.is_superadmin)) {
+          actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${usernameEsc}')"><i class="fa-solid fa-trash"></i></button>`);
+        }
+        const actionsHtml = actions.length ? actions.join(' ') : '<span style="color:var(--muted);font-size:11px">—</span>';
+        return `
         <tr>
           <td>
             <div style="display:flex;align-items:center;gap:9px">
@@ -1047,13 +1089,12 @@
             </div>
           </td>
           <td style="color:var(--muted);font-size:12.5px">${u.email || '—'}</td>
-          <td>${u.is_admin ? '<span class="chip warn">Administrator</span>' : '<span class="chip info">Analyst</span>'}</td>
+          <td>${roleChip}</td>
           <td>${u.is_active !== false ? '<span class="chip good">Active</span>' : '<span class="chip bad">Inactive</span>'}</td>
           <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-          <td>
-            ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${u.username}')"><i class="fa-solid fa-trash"></i></button>` : '<span style="color:var(--muted);font-size:11px">Protected</span>'}
-          </td>
-        </tr>`).join('');
+          <td>${actionsHtml}</td>
+        </tr>`;
+      }).join('');
       container.innerHTML = `
         <div style="overflow-x:auto">
           <table>
@@ -1067,17 +1108,24 @@
   }
   window.loadUsers = loadUsers;
 
+  // Hide admin/superadmin role options from non-superadmins
+  if (!isSuperadmin) {
+    document.querySelectorAll('#new-role option.super-only-opt').forEach(o => o.remove());
+  }
+
   window.createUser = async function() {
     const uname    = document.getElementById('new-username').value.trim();
     const email    = document.getElementById('new-email').value.trim();
     const password = document.getElementById('new-password').value;
-    const isAdm    = document.getElementById('new-is-admin').value === 'true';
+    const role     = document.getElementById('new-role').value;
+    const isAdm    = role === 'admin' || role === 'superadmin';
+    const isSup    = role === 'superadmin';
     if (!uname || !password) { setFeedback('user-feedback', 'Username and password are required.', 'err'); return; }
     if (password.length < 6) { setFeedback('user-feedback', 'Password must be at least 6 characters.', 'err'); return; }
     try {
       const res = await api('/api/auth/users', {
         method: 'POST',
-        body: JSON.stringify({ username: uname, email: email || null, password, is_admin: isAdm }),
+        body: JSON.stringify({ username: uname, email: email || null, password, is_admin: isAdm, is_superadmin: isSup }),
       });
       if (!res) return;
       const d = await res.json();
@@ -1086,6 +1134,7 @@
         document.getElementById('new-username').value = '';
         document.getElementById('new-email').value    = '';
         document.getElementById('new-password').value = '';
+        document.getElementById('new-role').value     = 'user';
         loadUsers();
       } else {
         setFeedback('user-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');
@@ -1093,6 +1142,30 @@
     } catch(e) {
       setFeedback('user-feedback', 'Network error', 'err');
     }
+  };
+
+  window.promoteUser = async function(id) {
+    if (!confirm('Promote this user to Superadmin? They will gain full data-pipeline and user-management control.')) return;
+    try {
+      const res = await api('/api/auth/users/' + id + '/promote', { method: 'POST' });
+      if (res && res.ok) { loadUsers(); }
+      else {
+        const d = res ? await res.json() : {};
+        alert('Promote failed: ' + (d.detail || 'Unknown error'));
+      }
+    } catch(e) { alert('Network error'); }
+  };
+
+  window.demoteUser = async function(id) {
+    if (!confirm('Demote this user from Superadmin to Admin?')) return;
+    try {
+      const res = await api('/api/auth/users/' + id + '/demote', { method: 'POST' });
+      if (res && res.ok) { loadUsers(); }
+      else {
+        const d = res ? await res.json() : {};
+        alert('Demote failed: ' + (d.detail || 'Unknown error'));
+      }
+    } catch(e) { alert('Network error'); }
   };
 
   window.deleteUser = async function(id, uname) {

@@ -47,6 +47,13 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .sidebar.collapsed #admin-nav-link{margin-top:0;text-align:center}
 .sidebar.collapsed #admin-nav-link a{gap:0;justify-content:center;width:100%}
 .sidebar.collapsed #admin-nav-link a span{display:none}
+/* Public-mode visibility rules: hide download buttons, upload triggers, logout, admin link */
+body.public-mode .auth-only,
+body.public-mode .chart-dl,
+body.public-mode .nav-item[data-view="reports"],
+body.public-mode #admin-nav-link,
+body.public-mode #download-settlement-btn { display: none !important; }
+body.public-mode #public-portal-link { display: inline-flex !important; }
 /* Collapse toggle button */
 .sidebar-toggle{position:absolute;top:18px;left:0;z-index:50;background:var(--blue);color:#fff;border:none;border-radius:0 8px 8px 0;width:20px;height:32px;display:grid;place-items:center;cursor:pointer;font-size:11px;opacity:0;transition:opacity .2s,left .25s}
 .app:hover .sidebar-toggle{opacity:1}
@@ -347,8 +354,11 @@ tbody tr:hover{background:var(--pale)}
       </div>
       <div class="spacer"></div>
       <div class="search"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search LGA, ward, team&hellip;"></div>
-      <div class="icon-btn" onclick="openUploadModal()" title="Upload Data"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-      <div class="icon-btn" onclick="handleLogout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></div>
+      <div class="icon-btn auth-only" onclick="openUploadModal()" title="Upload Data"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+      <div class="icon-btn auth-only" onclick="handleLogout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></div>
+      <a id="public-portal-link" href="/login" style="display:none;align-items:center;gap:6px;background:var(--blue);color:#fff;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 2px 8px rgba(0,107,46,.25)" title="Sign in for admin access">
+        <i class="fa-solid fa-right-to-bracket"></i> Admin Portal
+      </a>
     </div>
 
     <div class="page">
@@ -628,7 +638,7 @@ tbody tr:hover{background:var(--pale)}
             <div class="page-sub">Automated integrity &amp; anomaly detection across submitted forms</div>
           </div>
           <div class="actions">
-            <button class="btn btn-ghost" onclick="openUploadModal()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Workbook</button>
+            <button class="btn btn-ghost auth-only" onclick="openUploadModal()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Workbook</button>
             <button class="chart-dl" onclick="dlQCSummaryCSV()" title="Download QC summary CSV" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff"><i class="fa-solid fa-download"></i> Export</button>
           </div>
         </div>
@@ -785,7 +795,7 @@ tbody tr:hover{background:var(--pale)}
           <span id="geo-ward-active-count" style="display:none"></span>
           <span id="geo-ward-total-count" style="display:none"></span>
           <!-- Download settlement status -->
-          <div style="display:flex;align-items:center">
+          <div id="download-settlement-btn" style="display:flex;align-items:center">
             <button onclick="downloadSettlementStatus()" title="Download settlement visit status as Excel"
               style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px;cursor:pointer;color:var(--deep);font-size:11.5px;font-weight:600;transition:all .15s;white-space:nowrap"
               onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
@@ -1100,21 +1110,30 @@ tbody tr:hover{background:var(--pale)}
   'use strict';
 
   /* ── AUTH ── */
-  const token = localStorage.getItem('token');
-  if (!token) { window.location.href = '/'; return; }
-  function handleLogout() { localStorage.clear(); window.location.href = '/'; }
+  const token        = localStorage.getItem('token');
+  const PUBLIC_MODE  = !token;
+  const isAdmin      = localStorage.getItem('is_admin') === 'true';
+  const isSuperadmin = localStorage.getItem('is_superadmin') === 'true';
 
-  // Show admin nav link if user is admin
-  if (localStorage.getItem('is_admin') === 'true') {
+  if (PUBLIC_MODE) {
+    document.body.classList.add('public-mode');
+  } else if (isAdmin) {
+    // Show admin nav link if user is admin
     const adminLink = document.getElementById('admin-nav-link');
     if (adminLink) adminLink.style.display = 'block';
   }
 
+  function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
+
   /* ── API HELPER ── */
   async function api(path) {
     try {
-      const r = await fetch(path, { headers: { Authorization: 'Bearer ' + token } });
-      if (r.status === 401) { handleLogout(); return null; }
+      const headers = token ? { Authorization: 'Bearer ' + token } : {};
+      const r = await fetch(path, { headers });
+      if (r.status === 401) {
+        if (!PUBLIC_MODE) handleLogout();
+        return null;
+      }
       return r.ok ? r.json() : null;
     } catch(e) { return null; }
   }
