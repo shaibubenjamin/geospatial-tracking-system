@@ -734,6 +734,94 @@ async def qc_duration_by_lga(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/submissions/ward  — ward-level drill-down for charts
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/submissions/ward")
+async def submissions_by_ward(
+    lga:  Optional[str] = None,
+    ward: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """Ward-level submission & treatment counts, used for chart drill-down."""
+    filters = ["ward_name IS NOT NULL"]
+    params: dict = {}
+    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    where = "WHERE " + " AND ".join(filters)
+    result = await db.execute(text(f"""
+        SELECT
+          ward_name,
+          lga,
+          COUNT(*) AS forms,
+          COALESCE(SUM(number_of_treated), 0) AS treated,
+          COUNT(DISTINCT hq_user) AS teams,
+          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT check_treatment_date), 0), 1) AS avg_per_day
+        FROM mda_households {where}
+        GROUP BY ward_name, lga
+        ORDER BY forms DESC
+    """), params)
+    keys = ["ward_name", "lga", "forms", "treated", "teams", "avg_per_day"]
+    return [dict(zip(keys, row)) for row in result.fetchall()]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/qc/teams-summary  — per-team QC error breakdown
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/qc/teams-summary")
+async def qc_teams_summary(
+    lga:  Optional[str] = None,
+    ward: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """Per-team: total forms, forms with ≥1 error, error rate, and error type counts."""
+    filters: list = ["hq_user IS NOT NULL"]
+    params: dict = {}
+    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    where = "WHERE " + " AND ".join(filters)
+    result = await db.execute(text(f"""
+        SELECT
+          hq_user,
+          lga,
+          COUNT(*)                                                        AS total_forms,
+          SUM(CASE WHEN (
+            flag_duplicate OR flag_duplicate_gps OR flag_gps_outside_lga
+            OR flag_gps_poor_accuracy OR flag_gps_zero OR flag_after_hours
+            OR flag_fast_form OR flag_slow_form OR flag_sync_lag
+          ) THEN 1 ELSE 0 END)                                           AS forms_with_error,
+          SUM(CASE WHEN flag_duplicate         THEN 1 ELSE 0 END)        AS dup_forms,
+          SUM(CASE WHEN flag_duplicate_gps     THEN 1 ELSE 0 END)        AS dup_gps,
+          SUM(CASE WHEN flag_gps_outside_lga   THEN 1 ELSE 0 END)        AS gps_outside_lga,
+          SUM(CASE WHEN flag_gps_poor_accuracy THEN 1 ELSE 0 END)        AS poor_gps,
+          SUM(CASE WHEN flag_after_hours       THEN 1 ELSE 0 END)        AS after_hours,
+          SUM(CASE WHEN flag_fast_form         THEN 1 ELSE 0 END)        AS fast_forms,
+          SUM(CASE WHEN flag_slow_form         THEN 1 ELSE 0 END)        AS slow_forms,
+          SUM(CASE WHEN flag_refusal           THEN 1 ELSE 0 END)        AS refusals
+        FROM mda_households {where}
+        GROUP BY hq_user, lga
+        ORDER BY forms_with_error DESC, total_forms DESC
+    """), params)
+    rows = result.fetchall()
+    keys = [
+        "hq_user","lga","total_forms","forms_with_error",
+        "dup_forms","dup_gps","gps_outside_lga","poor_gps",
+        "after_hours","fast_forms","slow_forms","refusals",
+    ]
+    out = []
+    for row in rows:
+        d = dict(zip(keys, row))
+        for k in keys[2:]:
+            d[k] = int(d[k] or 0)
+        d["error_rate"] = round(100.0 * d["forms_with_error"] / d["total_forms"], 1) if d["total_forms"] else 0
+        out.append(d)
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/qc/gps/geojson
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1127,6 +1215,40 @@ async def teams_movement_geojson(
         for r in rows
     ]
     return {"type": "FeatureCollection", "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/geo/completeness
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/geo/completeness")
+async def geo_completeness(
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    """
+    Returns average grid completeness % across all settlements and
+    count of settlements where completeness >= 60% (considered 'complete').
+    Completeness = visited_grids / total_grids * 100 per settlement.
+    """
+    result = await db.execute(text("""
+        SELECT
+          ROUND(AVG(completeness_pct)::numeric, 1) AS avg_completeness,
+          COUNT(*) FILTER (WHERE completeness_pct >= 60)  AS completed_60,
+          COUNT(*) FILTER (WHERE completeness_pct >= 70)  AS completed_70,
+          COUNT(*) AS total_settlements
+        FROM settlement_analytics
+        WHERE project_id = 1
+    """))
+    row = result.fetchone()
+    if not row:
+        return {"avg_completeness": 0.0, "completed_60": 0, "completed_70": 0, "total_settlements": 0}
+    return {
+        "avg_completeness":  float(row[0] or 0),
+        "completed_60":      int(row[1] or 0),
+        "completed_70":      int(row[2] or 0),
+        "total_settlements": int(row[3] or 0),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
