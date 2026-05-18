@@ -1106,8 +1106,10 @@ tbody tr:hover{background:var(--pale)}
     // Tables
     buildLGATable('lga-table-body', lgaCovData);
 
-    // Populate ward filter from analytics data (wards loaded via geo API later)
+    // Populate LGA filters and pre-load all wards at startup
     populateLGAFilter();
+    populateCovFilters();
+    await preloadAllWards();
   }
 
   function setEl(id, val) {
@@ -1172,7 +1174,10 @@ tbody tr:hover{background:var(--pale)}
       if (txt) txt.textContent = [FILTER.lga, FILTER.ward].filter(Boolean).join(' › ');
     } else {
       resetFilter();
+      return;
     }
+    delete built['teams'];
+    delete built['trends'];
     rebuildOverviewCharts();
   }
 
@@ -1198,22 +1203,32 @@ tbody tr:hover{background:var(--pale)}
   window.applyFilter = applyFilter;
   window.resetFilter = resetFilter;
 
-  /* ── Ward dropdown loader (shared by all filter groups) ── */
-  async function loadWardOptions(lgaVal, wardSelId) {
-    const sel = document.getElementById(wardSelId);
-    if (!sel) return;
-    while (sel.options.length > 1) sel.remove(1);
-    if (!lgaVal) return;
-    const wards = await api('/api/mda/wards?lga=' + encodeURIComponent(lgaVal));
-    if (wards && wards.length) {
-      wards.forEach(w => {
-        const o = document.createElement('option');
-        o.value = w; o.textContent = w;
-        sel.appendChild(o);
-      });
+  /* ── Wards pre-loaded once at startup: { lgaName: [ward1, ward2, ...] } ── */
+  let wardsByLGA = {};
+
+  async function preloadAllWards() {
+    const data = await api('/api/mda/wards');   // returns grouped dict
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      wardsByLGA = data;
     }
   }
-  window.loadWardOptions = loadWardOptions;
+
+  /* Synchronous — never needs a network call, never races with other code */
+  function loadWardOptions(lgaVal, wardSelId) {
+    const sel = document.getElementById(wardSelId);
+    if (!sel) return Promise.resolve();
+    while (sel.options.length > 1) sel.remove(1);
+    if (!lgaVal) return Promise.resolve();
+    const wards = wardsByLGA[lgaVal] || [];
+    wards.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w; o.textContent = w;
+      sel.appendChild(o);
+    });
+    return Promise.resolve();
+  }
+  window.loadWardOptions  = loadWardOptions;
+  window.preloadAllWards  = preloadAllWards;
 
 
   /* ── Fuzzy string similarity (normalised edit distance) ── */
@@ -1538,7 +1553,7 @@ tbody tr:hover{background:var(--pale)}
   /* ── TEAMS DATA ── */
   let teamsData = [];
   async function loadTeams() {
-    teamsData = await api('/api/mda/teams/performance') || [];
+    teamsData = await api('/api/mda/teams/performance' + _filterQS(FILTER.lga, FILTER.ward)) || [];
     const meeting = teamsData.filter(t => t.avg_per_day >= 80).length;
     const below = teamsData.length - meeting;
     const avg = teamsData.length ? (teamsData.reduce((s,t)=>s+t.avg_per_day,0)/teamsData.length).toFixed(1) : 0;
@@ -1713,7 +1728,42 @@ tbody tr:hover{background:var(--pale)}
     buildDonutChart(data);
     buildLGATable('lga-table-body', data);
     const lbl = document.getElementById('lga-table-filter-label');
-    if (lbl) lbl.textContent = FILTER.lga ? ('Filtered: ' + FILTER.lga) : '';
+    if (lbl) lbl.textContent = [FILTER.lga, FILTER.ward].filter(Boolean).join(' › ') || '';
+    // Reload KPI stats with active filter
+    _reloadOverviewKPIs();
+  }
+
+  async function _reloadOverviewKPIs() {
+    const qs = _filterQS(FILTER.lga, FILTER.ward);
+    const [ov, daily] = await Promise.all([
+      api('/api/mda/overview' + qs),
+      api('/api/mda/trends/daily' + qs),
+    ]);
+    if (!ov) return;
+    overviewData = ov;
+    dailyData    = daily || [];
+    const tf = ov.total_forms || 0, tt = ov.total_treated || 0;
+    setEl('kpi-forms',    fmt(tf));
+    setEl('kpi-treated',  fmt(tt));
+    setEl('kpi-teams',    fmt(ov.teams_active));
+    setEl('kpi-coverage', (ov.coverage_pct || 0).toFixed(1) + '%');
+    setEl('kpi-days',     ov.days_active || 0);
+    setEl('kpi-flags',    Number(ov.total_qc_flags || 0).toLocaleString());
+    setEl('trends-targeted',      fmt(ov.baseline_total));
+    setEl('trends-administered',  fmt(tt));
+    setEl('trends-flags',         ov.total_qc_flags || 0);
+    const tcEl = document.getElementById('trends-coverage');
+    if (tcEl) tcEl.innerHTML = '<span class="chip ' + covCls(ov.coverage_pct||0) + '">' + (ov.coverage_pct||0).toFixed(1) + '%</span>';
+    // Refresh age-summary for children
+    const ageSel = await api('/api/mda/individuals/age-summary' + qs);
+    if (ageSel) _renderAgeSummary(ageSel);
+  }
+
+  function _filterQS(lga, ward) {
+    const p = [];
+    if (lga)  p.push('lga='  + encodeURIComponent(lga));
+    if (ward) p.push('ward=' + encodeURIComponent(ward));
+    return p.length ? '?' + p.join('&') : '';
   }
 
   function buildLGABarChart(data, sortBy) {
@@ -1826,10 +1876,10 @@ tbody tr:hover{background:var(--pale)}
     });
   }
 
-  async function buildAgeBandChart() {
+  function _renderAgeSummary(d) {
     const el = document.getElementById('c_ageBar');
     if (!el) return;
-    const d = await api('/api/mda/individuals/age-summary') || {};
+    const existing = Chart.getChart(el); if (existing) existing.destroy();
     const enumerated = [d.total_1_11 || 0, d.total_12_59 || 0];
     const treated    = [d.treated_1_11 || 0, d.treated_12_59 || 0];
     const labels     = ['1–11 months', '12–59 months'];
@@ -1838,20 +1888,11 @@ tbody tr:hover{background:var(--pale)}
       data: {
         labels,
         datasets: [
-          { label: 'Enumerated (baseline)', data: enumerated, backgroundColor: '#CFE3F5', borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: '#B3D4F0' },
+          { label: 'Enumerated (baseline)', data: enumerated, backgroundColor: '#C8E6C9', borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: '#A5D6A7' },
           { label: 'Treated', data: treated, backgroundColor: C_BLUE1, borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: C_BLUE2 },
         ]
       },
       options: {
-        onClick: (evt, elems) => {
-          if (!elems.length) return;
-          const lbl   = labels[elems[0].index];
-          const dsLbl = elems[0].datasetIndex === 0 ? 'Enumerated' : 'Treated';
-          const val   = elems[0].datasetIndex === 0 ? enumerated[elems[0].index] : treated[elems[0].index];
-          const gap   = enumerated[elems[0].index] - treated[elems[0].index];
-          showToast(dsLbl + ' (' + lbl + '): ' + val.toLocaleString() + (gap > 0 ? ' · Gap: ' + gap.toLocaleString() : ''));
-        },
-        onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
           legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
           datalabels: { ...DL_BASE, anchor: 'end', align: 'top', formatter: v => v.toLocaleString() }
@@ -1860,6 +1901,12 @@ tbody tr:hover{background:var(--pale)}
         maintainAspectRatio: false, animation: { duration: 600 }
       }
     });
+  }
+
+  async function buildAgeBandChart() {
+    const qs = _filterQS(FILTER.lga, FILTER.ward);
+    const d  = await api('/api/mda/individuals/age-summary' + qs) || {};
+    _renderAgeSummary(d);
   }
 
   function buildCharts(view) {
