@@ -500,6 +500,15 @@ async def upload_mda(
               AND h.flag_gps_zero = FALSE
         """)
 
+        # Normalise lga names to match shapefile Title Case (e.g. TAMBUWAL → Tambuwal)
+        cur.execute("""
+            UPDATE mda_households h
+            SET lga = w.lga_name
+            FROM (SELECT DISTINCT lga_name FROM wards WHERE project_id = 1) w
+            WHERE UPPER(TRIM(h.lga)) = UPPER(TRIM(w.lga_name))
+              AND h.lga <> w.lga_name
+        """)
+
         conn.commit()
     except Exception as exc:
         conn.rollback()
@@ -789,8 +798,17 @@ async def gps_duplicate(db: AsyncSession = Depends(get_db), _u: User = Depends(g
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/overview")
-async def mda_overview(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
-    result = await db.execute(text("""
+async def mda_overview(
+    lga:  Optional[str] = None,
+    ward: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    filters, params = [], {}
+    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    result = await db.execute(text(f"""
         SELECT
           COUNT(*) AS total_forms,
           COALESCE(SUM(number_of_treated), 0) AS total_treated,
@@ -805,8 +823,8 @@ async def mda_overview(db: AsyncSession = Depends(get_db), _u: User = Depends(ge
           (SELECT COALESCE(SUM(total_treated),0) FROM mda_baseline) AS baseline_total,
           MIN(check_treatment_date)::text AS campaign_start,
           MAX(check_treatment_date)::text AS campaign_end
-        FROM mda_households
-    """))
+        FROM mda_households {where}
+    """), params)
     row = result.fetchone()
     if not row or not row[0]:
         return {"total_forms": 0}
@@ -830,18 +848,27 @@ async def mda_overview(db: AsyncSession = Depends(get_db), _u: User = Depends(ge
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/trends/daily")
-async def mda_trends_daily(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
-    result = await db.execute(text("""
+async def mda_trends_daily(
+    lga:  Optional[str] = None,
+    ward: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    filters = ["check_treatment_date IS NOT NULL"]
+    params: dict = {}
+    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    where = "WHERE " + " AND ".join(filters)
+    result = await db.execute(text(f"""
         SELECT
           check_treatment_date::text AS date,
           COUNT(*) AS forms,
           COALESCE(SUM(number_of_treated), 0) AS treated,
           COUNT(DISTINCT hq_user) AS teams
-        FROM mda_households
-        WHERE check_treatment_date IS NOT NULL
+        FROM mda_households {where}
         GROUP BY check_treatment_date
         ORDER BY check_treatment_date
-    """))
+    """), params)
     return [dict(zip(["date","forms","treated","teams"], row)) for row in result.fetchall()]
 
 
@@ -850,8 +877,18 @@ async def mda_trends_daily(db: AsyncSession = Depends(get_db), _u: User = Depend
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/teams/performance")
-async def mda_teams(db: AsyncSession = Depends(get_db), _u: User = Depends(get_current_user)):
-    result = await db.execute(text("""
+async def mda_teams(
+    lga:  Optional[str] = None,
+    ward: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _u: User = Depends(get_current_user),
+):
+    filters = ["hq_user IS NOT NULL"]
+    params: dict = {}
+    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    where = "WHERE " + " AND ".join(filters)
+    result = await db.execute(text(f"""
         SELECT
           hq_user,
           lga,
@@ -861,11 +898,10 @@ async def mda_teams(db: AsyncSession = Depends(get_db), _u: User = Depends(get_c
           COALESCE(SUM(number_of_treated), 0) AS total_treated,
           SUM(CASE WHEN flag_after_hours THEN 1 ELSE 0 END) AS after_hours,
           SUM(CASE WHEN flag_fast_form THEN 1 ELSE 0 END) AS fast_forms
-        FROM mda_households
-        WHERE hq_user IS NOT NULL
+        FROM mda_households {where}
         GROUP BY hq_user, lga
         ORDER BY avg_per_day DESC
-    """))
+    """), params)
     rows = result.fetchall()
     keys = ["hq_user","lga","total_forms","days_active","avg_per_day","total_treated","after_hours","fast_forms"]
     out = []
@@ -957,21 +993,35 @@ async def mda_coverage_ward(
 
 @router.get("/individuals/age-summary")
 async def individuals_age_summary(
+    lga:  Optional[str] = None,
+    ward: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _u: User = Depends(get_current_user),
 ):
-    """Age-band breakdown from mda_individuals table (sheet 2 of MDA workbook)."""
-    result = await db.execute(text("""
+    """Age-band breakdown from mda_individuals, filterable by LGA and ward."""
+    hh_filters = ["h.lga IS NOT NULL"]
+    params: dict = {}
+    if lga:
+        hh_filters.append("h.lga = :lga")
+        params["lga"] = lga
+    if ward:
+        hh_filters.append("h.ward_name = :ward")
+        params["ward"] = ward
+    hh_where = " AND ".join(hh_filters)
+
+    result = await db.execute(text(f"""
         SELECT
-            COUNT(*) FILTER (WHERE age_in_months BETWEEN 1 AND 11)                         AS total_1_11,
-            COUNT(*) FILTER (WHERE age_in_months BETWEEN 1 AND 11 AND treatment_status='1') AS treated_1_11,
-            COUNT(*) FILTER (WHERE age_in_months BETWEEN 12 AND 59)                        AS total_12_59,
-            COUNT(*) FILTER (WHERE age_in_months BETWEEN 12 AND 59 AND treatment_status='1') AS treated_12_59,
-            COUNT(*) FILTER (WHERE treatment_status='1')                                    AS total_treated,
-            COUNT(*)                                                                         AS grand_total
-        FROM mda_individuals
-        WHERE age_in_months IS NOT NULL AND age_in_months BETWEEN 1 AND 59
-    """))
+            COUNT(*) FILTER (WHERE i.age_in_months BETWEEN 1 AND 11)                          AS total_1_11,
+            COUNT(*) FILTER (WHERE i.age_in_months BETWEEN 1 AND 11  AND i.treatment_status='1') AS treated_1_11,
+            COUNT(*) FILTER (WHERE i.age_in_months BETWEEN 12 AND 59)                         AS total_12_59,
+            COUNT(*) FILTER (WHERE i.age_in_months BETWEEN 12 AND 59 AND i.treatment_status='1') AS treated_12_59,
+            COUNT(*) FILTER (WHERE i.treatment_status='1')                                     AS total_treated,
+            COUNT(*)                                                                            AS grand_total
+        FROM mda_individuals i
+        JOIN mda_households h ON h.formid = i.hh_formid
+        WHERE i.age_in_months IS NOT NULL AND i.age_in_months BETWEEN 1 AND 59
+          AND {hh_where}
+    """), params)
     row = result.fetchone()
     bl = await db.execute(text("SELECT COALESCE(SUM(total_treated),0) AS total FROM mda_baseline"))
     bl_row = bl.fetchone()
@@ -1155,27 +1205,35 @@ async def get_ward_list(
     _u: User = Depends(get_current_user),
 ):
     """
-    Return distinct ward names derived from the GPS spatial intersection of the
-    uploaded Excel workbook data with ward boundary polygons.
-    Source is mda_households.ward_name (populated via ST_Within after upload).
-    If lga is provided, return only wards for that LGA.
+    Return wards derived from GPS spatial intersection with ward boundaries.
+    - With ?lga=X  → list of ward names for that LGA
+    - Without lga  → dict { lga_name: [ward1, ward2, ...] } for all LGAs
+    LGA names are Title Case (normalised to match shapefile).
     """
     if lga:
         result = await db.execute(text("""
             SELECT DISTINCT ward_name
             FROM mda_households
             WHERE ward_name IS NOT NULL
-              AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga))
+              AND lga = :lga
             ORDER BY ward_name
         """), {"lga": lga})
+        return [r[0] for r in result.fetchall()]
     else:
         result = await db.execute(text("""
-            SELECT DISTINCT ward_name
+            SELECT lga, ward_name
             FROM mda_households
-            WHERE ward_name IS NOT NULL
-            ORDER BY ward_name
+            WHERE ward_name IS NOT NULL AND lga IS NOT NULL
+            GROUP BY lga, ward_name
+            ORDER BY lga, ward_name
         """))
-    return [r[0] for r in result.fetchall()]
+        grouped: Dict[str, list] = {}
+        for row in result.fetchall():
+            lga_key, ward = row[0], row[1]
+            if lga_key not in grouped:
+                grouped[lga_key] = []
+            grouped[lga_key].append(ward)
+        return grouped
 
 
 # ─────────────────────────────────────────────────────────────────────────────
