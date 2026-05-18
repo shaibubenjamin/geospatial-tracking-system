@@ -719,7 +719,7 @@ tbody tr:hover{background:var(--pale)}
               <div class="card-sub">Which teams are generating the most data quality flags. Shows total records submitted and how many contain at least one error.</div>
             </div>
           </div>
-          <div style="overflow-x:auto">
+          <div style="max-height:400px;overflow:auto">
             <table id="qc-teams-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">
               <thead>
                 <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2">
@@ -735,14 +735,10 @@ tbody tr:hover{background:var(--pale)}
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('refusals')">Refusals <span id="qcts-refusals"></span></th>
                 </tr>
               </thead>
+              <tbody id="qc-teams-tbody">
+                <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
+              </tbody>
             </table>
-            <div style="max-height:400px;overflow-y:auto;overflow-x:visible">
-              <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">
-                <tbody id="qc-teams-tbody">
-                  <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
-                </tbody>
-              </table>
-            </div>
           </div>
         </div>
       </section>
