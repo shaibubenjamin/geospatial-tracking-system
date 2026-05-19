@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import User
-from app.routes.auth import get_current_user
+from app.routes.auth import get_current_user, get_current_user_optional
 from app.services.aggregation_engine import (
     get_lga_metrics,
     get_ward_metrics,
@@ -17,6 +17,7 @@ from app.services.spatial_engine import (
     compute_settlement_analytics,
     get_coverage_timeline,
     get_points_geojson,
+    _resolve_boundary_pid,
 )
 from app.services.qc_engine import run_stacked_point_check
 
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/projects/{project_id}/analytics", tags=["analytics"]
 async def project_summary(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     return await get_project_summary(project_id, db)
 
@@ -36,8 +37,12 @@ async def project_summary(
 async def lga_metrics(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
+    # Pass the user-selected project through. The aggregation engine resolves the
+    # state's boundary project for the LGA list and joins analytics scoped to
+    # this project — so R5 returns all 23 Sokoto LGAs with zero metrics until
+    # its CommCare sync recomputes settlement_analytics.
     return await get_lga_metrics(project_id, db)
 
 
@@ -46,7 +51,7 @@ async def ward_metrics(
     project_id: int,
     lgacode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     return await get_ward_metrics(project_id, db, lgacode=lgacode)
 
@@ -57,7 +62,7 @@ async def settlement_metrics(
     wardcode: Optional[str] = None,
     lgacode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     return await get_settlement_metrics(project_id, db, wardcode=wardcode, lgacode=lgacode)
 
@@ -66,7 +71,7 @@ async def settlement_metrics(
 async def coverage_timeline(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     return await get_coverage_timeline(project_id, db)
 
@@ -79,7 +84,7 @@ async def points_geojson(
     lgacode: Optional[str] = None,
     limit: int = 5000,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     return await get_points_geojson(
         project_id, db,
@@ -96,7 +101,7 @@ async def trigger_compute(
     background_tasks: BackgroundTasks,
     full_recompute: bool = False,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Trigger full or incremental analytics computation."""
     unique_cods = None  # full recompute
@@ -133,7 +138,7 @@ def _csv_response(rows: List[dict], filename: str) -> StreamingResponse:
 async def lga_metrics_csv(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     data = await get_lga_metrics(project_id, db)
     rows = [
@@ -157,7 +162,7 @@ async def ward_metrics_csv(
     project_id: int,
     lgacode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     data = await get_ward_metrics(project_id, db, lgacode=lgacode)
     rows = [
@@ -183,7 +188,7 @@ async def settlement_metrics_csv(
     wardcode: Optional[str] = None,
     lgacode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     data = await get_settlement_metrics(project_id, db, wardcode=wardcode, lgacode=lgacode)
     rows = [

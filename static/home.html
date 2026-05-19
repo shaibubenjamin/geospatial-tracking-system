@@ -3,26 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SARMAAN MDA — Welcome</title>
+  <title>SARMAAN MDA — Sokoto State</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
     :root {
-      --navy: #002F5F;
-      --deep: #003D7A;
-      --blue: #0067B8;
-      --bright: #0F86D6;
-      --sky: #00A4E4;
-      --cyan: #4FC3F7;
-      --mist: #E8F1FA;
-      --pale: #F4F9FE;
-      --ink: #0E1E33;
-      --muted: #5B6B82;
-      --line: #DCE6F2;
-      --good: #16A34A;
-      --warn: #D97706;
-      --bad:  #DC2626;
+      --navy:  #003D1A;
+      --deep:  #005225;
+      --green: #006B2E;
+      --mid:   #008C3A;
+      --light: #44B568;
+      --pale-g:#9FDAB5;
+      --mist:  #E9F7EE;
+      --pale:  #F4FBF6;
+      --ink:   #0C1E10;
+      --body:  #1F3B28;
+      --muted: #4A6852;
+      --line:  #C3E8CE;
+      --gold:  #C8A000;
+      --good:  #16A34A;
+      --warn:  #D97706;
+      --bad:   #DC2626;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -37,14 +39,14 @@
       background: #fff;
       border-bottom: 1px solid var(--line);
       padding: 0 32px;
-      height: 60px;
+      height: 62px;
       display: flex;
       align-items: center;
       gap: 14px;
       position: sticky;
       top: 0;
       z-index: 100;
-      box-shadow: 0 1px 8px rgba(0,0,0,.05);
+      box-shadow: 0 2px 12px rgba(0,61,26,.07);
     }
     .topbar-brand {
       display: flex;
@@ -53,17 +55,29 @@
       text-decoration: none;
     }
     .topbar-logo {
-      width: 36px; height: 36px;
-      background: linear-gradient(135deg, var(--navy), var(--blue));
-      border-radius: 9px;
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--navy), var(--green));
+      border-radius: 10px;
       display: grid;
       place-items: center;
       color: #fff;
       font-size: 16px;
       flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,61,26,.3);
     }
-    .topbar-name { font-size: 15px; font-weight: 800; color: var(--navy); }
-    .topbar-sub  { font-size: 10.5px; color: var(--muted); }
+    .topbar-name { font-size: 15px; font-weight: 800; color: var(--navy); letter-spacing: -.3px; }
+    .topbar-sub  { font-size: 10.5px; color: var(--muted); font-weight: 500; }
+    .nphcda-badge {
+      background: var(--mist);
+      border: 1px solid var(--line);
+      color: var(--green);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 99px;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
     .topbar-spacer { flex: 1; }
     .topbar-user {
       display: flex;
@@ -73,21 +87,23 @@
       color: var(--muted);
     }
     .topbar-avatar {
-      width: 32px; height: 32px;
+      width: 34px; height: 34px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--blue), var(--sky));
+      background: linear-gradient(135deg, var(--green), var(--light));
       display: grid;
       place-items: center;
       color: #fff;
       font-size: 13px;
       font-weight: 700;
+      box-shadow: 0 2px 6px rgba(0,61,26,.2);
     }
-    .topbar-username { font-weight: 600; color: var(--ink); }
+    .topbar-username { font-weight: 600; color: var(--ink); font-size: 13px; }
+    .topbar-role     { font-size: 11px; color: var(--muted); }
     .topbar-logout {
       background: none;
       border: 1px solid var(--line);
-      border-radius: 7px;
-      padding: 6px 12px;
+      border-radius: 8px;
+      padding: 7px 14px;
       font-size: 12.5px;
       font-weight: 600;
       color: var(--muted);
@@ -98,35 +114,36 @@
       gap: 6px;
       transition: all .15s;
     }
-    .topbar-logout:hover { background: var(--mist); color: var(--navy); }
+    .topbar-logout:hover { background: var(--mist); color: var(--navy); border-color: var(--line); }
 
     /* ── HERO ── */
     .hero {
-      background: linear-gradient(135deg, #001229 0%, var(--navy) 45%, var(--deep) 100%);
-      padding: 72px 48px 80px;
+      background: linear-gradient(135deg, #001A08 0%, var(--navy) 45%, var(--deep) 100%);
+      padding: 72px 48px 88px;
       position: relative;
       overflow: hidden;
     }
+    /* Decorative circles — green tones only */
     .hero::before {
       content: '';
       position: absolute;
-      width: 600px; height: 600px;
+      width: 640px; height: 640px;
       border-radius: 50%;
-      border: 1px solid rgba(79,195,247,.08);
-      top: -200px; right: -100px;
+      border: 1px solid rgba(68,181,104,.1);
+      top: -220px; right: -120px;
       pointer-events: none;
     }
     .hero::after {
       content: '';
       position: absolute;
-      width: 400px; height: 400px;
+      width: 420px; height: 420px;
       border-radius: 50%;
-      border: 1px solid rgba(0,164,228,.07);
-      bottom: -150px; left: -50px;
+      border: 1px solid rgba(0,140,58,.12);
+      bottom: -160px; left: -60px;
       pointer-events: none;
     }
     .hero-inner {
-      max-width: 980px;
+      max-width: 1000px;
       margin: 0 auto;
       position: relative;
     }
@@ -134,46 +151,43 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: rgba(79,195,247,.12);
-      border: 1px solid rgba(79,195,247,.25);
-      color: var(--cyan);
+      background: rgba(68,181,104,.15);
+      border: 1px solid rgba(68,181,104,.3);
+      color: var(--pale-g);
       font-size: 11.5px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      padding: 5px 12px;
+      letter-spacing: 1.2px;
+      padding: 5px 14px;
       border-radius: 99px;
-      margin-bottom: 24px;
-    }
-    .hero-title {
-      font-size: 48px;
-      font-weight: 900;
-      color: #fff;
-      line-height: 1.1;
-      letter-spacing: -1px;
-      margin-bottom: 16px;
-    }
-    .hero-title span { color: var(--cyan); }
-    .hero-sub {
-      font-size: 17px;
-      color: rgba(255,255,255,.68);
-      line-height: 1.65;
-      max-width: 600px;
-      margin-bottom: 40px;
+      margin-bottom: 22px;
     }
     .welcome-greeting {
       font-size: 14px;
       color: rgba(255,255,255,.55);
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
-    .welcome-greeting strong { color: var(--cyan); }
+    .welcome-greeting strong { color: var(--pale-g); }
+    .hero-title {
+      font-size: 50px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.08;
+      letter-spacing: -1.5px;
+      margin-bottom: 18px;
+    }
+    .hero-title .accent { color: var(--pale-g); }
+    .hero-title .gold   { color: #F0C040; }
+    .hero-sub {
+      font-size: 16.5px;
+      color: rgba(255,255,255,.62);
+      line-height: 1.7;
+      max-width: 580px;
+      margin-bottom: 44px;
+    }
 
-    /* Action Cards */
-    .action-cards {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
+    /* Action cards */
+    .action-cards { display: flex; gap: 14px; flex-wrap: wrap; }
     .action-card {
       display: flex;
       align-items: center;
@@ -181,21 +195,22 @@
       padding: 18px 26px;
       border-radius: 14px;
       text-decoration: none;
+      font-family: inherit;
       font-weight: 700;
       font-size: 15px;
       cursor: pointer;
       border: none;
-      font-family: inherit;
-      transition: all .2s;
+      transition: all .22s cubic-bezier(.4,0,.2,1);
     }
     .action-card-primary {
-      background: linear-gradient(135deg, var(--blue), var(--bright));
+      background: linear-gradient(135deg, var(--green), var(--mid));
       color: #fff;
-      box-shadow: 0 6px 24px rgba(0,103,184,.4);
+      box-shadow: 0 6px 24px rgba(0,107,46,.45);
     }
     .action-card-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 32px rgba(0,103,184,.5);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 36px rgba(0,107,46,.55);
+      background: linear-gradient(135deg, var(--mid), var(--green));
     }
     .action-card-secondary {
       background: rgba(255,255,255,.1);
@@ -204,18 +219,19 @@
       backdrop-filter: blur(4px);
     }
     .action-card-secondary:hover {
-      background: rgba(255,255,255,.17);
-      transform: translateY(-2px);
+      background: rgba(255,255,255,.18);
+      transform: translateY(-3px);
+      border-color: rgba(255,255,255,.35);
     }
     .action-card-icon {
-      width: 44px; height: 44px;
-      border-radius: 10px;
+      width: 46px; height: 46px;
+      border-radius: 11px;
       display: grid;
       place-items: center;
       font-size: 18px;
       flex-shrink: 0;
     }
-    .action-card-primary .action-card-icon { background: rgba(255,255,255,.2); }
+    .action-card-primary   .action-card-icon { background: rgba(255,255,255,.2); }
     .action-card-secondary .action-card-icon { background: rgba(255,255,255,.12); }
     .action-card-text { display: flex; flex-direction: column; gap: 2px; }
     .action-card-label { font-size: 15px; font-weight: 700; }
@@ -223,9 +239,26 @@
 
     /* ── CONTENT ── */
     .content {
-      max-width: 1100px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 40px 32px 80px;
+      padding: 44px 32px 80px;
+    }
+    .section-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--line);
     }
 
     /* Stats strip */
@@ -239,10 +272,10 @@
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 12px;
-      padding: 16px;
+      padding: 18px 14px;
       text-align: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,.04);
-      transition: box-shadow .2s;
+      box-shadow: 0 1px 4px rgba(0,61,26,.04);
+      transition: box-shadow .2s, transform .15s;
       position: relative;
       overflow: hidden;
     }
@@ -251,15 +284,20 @@
       position: absolute;
       top: 0; left: 0; right: 0;
       height: 3px;
-      background: var(--blue);
+      background: var(--accent, var(--green));
+      border-radius: 12px 12px 0 0;
     }
-    .stat-box:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+    .stat-box:hover {
+      box-shadow: 0 6px 20px rgba(0,61,26,.1);
+      transform: translateY(-2px);
+    }
     .stat-box .v {
-      font-size: 24px;
+      font-size: 26px;
       font-weight: 800;
       color: var(--navy);
       letter-spacing: -.5px;
       display: block;
+      line-height: 1.1;
     }
     .stat-box .l {
       font-size: 10.5px;
@@ -267,133 +305,130 @@
       text-transform: uppercase;
       letter-spacing: .6px;
       font-weight: 600;
-      margin-top: 4px;
+      margin-top: 5px;
       display: block;
     }
-
-    /* Section */
-    .section-title {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--muted);
-      margin-bottom: 16px;
+    .loading-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 10px;
+      vertical-align: middle;
     }
+    .loading-dot span {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      display: inline-block;
+      animation: blink 1.2s ease-in-out infinite;
+    }
+    .loading-dot span:nth-child(2) { animation-delay: .2s; }
+    .loading-dot span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%,60%,100%{opacity:.25} 30%{opacity:1} }
 
-    .about-grid {
+    /* Cards */
+    .grid-2 {
       display: grid;
-      grid-template-columns: 1.3fr 1fr;
-      gap: 24px;
-      margin-bottom: 32px;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 20px;
+      margin-bottom: 24px;
     }
     .card {
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 14px;
       overflow: hidden;
-      box-shadow: 0 1px 6px rgba(0,0,0,.05);
+      box-shadow: 0 1px 6px rgba(0,61,26,.05);
     }
     .card-head {
-      padding: 16px 20px;
+      padding: 16px 22px;
       border-bottom: 1px solid var(--line);
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
+      background: #fafdf8;
     }
-    .card-head-icon {
-      width: 34px; height: 34px;
+    .card-icon {
+      width: 36px; height: 36px;
       border-radius: 9px;
       background: var(--mist);
       display: grid;
       place-items: center;
-      color: var(--blue);
-      font-size: 14px;
+      color: var(--green);
+      font-size: 15px;
+      flex-shrink: 0;
     }
-    .card-head-title { font-size: 14px; font-weight: 700; color: var(--navy); }
-    .card-body { padding: 20px; }
+    .card-title { font-size: 14px; font-weight: 700; color: var(--navy); }
+    .card-body  { padding: 22px; }
 
     .about-text {
       font-size: 13.5px;
-      line-height: 1.75;
-      color: #374151;
+      line-height: 1.78;
+      color: var(--body);
     }
-    .about-text p { margin-bottom: 12px; }
+    .about-text p { margin-bottom: 13px; }
     .about-text p:last-child { margin-bottom: 0; }
+    .about-text strong { color: var(--navy); }
 
-    .drug-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
+    .drug-list { display: flex; flex-direction: column; gap: 14px; }
     .drug-item {
       display: flex;
       gap: 14px;
       align-items: flex-start;
-      padding-bottom: 12px;
+      padding-bottom: 14px;
       border-bottom: 1px solid var(--line);
     }
     .drug-item:last-child { border-bottom: none; padding-bottom: 0; }
     .drug-dot {
-      width: 36px; height: 36px;
-      border-radius: 9px;
+      width: 38px; height: 38px;
+      border-radius: 10px;
       display: grid;
       place-items: center;
       font-size: 16px;
       flex-shrink: 0;
     }
     .drug-name { font-size: 13.5px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
-    .drug-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .drug-desc { font-size: 12px; color: var(--muted); line-height: 1.55; }
 
-    .milestones {
+    .timeline { display: flex; flex-direction: column; }
+    .tl-item {
       display: flex;
-      flex-direction: column;
-      gap: 0;
-    }
-    .milestone {
-      display: flex;
-      gap: 14px;
+      gap: 16px;
       padding: 14px 0;
       border-bottom: 1px solid var(--line);
     }
-    .milestone:last-child { border-bottom: none; }
-    .milestone-dot {
+    .tl-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .tl-dot {
       width: 10px; height: 10px;
       border-radius: 50%;
-      background: var(--blue);
-      margin-top: 4px;
       flex-shrink: 0;
+      margin-top: 5px;
     }
-    .milestone-title { font-size: 13.5px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
-    .milestone-desc  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .tl-title { font-size: 13.5px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+    .tl-desc  { font-size: 12px; color: var(--muted); line-height: 1.55; }
 
-    .loading-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 20px 32px;
+      border-top: 1px solid var(--line);
       font-size: 12px;
       color: var(--muted);
+      background: #fff;
     }
-    .loading-indicator .dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--blue);
-      animation: pulse 1.2s ease-in-out infinite;
-    }
-    .loading-indicator .dot:nth-child(2) { animation-delay: .2s; }
-    .loading-indicator .dot:nth-child(3) { animation-delay: .4s; }
-    @keyframes pulse { 0%,60%,100%{opacity:.3}30%{opacity:1} }
+    .footer strong { color: var(--navy); }
 
-    @media (max-width: 900px) {
+    @media (max-width: 960px) {
       .stats-strip { grid-template-columns: repeat(3,1fr); }
-      .about-grid  { grid-template-columns: 1fr; }
-      .hero-title  { font-size: 34px; }
+      .grid-2      { grid-template-columns: 1fr; }
+      .hero-title  { font-size: 36px; }
     }
     @media (max-width: 600px) {
-      .stats-strip { grid-template-columns: repeat(2,1fr); }
-      .hero        { padding: 40px 24px 50px; }
-      .content     { padding: 24px 16px 60px; }
-      .action-cards { flex-direction: column; }
+      .stats-strip   { grid-template-columns: repeat(2,1fr); }
+      .hero          { padding: 40px 24px 56px; }
+      .content       { padding: 24px 16px 60px; }
+      .action-cards  { flex-direction: column; }
+      .topbar        { padding: 0 16px; }
     }
   </style>
 </head>
@@ -401,146 +436,148 @@
 
   <!-- Topbar -->
   <nav class="topbar">
-    <a href="/home" class="topbar-brand" style="text-decoration:none">
-      <div class="topbar-logo"><i class="fa-solid fa-capsules"></i></div>
+    <a href="/" class="topbar-brand">
+      <div class="topbar-logo"><i class="fa-solid fa-leaf"></i></div>
       <div>
         <div class="topbar-name">SARMAAN MDA</div>
         <div class="topbar-sub">Sokoto State</div>
       </div>
     </a>
     <div class="topbar-spacer"></div>
-    <div class="topbar-user">
+    <!-- Authenticated user chip (only shown if signed in) -->
+    <div class="topbar-user" id="auth-user-chip" style="display:none">
       <div class="topbar-avatar" id="user-avatar">?</div>
       <div>
         <div class="topbar-username" id="user-name">—</div>
-        <div style="font-size:11px;color:var(--muted)" id="user-role">—</div>
+        <div class="topbar-role" id="user-role">—</div>
       </div>
     </div>
-    <button class="topbar-logout" onclick="handleLogout()">
-      <i class="fa-solid fa-right-from-bracket"></i> Logout
+    <button class="topbar-logout" id="auth-signout-btn" onclick="handleLogout()" style="display:none">
+      <i class="fa-solid fa-right-from-bracket"></i> Sign out
     </button>
+    <!-- Public sign-in entry (only shown if NOT signed in) -->
+    <a href="/login" class="topbar-logout" id="public-signin-btn">
+      <i class="fa-solid fa-right-to-bracket"></i> Admin sign in
+    </a>
   </nav>
 
   <!-- Hero -->
   <div class="hero">
     <div class="hero-inner">
-      <div class="welcome-greeting">Welcome back, <strong id="hero-username">—</strong></div>
+      <div class="welcome-greeting" id="welcome-greeting"><strong>Public view</strong> &mdash; no sign-in required</div>
       <div class="hero-eyebrow">
         <i class="fa-solid fa-circle-dot" style="font-size:8px"></i>
-        Active Campaign
+        Active Campaign &nbsp;·&nbsp; Sokoto State 2026
       </div>
       <h1 class="hero-title">
-        Sokoto State<br>
-        <span>MDA Dashboard</span>
+        <span class="accent">SARMAAN</span> MDA<br>
+        <span class="gold">Coverage Dashboard</span>
       </h1>
       <p class="hero-sub">
-        Monitor real-time coverage, quality checks, and team performance for the
-        SARMAAN Annual Routine Mass Administration of Anthelmintics and
-        Azithromycin across all 23 LGAs of Sokoto State.
+        Sightsavers' real-time platform for monitoring Mass Drug Administration coverage,
+        data quality, and team performance across all 23 LGAs of Sokoto State.
       </p>
 
       <div class="action-cards">
-        <a href="/mda" class="action-card action-card-primary">
+        <!-- Public CTA: View Dashboard -->
+        <a href="/dashboard" class="action-card action-card-primary" id="cta-view-dashboard">
           <div class="action-card-icon"><i class="fa-solid fa-gauge-high"></i></div>
           <div class="action-card-text">
-            <div class="action-card-label">Enter Dashboard</div>
-            <div class="action-card-hint">Coverage, teams, QC &amp; maps</div>
+            <div class="action-card-label" id="cta-view-label">View Dashboard</div>
+            <div class="action-card-hint" id="cta-view-hint">Coverage · QC · Maps · Teams &middot; view-only</div>
           </div>
-          <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.7"></i>
+          <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.75"></i>
         </a>
-
+        <!-- Public CTA: Admin Portal (sign-in) — shown when not authenticated -->
+        <a href="/login" class="action-card action-card-secondary" id="cta-admin-portal">
+          <div class="action-card-icon"><i class="fa-solid fa-shield-halved"></i></div>
+          <div class="action-card-text">
+            <div class="action-card-label">Admin Portal</div>
+            <div class="action-card-hint">Sign in for full access &middot; data uploads · users</div>
+          </div>
+          <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.75"></i>
+        </a>
+        <!-- Authenticated CTA: Admin Panel — shown when signed-in user is admin -->
         <a href="/mda-admin" class="action-card action-card-secondary" id="admin-card" style="display:none">
           <div class="action-card-icon"><i class="fa-solid fa-screwdriver-wrench"></i></div>
           <div class="action-card-text">
             <div class="action-card-label">Admin Panel</div>
-            <div class="action-card-hint">Data uploads, users &amp; sync</div>
+            <div class="action-card-hint">Data uploads · Users · Sync</div>
           </div>
-          <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.7"></i>
+          <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.75"></i>
         </a>
       </div>
     </div>
   </div>
 
-  <!-- Main content -->
+  <!-- Content -->
   <div class="content">
 
-    <!-- Campaign stats strip (loaded from API) -->
-    <div class="section-title" style="margin-bottom:14px">
+    <!-- Live stats -->
+    <div class="section-label">
       Live Campaign Statistics
-      <span id="stats-loading" class="loading-indicator" style="margin-left:12px">
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        Loading…
-      </span>
+      <span id="stats-loading" class="loading-dot"><span></span><span></span><span></span></span>
     </div>
     <div class="stats-strip">
       <div class="stat-box"><span class="v" id="s-forms">—</span><span class="l">Household Forms</span></div>
       <div class="stat-box"><span class="v" id="s-treated">—</span><span class="l">Children Treated</span></div>
-      <div class="stat-box" style="--blue:var(--good)"><span class="v" id="s-coverage">—</span><span class="l">Coverage %</span></div>
-      <div class="stat-box"><span class="v" id="s-teams">—</span><span class="l">Active Teams</span></div>
+      <div class="stat-box" style="--accent:var(--good)"><span class="v" id="s-coverage" style="color:var(--good)">—</span><span class="l">Coverage %</span></div>
+      <div class="stat-box" id="s-teams-box">
+        <span class="v" id="s-teams" style="font-size:20px">—</span>
+        <span style="font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.3px" id="s-teams-pct"></span>
+        <span class="l">Active Teams</span>
+      </div>
       <div class="stat-box"><span class="v" id="s-days">—</span><span class="l">Campaign Days</span></div>
-      <div class="stat-box" style="--blue:var(--warn)"><span class="v" id="s-flags">—</span><span class="l">QC Flags</span></div>
+      <div class="stat-box" style="--accent:var(--warn)"><span class="v" id="s-flags" style="color:var(--warn)">—</span><span class="l">QC Flags</span></div>
     </div>
 
-    <!-- About section -->
-    <div class="about-grid">
-
-      <!-- What is SARMAAN -->
+    <!-- About + Drugs -->
+    <div class="section-label">Programme Overview</div>
+    <div class="grid-2">
       <div class="card">
         <div class="card-head">
-          <div class="card-head-icon"><i class="fa-solid fa-info-circle"></i></div>
-          <div class="card-head-title">About SARMAAN MDA</div>
+          <div class="card-icon"><i class="fa-solid fa-circle-info"></i></div>
+          <div class="card-title">About SARMAAN MDA</div>
         </div>
         <div class="card-body">
           <div class="about-text">
             <p>
-              <strong>SARMAAN</strong> — Sokoto State Annual Routine Mass Administration of
-              Anthelmintics and Azithromycin — is Sokoto State's flagship preventive health
-              campaign targeting children aged 1 to 59 months across all 23 Local Government
-              Areas.
+              <strong>SARMAAN</strong> — Sokoto Annual Routine Mass Administration of
+              Azithromycin — is Sokoto State's flagship preventive health
+              campaign targeting children aged 1–59 months across all 23 Local Government Areas.
             </p>
             <p>
-              The campaign delivers <strong>Mass Drug Administration (MDA)</strong>, a WHO-endorsed
-              strategy for the control of Neglected Tropical Diseases (NTDs) and childhood
-              mortality through the annual distribution of anthelmintic drugs and azithromycin to
-              eligible children at the community level.
+              The campaign delivers <strong>Mass Drug Administration (MDA)</strong>, a
+              WHO-endorsed strategy for the control of Neglected Tropical Diseases (NTDs) and
+              reduction of childhood mortality through the annual distribution of anthelmintics
+              and azithromycin at the community level.
             </p>
             <p>
-              Field teams conduct household visits and record treatment data digitally via
-              ODK-based mobile forms. This platform aggregates, validates, and visualises that
-              data in real time to support programme managers in tracking coverage against the
-              WHO administrative coverage threshold of <strong>80%</strong>.
+              Field teams conduct household visits and capture treatment data via the
+              <strong>Comcare</strong> mobile tool. This platform aggregates, validates and
+              visualises that data in real time, supporting programme managers to track coverage
+              against the WHO threshold of <strong>≥ 80%</strong>.
             </p>
           </div>
         </div>
       </div>
 
-      <!-- Drugs administered -->
       <div class="card">
         <div class="card-head">
-          <div class="card-head-icon"><i class="fa-solid fa-capsules"></i></div>
-          <div class="card-head-title">Medicines Administered</div>
+          <div class="card-icon"><i class="fa-solid fa-capsules"></i></div>
+          <div class="card-title">Medicines Administered</div>
         </div>
         <div class="card-body">
           <div class="drug-list">
-            <div class="drug-item">
-              <div class="drug-dot" style="background:#EFF6FF"><i class="fa-solid fa-pills" style="color:#3B82F6;font-size:14px"></i></div>
-              <div>
-                <div class="drug-name">Albendazole (Anthelmintic)</div>
-                <div class="drug-desc">Controls soil-transmitted helminths (STH) and intestinal worms. Single-dose, given annually. Children 12–59 months receive 400 mg.</div>
-              </div>
-            </div>
-            <div class="drug-item">
-              <div class="drug-dot" style="background:#FEF3C7"><i class="fa-solid fa-tablets" style="color:#D97706;font-size:14px"></i></div>
+            <div class="drug-item" style="border-bottom:none;padding-bottom:0">
+              <div class="drug-dot" style="background:#E9F7EE"><i class="fa-solid fa-tablets" style="color:var(--green);font-size:18px"></i></div>
               <div>
                 <div class="drug-name">Azithromycin (Antibiotic)</div>
-                <div class="drug-desc">Targets trachoma and childhood pneumonia mortality. Part of the SAFE strategy. Weight-based dosing for children 1–59 months.</div>
-              </div>
-            </div>
-            <div class="drug-item">
-              <div class="drug-dot" style="background:#F0FDF4"><i class="fa-solid fa-syringe" style="color:#16A34A;font-size:14px"></i></div>
-              <div>
-                <div class="drug-name">Vitamin A Supplementation</div>
-                <div class="drug-desc">Co-administered where indicated. Reduces child mortality and prevents vitamin A deficiency disorders.</div>
+                <div class="drug-desc">
+                  Targets trachoma and childhood pneumonia mortality as part of the WHO SAFE strategy.
+                  Weight-based dosing administered annually to eligible children aged 1–59 months.
+                  Distributed at the household level by trained community distributors.
+                </div>
               </div>
             </div>
           </div>
@@ -548,41 +585,42 @@
       </div>
     </div>
 
-    <!-- Platform features / campaign milestones -->
-    <div class="about-grid">
+    <!-- Platform + Objectives -->
+    <div class="section-label">Platform &amp; Objectives</div>
+    <div class="grid-2">
       <div class="card">
         <div class="card-head">
-          <div class="card-head-icon"><i class="fa-solid fa-chart-bar"></i></div>
-          <div class="card-head-title">Platform Capabilities</div>
+          <div class="card-icon"><i class="fa-solid fa-chart-bar"></i></div>
+          <div class="card-title">Platform Capabilities</div>
         </div>
         <div class="card-body">
-          <div class="milestones">
-            <div class="milestone">
-              <div class="milestone-dot" style="background:var(--blue)"></div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-dot" style="background:var(--green)"></div>
               <div>
-                <div class="milestone-title">Real-time Coverage Monitoring</div>
-                <div class="milestone-desc">Track household forms, children treated, and coverage percentages by LGA and ward against baseline targets.</div>
+                <div class="tl-title">Real-time Coverage Monitoring</div>
+                <div class="tl-desc">Track forms, treated counts, and coverage % by LGA and ward against baseline targets.</div>
               </div>
             </div>
-            <div class="milestone">
-              <div class="milestone-dot" style="background:var(--sky)"></div>
+            <div class="tl-item">
+              <div class="tl-dot" style="background:var(--light)"></div>
               <div>
-                <div class="milestone-title">Automated Quality Checks</div>
-                <div class="milestone-desc">GPS validation, duplicate detection, after-hours flagging, and form-duration anomaly detection across all submissions.</div>
+                <div class="tl-title">Automated Quality Checks</div>
+                <div class="tl-desc">GPS validation, duplicate detection, after-hours flagging, and form-duration anomaly detection.</div>
               </div>
             </div>
-            <div class="milestone">
-              <div class="milestone-dot" style="background:var(--good)"></div>
+            <div class="tl-item">
+              <div class="tl-dot" style="background:var(--good)"></div>
               <div>
-                <div class="milestone-title">Geographic Boundary Drill-down</div>
-                <div class="milestone-desc">Interactive MapLibre-powered map with LGA → Ward → Settlement navigation and visitation status overlays.</div>
+                <div class="tl-title">Geographic Boundary Drill-down</div>
+                <div class="tl-desc">Interactive map with LGA → Ward → Settlement navigation and visitation overlays.</div>
               </div>
             </div>
-            <div class="milestone">
-              <div class="milestone-dot" style="background:var(--warn)"></div>
+            <div class="tl-item">
+              <div class="tl-dot" style="background:var(--warn)"></div>
               <div>
-                <div class="milestone-title">Team Performance Analytics</div>
-                <div class="milestone-desc">Monitor productivity, identify low-performing teams, and track daily forms per distributor against campaign targets.</div>
+                <div class="tl-title">Team Movement &amp; Performance</div>
+                <div class="tl-desc">Track team movement paths, daily productivity, and quality flags per distributor.</div>
               </div>
             </div>
           </div>
@@ -591,37 +629,37 @@
 
       <div class="card">
         <div class="card-head">
-          <div class="card-head-icon"><i class="fa-solid fa-flag"></i></div>
-          <div class="card-head-title">Campaign Objectives</div>
+          <div class="card-icon"><i class="fa-solid fa-bullseye"></i></div>
+          <div class="card-title">Campaign Objectives</div>
         </div>
         <div class="card-body">
-          <div class="milestones">
-            <div class="milestone">
-              <div class="milestone-dot" style="background:#8B5CF6"></div>
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-dot" style="background:#8B5CF6"></div>
               <div>
-                <div class="milestone-title">&ge; 80% Administrative Coverage</div>
-                <div class="milestone-desc">WHO benchmark across all 23 LGAs; verified against pre-campaign baseline enumeration data.</div>
+                <div class="tl-title">≥ 80% Administrative Coverage</div>
+                <div class="tl-desc">WHO benchmark across all 23 LGAs, verified against pre-campaign baseline data.</div>
               </div>
             </div>
-            <div class="milestone">
-              <div class="milestone-dot" style="background:var(--blue)"></div>
+            <div class="tl-item">
+              <div class="tl-dot" style="background:var(--green)"></div>
               <div>
-                <div class="milestone-title">NTD Elimination (SAFE Strategy)</div>
-                <div class="milestone-desc">Contributing to Nigeria's trachoma elimination roadmap through sustained annual rounds of azithromycin mass treatment.</div>
+                <div class="tl-title">NTD Elimination (SAFE Strategy)</div>
+                <div class="tl-desc">Contributing to Nigeria's trachoma elimination roadmap through sustained MDA rounds.</div>
               </div>
             </div>
-            <div class="milestone">
-              <div class="milestone-dot" style="background:var(--good)"></div>
+            <div class="tl-item">
+              <div class="tl-dot" style="background:var(--good)"></div>
               <div>
-                <div class="milestone-title">Zero Missed Settlements</div>
-                <div class="milestone-desc">Geo-validated settlement-level visitation tracking to ensure no community is left without access to treatment.</div>
+                <div class="tl-title">Zero Missed Settlements</div>
+                <div class="tl-desc">Geo-validated settlement tracking to ensure every community receives treatment.</div>
               </div>
             </div>
-            <div class="milestone">
-              <div class="milestone-dot" style="background:var(--sky)"></div>
+            <div class="tl-item">
+              <div class="tl-dot" style="background:var(--light)"></div>
               <div>
-                <div class="milestone-title">Real-time Data Quality Assurance</div>
-                <div class="milestone-desc">Automated QC flags enable programme managers to identify and correct field data issues during the campaign window.</div>
+                <div class="tl-title">Real-time Data Quality Assurance</div>
+                <div class="tl-desc">Automated QC flags enable programme managers to correct field issues during the campaign window.</div>
               </div>
             </div>
           </div>
@@ -629,59 +667,69 @@
       </div>
     </div>
 
-  </div><!-- /content -->
+  </div>
+
+  <footer class="footer">
+    <strong>Sightsavers</strong> &nbsp;·&nbsp; SARMAAN &nbsp;·&nbsp; Sokoto State Ministry of Health &nbsp;·&nbsp; 2026
+  </footer>
 
   <script>
-    // ── AUTH CHECK ──
-    const token    = localStorage.getItem('token');
-    const username = localStorage.getItem('username') || 'User';
-    const isAdmin  = localStorage.getItem('is_admin') === 'true';
+    const token        = localStorage.getItem('token');
+    const username     = localStorage.getItem('username') || '';
+    const isAdmin      = localStorage.getItem('is_admin') === 'true';
+    const isSuperadmin = localStorage.getItem('is_superadmin') === 'true';
+    const isAuthed     = Boolean(token);
 
-    if (!token) {
-      window.location.href = '/';
+    function handleLogout() { localStorage.clear(); window.location.href = '/'; }
+
+    // Adjust topbar and CTAs based on auth state
+    if (isAuthed) {
+      // Authenticated: show user chip + sign-out, hide the public sign-in link
+      document.getElementById('auth-user-chip').style.display    = 'flex';
+      document.getElementById('auth-signout-btn').style.display  = 'flex';
+      document.getElementById('public-signin-btn').style.display = 'none';
+      document.getElementById('user-name').textContent   = username;
+      document.getElementById('user-avatar').textContent = (username || '?').charAt(0).toUpperCase();
+      document.getElementById('user-role').textContent   = isSuperadmin ? 'Superadmin' : (isAdmin ? 'Administrator' : 'Analyst / Viewer');
+
+      // Welcome greeting reflects authenticated state
+      const greet = document.getElementById('welcome-greeting');
+      if (greet) greet.innerHTML = 'Welcome back, <strong>' + (username || 'user') + '</strong>';
+
+      // Primary CTA goes to the dashboard (same route — JS auto-detects auth)
+      const cta = document.getElementById('cta-view-dashboard');
+      if (cta) cta.setAttribute('href', '/dashboard');
+      const lbl = document.getElementById('cta-view-label');
+      if (lbl) lbl.textContent = 'Open Dashboard';
+      const hint = document.getElementById('cta-view-hint');
+      if (hint) hint.textContent = 'Coverage · QC · Maps · Teams · full controls';
+
+      // Hide the public "Admin Portal" sign-in CTA, reveal the Admin Panel shortcut for admins
+      document.getElementById('cta-admin-portal').style.display = 'none';
+      if (isAdmin) document.getElementById('admin-card').style.display = 'flex';
     }
 
-    // Populate user info
-    document.getElementById('hero-username').textContent = username;
-    document.getElementById('user-name').textContent     = username;
-    document.getElementById('user-avatar').textContent   = username.charAt(0).toUpperCase();
-    document.getElementById('user-role').textContent     = isAdmin ? 'Administrator' : 'Analyst / Viewer';
-
-    // Show admin card
-    if (isAdmin) {
-      document.getElementById('admin-card').style.display = 'flex';
-    }
-
-    function handleLogout() {
-      localStorage.clear();
-      window.location.href = '/';
-    }
-
-    // ── LOAD CAMPAIGN STATS ──
     async function loadStats() {
       try {
-        const res = await fetch('/api/mda/overview', {
-          headers: { Authorization: 'Bearer ' + token }
-        });
-        if (res.status === 401) { handleLogout(); return; }
+        const headers = isAuthed ? { Authorization: 'Bearer ' + token } : {};
+        const res = await fetch('/api/mda/overview', { headers });
+        if (res.status === 401 && isAuthed) { handleLogout(); return; }
         if (!res.ok) return;
-        const d = await res.json();
-
+        const d   = await res.json();
         const fmt = n => n == null ? '—' : Number(n).toLocaleString();
-
+        const TOTAL_TEAMS = 321;
         document.getElementById('s-forms').textContent    = fmt(d.total_forms);
         document.getElementById('s-treated').textContent  = fmt(d.total_treated);
         document.getElementById('s-coverage').textContent = d.coverage_pct != null ? d.coverage_pct.toFixed(1) + '%' : '—';
-        document.getElementById('s-teams').textContent    = fmt(d.teams_active);
+        const activeTeams = d.teams_active || 0;
+        document.getElementById('s-teams').textContent    = activeTeams + ' / ' + TOTAL_TEAMS;
+        const teamPct = ((activeTeams / TOTAL_TEAMS) * 100).toFixed(0) + '% deployed';
+        document.getElementById('s-teams-pct').textContent = teamPct;
         document.getElementById('s-days').textContent     = fmt(d.days_active);
         document.getElementById('s-flags').textContent    = fmt(d.total_qc_flags);
-      } catch (e) {
-        console.warn('Stats load failed', e);
-      } finally {
-        document.getElementById('stats-loading').style.display = 'none';
-      }
+      } catch(e) { console.warn('Stats load failed', e); }
+      finally   { document.getElementById('stats-loading').style.display = 'none'; }
     }
-
     loadStats();
   </script>
 </body>

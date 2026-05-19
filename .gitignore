@@ -21,3 +21,9 @@ pgdata/
 *.pem
 *.key
 *.cert
+
+# Campaign data files — never commit raw datasets to git.
+# Imported into the DB via the superadmin upload endpoints and then removed locally.
+*.xlsx
+*.xls
+*.csv

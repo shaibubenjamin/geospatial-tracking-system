@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MDA Dashboard — SARMAAN Sokoto</title>
+<title>SARMAAN MDA Dashboard — Sokoto State</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 :root{
-  /* eHealth Africa brand colours */
-  --navy:#004A7C;--deep:#006093;--blue:#0099CC;--bright:#00B4DF;
-  --sky:#29CCF0;--cyan:#7DE0F5;--mist:#E0F5FF;--pale:#F0FBFF;
-  --ink:#0E1E33;--muted:#5B6B82;--line:#D0EAF5;
+  /* SARMAAN brand colours */
+  --navy:#003D1A;--deep:#005225;--blue:#006B2E;--bright:#008C3A;
+  --sky:#44B568;--cyan:#9FDAB5;--mist:#E9F7EE;--pale:#F4FBF6;
+  --ink:#0C1E10;--muted:#4A6852;--line:#C3E8CE;
   --good:#16A34A;--good-bg:#DCFCE7;--warn:#D97706;--warn-bg:#FEF3C7;
-  --bad:#DC2626;--bad-bg:#FEE2E2;
+  --bad:#DC2626;--bad-bg:#FEE2E2;--gold:#C8A000;
 }
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -20,17 +20,18 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .app{display:flex;height:100vh}
 
 /* ===== SIDEBAR ===== */
-.sidebar{width:252px;background:linear-gradient(180deg,#003058,var(--navy) 40%,var(--deep));color:#cfe0f3;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.18);transition:width .25s cubic-bezier(.4,0,.2,1);overflow-x:hidden}
+.sidebar{width:252px;background:linear-gradient(180deg,#001A08,var(--navy) 40%,var(--deep));color:#cce8d5;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.18);transition:width .25s cubic-bezier(.4,0,.2,1);overflow-x:hidden}
 .brand{padding:22px 22px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.1);transition:padding .25s}
-.brand-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sky),var(--bright));display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;box-shadow:0 2px 12px rgba(0,164,228,.4);flex-shrink:0}
+.brand-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--bright),var(--gold));display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;box-shadow:0 2px 12px rgba(0,107,46,.5);flex-shrink:0}
 .brand-name{color:#fff;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;transition:opacity .2s}
-.brand-sub{color:#7ea9d4;font-size:11px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;overflow:hidden;transition:opacity .2s}
+.brand-sub{color:#90c9a0;font-size:11px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;overflow:hidden;transition:opacity .2s}
 .nav-section{padding:18px 12px 8px;color:#6b8db0;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;font-weight:600;white-space:nowrap;overflow:hidden;transition:opacity .2s}
-.nav-item{display:flex;align-items:center;gap:11px;padding:11px 14px;margin:0 10px;border-radius:8px;cursor:pointer;color:#bfd4ea;font-size:13.5px;font-weight:500;transition:all .15s;user-select:none;white-space:nowrap;overflow:hidden}
-.nav-item i{width:18px;text-align:center;color:#7ea9d4;flex-shrink:0}
-.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
-.nav-item.active{background:rgba(15,134,214,.25);color:#fff;border:1px solid rgba(79,195,247,.3)}
-.nav-item.active i{color:var(--cyan)}
+.nav-item{display:flex;align-items:center;gap:11px;padding:11px 14px;margin:0 8px;border-radius:8px;cursor:pointer;color:#a8d4b8;font-size:13.5px;font-weight:500;transition:background .18s,color .18s,transform .15s,box-shadow .18s;user-select:none;white-space:nowrap;overflow:hidden;border:1px solid transparent;position:relative}
+.nav-item i{width:18px;text-align:center;color:#7ec49a;flex-shrink:0;transition:color .18s,transform .18s}
+.nav-item:hover{background:rgba(255,255,255,.1);color:#fff;transform:translateX(4px)}
+.nav-item:hover i{color:var(--cyan);transform:scale(1.15)}
+.nav-item.active{background:linear-gradient(90deg,rgba(0,107,46,.55),rgba(0,107,46,.25));color:#fff;border-left:3px solid var(--sky);border-radius:0 8px 8px 0;box-shadow:0 2px 14px rgba(0,0,0,.22);transform:translateX(2px)}
+.nav-item.active i{color:var(--sky)}
 .nav-badge{margin-left:auto;background:var(--sky);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700}
 .sidebar-footer{margin-top:auto;padding:14px 18px;border-top:1px solid rgba(255,255,255,.08);font-size:11.5px;color:#9eb6d0;overflow:hidden}
 /* Collapsed sidebar */
@@ -41,14 +42,24 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .sidebar.collapsed .nav-section{opacity:0;height:0;padding:0;pointer-events:none}
 .sidebar.collapsed .nav-item{justify-content:center;padding:12px 0;margin:2px 8px;gap:0;font-size:0}
 .sidebar.collapsed .nav-item i{width:auto;font-size:16px}
+.sidebar.collapsed .sidebar-footer{padding:14px 0}
 .sidebar.collapsed .sidebar-footer>*:not(#admin-nav-link){opacity:0;height:0;overflow:hidden;pointer-events:none}
+.sidebar.collapsed #admin-nav-link{margin-top:0;text-align:center}
+.sidebar.collapsed #admin-nav-link a{gap:0;justify-content:center;width:100%}
 .sidebar.collapsed #admin-nav-link a span{display:none}
+/* Public-mode visibility rules: hide download buttons, upload triggers, logout, admin link */
+body.public-mode .auth-only,
+body.public-mode .chart-dl,
+body.public-mode .nav-item[data-view="reports"],
+body.public-mode #admin-nav-link,
+body.public-mode #download-settlement-btn { display: none !important; }
+body.public-mode #public-portal-link { display: inline-flex !important; }
 /* Collapse toggle button */
 .sidebar-toggle{position:absolute;top:18px;left:0;z-index:50;background:var(--blue);color:#fff;border:none;border-radius:0 8px 8px 0;width:20px;height:32px;display:grid;place-items:center;cursor:pointer;font-size:11px;opacity:0;transition:opacity .2s,left .25s}
 .app:hover .sidebar-toggle{opacity:1}
 /* Tooltip for collapsed items */
 .sidebar.collapsed .nav-item{position:relative}
-.sidebar.collapsed .nav-item:hover::after{content:attr(data-label);position:absolute;left:68px;background:var(--navy);color:#fff;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:500;white-space:nowrap;z-index:200;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.25);top:50%;transform:translateY(-50%)}
+.sidebar.collapsed .nav-item:hover::after{content:attr(data-label);position:absolute;left:68px;background:var(--deep);color:#fff;padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;z-index:200;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.3);top:50%;transform:translateY(-50%);border:1px solid rgba(68,181,104,.2)}
 
 /* ===== MAIN ===== */
 .main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -70,14 +81,14 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .page-sub{color:var(--muted);font-size:12.5px;margin-top:3px}
 .actions{display:flex;gap:8px;align-items:center}
 .btn{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s}
-.btn-primary{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(0,103,184,.25)}
-.btn-primary:hover{background:var(--deep);box-shadow:0 2px 12px rgba(0,103,184,.35)}
+.btn-primary{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(0,107,46,.25)}
+.btn-primary:hover{background:var(--deep);box-shadow:0 2px 12px rgba(0,107,46,.35)}
 .btn-ghost{background:#fff;color:var(--deep);border-color:var(--line)}
-.btn-ghost:hover{background:var(--mist);border-color:rgba(0,103,184,.3)}
+.btn-ghost:hover{background:var(--mist);border-color:rgba(0,107,46,.3)}
 .btn-danger{background:#DC2626;color:#fff}
 .btn-sm{padding:5px 10px;font-size:11.5px}
 /* Active filter chip */
-.filter-active{display:inline-flex;align-items:center;gap:6px;background:rgba(0,103,184,.1);color:var(--blue);border:1px solid rgba(0,103,184,.25);padding:4px 10px;border-radius:99px;font-size:11.5px;font-weight:600}
+.filter-active{display:inline-flex;align-items:center;gap:6px;background:rgba(0,107,46,.1);color:var(--blue);border:1px solid rgba(0,107,46,.25);padding:4px 10px;border-radius:99px;font-size:11.5px;font-weight:600}
 /* Chart download button */
 .chart-dl{background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:4px 6px;border-radius:6px;transition:all .15s}
 .chart-dl:hover{color:var(--blue);background:var(--mist)}
@@ -89,6 +100,19 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .filter select,.filter input{border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;outline:none;transition:border-color .15s}
 .filter select:focus,.filter input:focus{border-color:var(--blue)}
 
+/* ── Multi-date picker ── */
+.dp-wrap{position:relative;min-width:160px}
+.dp-btn{border:1.5px solid var(--line);border-radius:7px;padding:6px 10px;font-size:12.5px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;transition:border-color .15s;user-select:none}
+.dp-btn:hover,.dp-btn.open{border-color:var(--blue)}
+.dp-btn i{color:var(--muted);font-size:10px;flex-shrink:0;transition:transform .15s}
+.dp-btn.open i{transform:rotate(180deg)}
+.dp-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:200;background:#fff;border:1.5px solid var(--line);border-radius:9px;box-shadow:0 6px 24px rgba(0,0,0,.13);padding:6px;min-width:180px;max-height:280px;overflow-y:auto}
+.dp-panel.open{display:block}
+.dp-opt{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:5px;cursor:pointer;font-size:12.5px;user-select:none;white-space:nowrap}
+.dp-opt:hover{background:var(--mist)}
+.dp-opt.all-opt{font-weight:700;color:var(--deep);border-bottom:1px solid var(--line);margin-bottom:3px;padding-bottom:7px}
+.dp-opt input[type=checkbox]{accent-color:var(--blue);width:13px;height:13px;cursor:pointer;flex-shrink:0}
+
 /* ===== KPI CARDS ===== */
 .kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
 .kpi-grid.cols-6{grid-template-columns:repeat(3,1fr)}
@@ -99,14 +123,14 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 @media(max-width:700px){.kpi-grid{grid-template-columns:1fr!important}}
 
 /* Card base */
-.kpi{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(0,153,204,.07);transition:box-shadow .18s,border-color .18s,transform .15s;cursor:pointer}
+.kpi{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(0,107,46,.07);transition:box-shadow .18s,border-color .18s,transform .15s;cursor:pointer}
 .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--blue);border-radius:12px 0 0 12px}
 .kpi.accent::before{background:var(--sky)}
 .kpi.good::before{background:var(--good)}
 .kpi.warn::before{background:var(--warn)}
 .kpi.bad::before{background:var(--bad)}
-.kpi:hover{box-shadow:0 6px 22px rgba(0,153,204,.13);border-color:rgba(0,153,204,.3);transform:translateY(-1px)}
-.kpi.kpi-active{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,153,204,.15)}
+.kpi:hover{box-shadow:0 6px 22px rgba(0,107,46,.13);border-color:rgba(0,153,204,.3);transform:translateY(-1px)}
+.kpi.kpi-active{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,107,46,.15)}
 
 /* Horizontal inner layout: text LEFT · metric RIGHT */
 .kpi-body{display:flex;align-items:stretch;gap:12px;min-height:0}
@@ -130,7 +154,7 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 
 /* Trend delta badge */
 .kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:99px;white-space:nowrap;align-self:flex-start;margin-top:4px}
-.kpi-delta.up{background:rgba(0,153,204,.12);color:var(--blue)}
+.kpi-delta.up{background:rgba(0,107,46,.12);color:var(--blue)}
 .kpi-delta.down{background:rgba(217,119,6,.12);color:var(--warn)}
 .kpi-delta.neutral{background:var(--mist);color:var(--muted)}
 
@@ -171,6 +195,7 @@ tbody tr:hover{background:var(--pale)}
 .chip.good{background:var(--good-bg);color:var(--good)}
 .chip.warn{background:var(--warn-bg);color:var(--warn)}
 .chip.bad{background:var(--bad-bg);color:var(--bad)}
+.chip.over{background:#FEF3C7;color:#92400E}   /* > 100% — over-coverage; investigate */
 
 /* QC tiles */
 .qc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
@@ -217,12 +242,12 @@ tbody tr:hover{background:var(--pale)}
 .legend-dot span{width:10px;height:10px;border-radius:50%}
 
 /* Pill */
-.pill{display:inline-flex;align-items:center;gap:8px;background:var(--mist);color:var(--deep);padding:6px 12px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(0,103,184,.15)}
+.pill{display:inline-flex;align-items:center;gap:8px;background:var(--mist);color:var(--deep);padding:6px 12px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid rgba(0,107,46,.15)}
 .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--blue)}
 
 /* ===== CHATBOT ===== */
-.chatbot-fab{position:fixed;bottom:28px;right:28px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#fff;border:none;cursor:pointer;display:grid;place-items:center;font-size:22px;box-shadow:0 6px 24px rgba(0,103,184,.4);z-index:2000;transition:transform .2s,box-shadow .2s}
-.chatbot-fab:hover{transform:scale(1.1);box-shadow:0 8px 28px rgba(0,103,184,.5)}
+.chatbot-fab{position:fixed;bottom:28px;right:28px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#fff;border:none;cursor:pointer;display:grid;place-items:center;font-size:22px;box-shadow:0 6px 24px rgba(0,107,46,.4);z-index:2000;transition:transform .2s,box-shadow .2s}
+.chatbot-fab:hover{transform:scale(1.1);box-shadow:0 8px 28px rgba(0,107,46,.5)}
 .chatbot-panel{position:fixed;bottom:96px;right:28px;width:370px;height:520px;background:#fff;border-radius:18px;box-shadow:0 12px 50px rgba(0,0,0,.18);z-index:2000;display:flex;flex-direction:column;overflow:hidden;transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .25s;border:1px solid var(--line)}
 .chatbot-panel.hidden{transform:translateY(24px) scale(.97);opacity:0;pointer-events:none}
 .chatbot-hdr{background:linear-gradient(135deg,var(--navy),var(--deep));color:#fff;padding:16px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0}
@@ -254,7 +279,7 @@ tbody tr:hover{background:var(--pale)}
 .chart-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(0);background:var(--navy);color:#fff;padding:9px 18px;border-radius:10px;font-size:12.5px;font-weight:600;z-index:3000;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.22);transition:opacity .3s,transform .3s;white-space:nowrap}
 .chart-toast.hide{opacity:0;transform:translateX(-50%) translateY(12px)}
 /* Highlighted chart bar/segment glow */
-.chart-active-label{display:inline-flex;align-items:center;gap:6px;background:rgba(0,153,204,.12);border:1.5px solid var(--blue);color:var(--blue);border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer;margin-left:8px}
+.chart-active-label{display:inline-flex;align-items:center;gap:6px;background:rgba(0,107,46,.12);border:1.5px solid var(--blue);color:var(--blue);border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer;margin-left:8px}
 .chart-active-label::after{content:"×";margin-left:4px;opacity:.6}
 
 /* ===== GEO CONTROLS ===== */
@@ -270,7 +295,7 @@ tbody tr:hover{background:var(--pale)}
 .geo-map-card.geo-fullscreen-mode{position:fixed;inset:0;z-index:500;border-radius:0;margin:0;height:100vh!important}
 .geo-map-card.geo-fullscreen-mode .geo-ctrl-strip{padding:8px 14px}
 .geo-map-card.geo-fullscreen-mode #geo-map{min-height:0;height:calc(100vh - 110px)!important}
-/* Coverage pct KPI blue color */
+/* Coverage pct KPI accent */
 #geo-coverage-pct{color:var(--blue)}
 </style>
 </head>
@@ -301,11 +326,11 @@ tbody tr:hover{background:var(--pale)}
     <div class="nav-item" data-view="reports" data-label="Reports &amp; Export"><i class="fa-solid fa-file-export"></i> Reports &amp; Export</div>
 
     <div class="sidebar-footer">
-      <div>Sokoto MDA Platform</div>
-      <div style="color:#7ea9d4;font-size:10.5px;margin-top:2px">v1.0 &mdash; Research Preview</div>
+      <div>Sightsavers &mdash; SARMAAN</div>
+      <div style="color:#90c9a0;font-size:10.5px;margin-top:2px">Sokoto State 2026</div>
       <div id="admin-nav-link" style="display:none;margin-top:10px">
         <a href="/mda-admin" style="color:var(--cyan);text-decoration:none;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
-          <i class="fa-solid fa-screwdriver-wrench"></i> Admin Panel
+          <i class="fa-solid fa-screwdriver-wrench"></i><span>Admin Panel</span>
         </a>
       </div>
     </div>
@@ -329,9 +354,17 @@ tbody tr:hover{background:var(--pale)}
         <span style="color:var(--muted);margin-left:6px;font-size:11px">(<span id="crumb-start">&mdash;</span> to <span id="crumb-end">&mdash;</span>)</span>
       </div>
       <div class="spacer"></div>
+      <!-- State / Round selector -->
+      <select id="project-selector" title="Switch between states and rounds"
+              style="border:1px solid var(--line);background:#fff;color:var(--ink);font-size:12.5px;font-weight:600;padding:7px 28px 7px 12px;border-radius:8px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M1 1l4 4 4-4%22 stroke=%22%234A6852%22 stroke-width=%221.5%22 fill=%22none%22 stroke-linecap=%22round%22/></svg>');background-repeat:no-repeat;background-position:right 10px center">
+        <option value="">Loading…</option>
+      </select>
       <div class="search"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search LGA, ward, team&hellip;"></div>
-      <div class="icon-btn" onclick="openUploadModal()" title="Upload Data"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-      <div class="icon-btn" onclick="handleLogout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></div>
+      <div class="icon-btn auth-only" onclick="openUploadModal()" title="Upload Data"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+      <div class="icon-btn auth-only" onclick="handleLogout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></div>
+      <a id="public-portal-link" href="/login" style="display:none;align-items:center;gap:6px;background:var(--blue);color:#fff;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 2px 8px rgba(0,107,46,.25)" title="Sign in for admin access">
+        <i class="fa-solid fa-right-to-bracket"></i> Admin Portal
+      </a>
     </div>
 
     <div class="page">
@@ -348,8 +381,14 @@ tbody tr:hover{background:var(--pale)}
         </div>
 
         <div class="filters">
-          <div class="filter"><label>Date Range</label><select id="f-date"><option value="">Campaign to date</option><option value="7d">Last 7 days</option><option value="1d">Yesterday</option></select></div>
-          <div class="filter"><label>LGA</label><select id="f-lga" onchange="applyFilter()"><option value="">All LGAs</option></select></div>
+          <div class="filter dp-wrap" id="f-dates-wrap"><label>Date(s)</label>
+            <div class="dp-btn" id="f-dates-btn" onclick="dpToggle('f-dates')">All Dates <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="dp-panel" id="f-dates-panel">
+              <label class="dp-opt all-opt"><input type="checkbox" id="f-dates-all" checked onchange="dpAllToggle('f-dates',this)"> All Dates</label>
+              <div id="f-dates-list"></div>
+            </div>
+          </div>
+          <div class="filter"><label>LGA</label><select id="f-lga" onchange="loadWardOptions(this.value,'f-ward').then(applyFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="f-ward" onchange="applyFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary" onclick="applyFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost" id="reset-filter-btn" onclick="resetFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
@@ -519,7 +558,7 @@ tbody tr:hover{background:var(--pale)}
             </div>
           </div>
           <div style="max-height:360px;overflow-y:auto">
-            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th title="Jump to map view for this LGA"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="lga-table-body"></tbody></table>
+            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th style="text-align:center" title="Jump to map view for this LGA"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="lga-table-body"></tbody></table>
           </div>
         </div>
       </section>
@@ -530,6 +569,10 @@ tbody tr:hover{background:var(--pale)}
           <div>
             <div class="page-title">Coverage Analysis</div>
             <div class="page-sub">Baseline targets vs actual treatment administered — by LGA and Ward</div>
+            <div id="cov-scope-note" style="font-size:11.5px;color:var(--muted);margin-top:6px;display:none">
+              <i class="fa-solid fa-circle-info" style="color:var(--blue)"></i>
+              <span id="cov-scope-text">—</span>
+            </div>
           </div>
           <div class="actions">
             <button class="chart-dl" onclick="dlCovTableCSV()" title="Export coverage data" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff"><i class="fa-solid fa-download"></i> Export</button>
@@ -538,7 +581,14 @@ tbody tr:hover{background:var(--pale)}
 
         <!-- Coverage filters -->
         <div class="filters" style="margin-bottom:12px">
-          <div class="filter"><label>LGA</label><select id="cov-f-lga" onchange="applyCovFilter()"><option value="">All LGAs</option></select></div>
+          <div class="filter dp-wrap" id="cov-dates-wrap"><label>Date(s)</label>
+            <div class="dp-btn" id="cov-dates-btn" onclick="dpToggle('cov-dates')">All Dates <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="dp-panel" id="cov-dates-panel">
+              <label class="dp-opt all-opt"><input type="checkbox" id="cov-dates-all" checked onchange="dpAllToggle('cov-dates',this)"> All Dates</label>
+              <div id="cov-dates-list"></div>
+            </div>
+          </div>
+          <div class="filter"><label>LGA</label><select id="cov-f-lga" onchange="loadWardOptions(this.value,'cov-f-ward').then(applyCovFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="cov-f-ward" onchange="applyCovFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyCovFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost btn-sm" id="cov-reset-btn" onclick="resetCovFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
@@ -585,7 +635,7 @@ tbody tr:hover{background:var(--pale)}
             </div>
           </div>
           <div style="max-height:400px;overflow-y:auto">
-            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th title="Jump to map"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="cov-lga-table-body"></tbody></table>
+            <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th style="text-align:center" title="Jump to map"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="cov-lga-table-body"></tbody></table>
           </div>
         </div>
       </section>
@@ -598,14 +648,21 @@ tbody tr:hover{background:var(--pale)}
             <div class="page-sub">Automated integrity &amp; anomaly detection across submitted forms</div>
           </div>
           <div class="actions">
-            <button class="btn btn-ghost" onclick="openUploadModal()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Workbook</button>
+            <button class="btn btn-ghost auth-only" onclick="openUploadModal()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Workbook</button>
             <button class="chart-dl" onclick="dlQCSummaryCSV()" title="Download QC summary CSV" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff"><i class="fa-solid fa-download"></i> Export</button>
           </div>
         </div>
 
         <!-- QC summary filters -->
         <div class="filters" style="margin-bottom:12px">
-          <div class="filter"><label>LGA</label><select id="qc-f-lga" onchange="applyQCFilter()"><option value="">All LGAs</option></select></div>
+          <div class="filter dp-wrap" id="qc-dates-wrap"><label>Date(s)</label>
+            <div class="dp-btn" id="qc-dates-btn" onclick="dpToggle('qc-dates')">All Dates <i class="fa-solid fa-chevron-down"></i></div>
+            <div class="dp-panel" id="qc-dates-panel">
+              <label class="dp-opt all-opt"><input type="checkbox" id="qc-dates-all" checked onchange="dpAllToggle('qc-dates',this)"> All Dates</label>
+              <div id="qc-dates-list"></div>
+            </div>
+          </div>
+          <div class="filter"><label>LGA</label><select id="qc-f-lga" onchange="loadWardOptions(this.value,'qc-f-ward').then(applyQCFilter)"><option value="">All LGAs</option></select></div>
           <div class="filter"><label>Ward</label><select id="qc-f-ward" onchange="applyQCFilter()"><option value="">All Wards</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyQCFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost btn-sm" id="qc-reset-btn" onclick="resetQCFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
@@ -674,12 +731,34 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-head"><div><div class="card-title"><i class="fa-solid fa-flag"></i> Open Quality Flags</div><div class="card-sub">Assigned to LGA supervisors for review</div></div></div>
-          <div>
-            <div class="anom"><div class="anom-ico"><i class="fa-solid fa-location-crosshairs"></i></div><div><div class="anom-title">GPS outside LGA boundary detected</div><div class="anom-meta">Check QC metrics above for count</div></div><div class="anom-time">&mdash;</div></div>
-            <div class="anom warn"><div class="anom-ico"><i class="fa-solid fa-bolt"></i></div><div><div class="anom-title">Fast forms (&lt;5 min) flagged</div><div class="anom-meta">Review team performance panel</div></div><div class="anom-time">&mdash;</div></div>
-            <div class="anom warn"><div class="anom-ico"><i class="fa-solid fa-moon"></i></div><div><div class="anom-title">After-hours submissions detected</div><div class="anom-meta">Device clock or compliance issue</div></div><div class="anom-time">&mdash;</div></div>
+        <!-- Quality Checks by Team -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-users-gear"></i> Quality Checks by Team</div>
+              <div class="card-sub">Which teams are generating the most data quality flags. Shows total records submitted and how many contain at least one error.</div>
+            </div>
+          </div>
+          <div style="max-height:400px;overflow:auto">
+            <table id="qc-teams-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">
+              <thead>
+                <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2">
+                  <th style="padding:10px 14px;text-align:left;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('hq_user')">Team (hq_user) <span id="qcts-hq_user"></span></th>
+                  <th style="padding:10px 14px;text-align:left;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('lga')">LGA <span id="qcts-lga"></span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('total_forms')">Total Records <span id="qcts-total_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('forms_with_error')">Records w/ Error <span id="qcts-forms_with_error"></span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('error_rate')">Error Rate <span id="qcts-error_rate">▼</span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_forms')">Dup Forms <span id="qcts-dup_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('gps_issues')">GPS Issues <span id="qcts-gps_issues"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('after_hours')">After Hours <span id="qcts-after_hours"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast Forms <span id="qcts-fast_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('refusals')">Refusals <span id="qcts-refusals"></span></th>
+                </tr>
+              </thead>
+              <tbody id="qc-teams-tbody">
+                <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -696,25 +775,43 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
-        <!-- Completeness KPI strip -->
-        <div class="kpi-grid cols-3" style="margin-bottom:10px">
-          <div class="kpi accent" style="padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-map-pin" style="font-size:13px"></i></div>
-            <div class="lbl">Settlements Visited</div>
-            <div class="val" style="font-size:20px" id="geo-sett-visited-count">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">of <span id="geo-sett-total-count">—</span> settlements have &ge;70% grids with GPS</div>
+        <!-- Geo KPI strip -->
+        <div style="display:flex;gap:10px;margin-bottom:10px;align-items:stretch;flex-wrap:wrap">
+          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
+            <div class="kpi-icon-strip"><i class="fa-solid fa-chart-pie" style="font-size:13px"></i></div>
+            <div class="lbl">% Visitation Coverage</div>
+            <div class="val" style="font-size:22px;color:var(--blue)" id="geo-coverage-pct">&mdash;</div>
+            <div class="sub" style="font-size:10.5px">Settlements with &ge;70% grid coverage</div>
           </div>
-          <div class="kpi" style="padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-border-all" style="font-size:13px"></i></div>
-            <div class="lbl">Wards with Activity</div>
-            <div class="val" style="font-size:20px" id="geo-ward-active-count">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">of <span id="geo-ward-total-count">—</span> wards have at least 1 visited settlement</div>
+          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
+            <div class="kpi-icon-strip"><i class="fa-solid fa-circle-check" style="font-size:13px"></i></div>
+            <div class="lbl">Visited Settlements</div>
+            <div class="val" style="font-size:22px;color:var(--good)" id="geo-sett-visited-count">&mdash;</div>
+            <div class="sub" style="font-size:10.5px">of <span id="geo-sett-total-count">—</span> total settlements</div>
           </div>
-          <div class="kpi good" style="padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-draw-polygon" style="font-size:13px"></i></div>
-            <div class="lbl">LGA Coverage</div>
-            <div class="val" style="font-size:20px" id="geo-coverage-pct">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">Overall settlement visitation rate across all LGAs</div>
+          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
+            <div class="kpi-icon-strip"><i class="fa-solid fa-circle-xmark" style="font-size:13px"></i></div>
+            <div class="lbl">Not Yet Visited</div>
+            <div class="val" style="font-size:22px;color:var(--bad)" id="geo-sett-notvisited-count">&mdash;</div>
+            <div class="sub" style="font-size:10.5px">settlements remaining</div>
+          </div>
+          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
+            <div class="kpi-icon-strip"><i class="fa-solid fa-layer-group" style="font-size:13px"></i></div>
+            <div class="lbl">Overall Grid Completeness</div>
+            <div class="val" style="font-size:22px;color:var(--warn)" id="geo-avg-completeness">&mdash;</div>
+            <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements &ge;60% complete · <i>total grids visited ÷ total grids across all settlements</i></div>
+          </div>
+          <!-- hidden but still set by JS for back-compat -->
+          <span id="geo-ward-active-count" style="display:none"></span>
+          <span id="geo-ward-total-count" style="display:none"></span>
+          <!-- Download settlement status -->
+          <div id="download-settlement-btn" style="display:flex;align-items:center">
+            <button onclick="downloadSettlementStatus()" title="Download settlement visit status as Excel"
+              style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px;cursor:pointer;color:var(--deep);font-size:11.5px;font-weight:600;transition:all .15s;white-space:nowrap"
+              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
+              <i class="fa-solid fa-file-excel" style="font-size:20px;color:#16A34A"></i>
+              Download<br>Settlement Status
+            </button>
           </div>
         </div>
 
@@ -723,11 +820,17 @@ tbody tr:hover{background:var(--pale)}
           <div class="geo-left">
             <!-- Nav panel — full height, no legend -->
             <div class="card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;margin-bottom:0">
-              <div class="card-head" style="padding:10px 14px;gap:0">
-                <button id="geo-back-btn" onclick="geoGoBack()" style="display:none;background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;font-weight:600;padding:0 8px 0 0;flex-shrink:0">
-                  &#8592; Back
-                </button>
-                <div id="geo-nav-title" style="font-size:13px;font-weight:700;color:var(--navy);flex:1">All LGAs</div>
+              <div class="card-head" style="padding:10px 14px;gap:0;flex-wrap:wrap">
+                <div id="geo-breadcrumb" style="display:flex;align-items:center;gap:4px;font-size:12px;flex:1;flex-wrap:wrap">
+                  <span id="geo-bc-all" onclick="geoGoRoot()" style="cursor:pointer;color:var(--blue);font-weight:600">All LGAs</span>
+                  <span id="geo-bc-lga-sep" style="display:none;color:var(--muted)">›</span>
+                  <span id="geo-bc-lga" onclick="geoGoLGA()" style="display:none;cursor:pointer;color:var(--blue);font-weight:600"></span>
+                  <span id="geo-bc-ward-sep" style="display:none;color:var(--muted)">›</span>
+                  <span id="geo-bc-ward" style="display:none;color:var(--navy);font-weight:700"></span>
+                  <button id="geo-view-cov-btn" onclick="geoViewCoverage()" style="display:none;margin-left:8px;padding:3px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-size:11px;font-weight:600" title="View LGA-level treatment coverage for this LGA">
+                    <i class="fa-solid fa-table-cells-large"></i> Coverage
+                  </button>
+                </div>
                 <span id="geo-nav-count" style="font-size:11px;color:var(--muted)"></span>
               </div>
               <div style="padding:8px 12px;border-bottom:1px solid var(--line);flex-shrink:0">
@@ -770,10 +873,8 @@ tbody tr:hover{background:var(--pale)}
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block"></span>GPS in grid</span>
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#dc2626;border-radius:50%;display:inline-block"></span>GPS outside</span>
             </div>
-            <!-- Overlay / special layer controls -->
+            <!-- QC overlay controls + Team Movement -->
             <div class="geo-ctrl-strip">
-              <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-right:4px">Overlays</span>
-              <div class="geo-ctrl-sep"></div>
               <button class="geo-ctrl-btn" id="geo-btn-hm-all" onclick="geoHeatmap('all',this)" title="All QC anomalies heatmap">
                 <i class="fa-solid fa-fire"></i> QC Heatmap
               </button>
@@ -787,9 +888,15 @@ tbody tr:hover{background:var(--pale)}
                 <i class="fa-solid fa-crosshairs"></i> Outside Ward
               </button>
               <div class="geo-ctrl-sep"></div>
-              <button class="geo-ctrl-btn" id="geo-btn-movement" onclick="geoToggleMovement(this)" title="Team movement pattern">
+              <button class="geo-ctrl-btn" id="geo-btn-movement" onclick="geoToggleMovement(this)" title="Show team movement paths">
                 <i class="fa-solid fa-route"></i> Team Movement
               </button>
+              <select id="geo-team-select" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter to a specific team">
+                <option value="">All Teams</option>
+              </select>
+              <select id="geo-movement-date" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter by date">
+                <option value="">All Dates</option>
+              </select>
               <button class="geo-ctrl-btn" id="geo-btn-clear" onclick="geoClearOverlays()" title="Clear all overlays" style="margin-left:auto;color:var(--muted)">
                 <i class="fa-solid fa-eraser"></i> Clear
               </button>
@@ -976,7 +1083,7 @@ tbody tr:hover{background:var(--pale)}
   <div id="upload-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:14px;padding:28px;width:480px;max-width:95vw">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-        <h3 style="font-size:16px;font-weight:700;color:#002F5F">Upload Campaign Data</h3>
+        <h3 style="font-size:16px;font-weight:700;color:#003D1A">Upload Campaign Data</h3>
         <button onclick="closeUploadModal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#5B6B82">&#x2715;</button>
       </div>
       <div style="background:#FEF3C7;border:1px solid #D97706;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:18px">
@@ -1013,28 +1120,59 @@ tbody tr:hover{background:var(--pale)}
   'use strict';
 
   /* ── AUTH ── */
-  const token = localStorage.getItem('token');
-  if (!token) { window.location.href = '/'; return; }
-  function handleLogout() { localStorage.clear(); window.location.href = '/'; }
+  const token        = localStorage.getItem('token');
+  const PUBLIC_MODE  = !token;
+  const isAdmin      = localStorage.getItem('is_admin') === 'true';
+  const isSuperadmin = localStorage.getItem('is_superadmin') === 'true';
 
-  // Show admin nav link if user is admin
-  if (localStorage.getItem('is_admin') === 'true') {
+  if (PUBLIC_MODE) {
+    document.body.classList.add('public-mode');
+  } else if (isAdmin) {
+    // Show admin nav link if user is admin
     const adminLink = document.getElementById('admin-nav-link');
     if (adminLink) adminLink.style.display = 'block';
+  }
+
+  function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
+
+  /* ── PROJECT SCOPE (state + round) ── */
+  // The selector value is the project_id the user is viewing. null = use server-side active default.
+  let SELECTED_PID = (function() {
+    const stored = localStorage.getItem('selected_project_id');
+    return stored && /^\d+$/.test(stored) ? parseInt(stored, 10) : null;
+  })();
+
+  // List of /api/mda/* endpoints that accept ?project_id=. Other endpoints (notably the
+  // boundary/analytics routes under /api/projects/{pid}/...) take pid in the URL path and
+  // are not scoped via this helper.
+  function _withProjectScope(path) {
+    if (SELECTED_PID == null) return path;
+    if (!/^\/api\/mda\//.test(path)) return path;
+    return path + (path.includes('?') ? '&' : '?') + 'project_id=' + SELECTED_PID;
   }
 
   /* ── API HELPER ── */
   async function api(path) {
     try {
-      const r = await fetch(path, { headers: { Authorization: 'Bearer ' + token } });
-      if (r.status === 401) { handleLogout(); return null; }
+      const headers = token ? { Authorization: 'Bearer ' + token } : {};
+      const r = await fetch(_withProjectScope(path), { headers });
+      if (r.status === 401) {
+        if (!PUBLIC_MODE) handleLogout();
+        return null;
+      }
       return r.ok ? r.json() : null;
     } catch(e) { return null; }
   }
 
   /* ── COLOUR HELPERS ── */
-  const covHex = () => '#0067B8';   // all bars uniformly blue
-  const covCls = c => c >= 80 ? 'good' : c >= 60 ? 'warn' : 'bad';
+  const covHex = () => '#006B2E';
+  // > 100% is over-coverage (treated more than the baseline target) — surfaced as a
+  // distinct amber state so the campaign team can investigate over-counting / baseline
+  // accuracy. 80-100 is on target, 60-79 needs watching, <60 needs mop-up.
+  const covCls = c => c > 100 ? 'over' : c >= 80 ? 'good' : c >= 60 ? 'warn' : 'bad';
+  const covLabel = c => c > 100
+    ? '⚠ Above target'
+    : c >= 80 ? '✓ On target' : c >= 60 ? '⚠ Watch' : '✗ Below';
   function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
 
   /* ── CHART GRADIENT ── */
@@ -1086,8 +1224,11 @@ tbody tr:hover{background:var(--pale)}
     // Tables
     buildLGATable('lga-table-body', lgaCovData);
 
-    // Populate ward filter from analytics data (wards loaded via geo API later)
+    // Populate LGA filters and pre-load all wards at startup
     populateLGAFilter();
+    populateCovFilters();
+    await preloadAllWards();
+    await preloadCampaignDates();
   }
 
   function setEl(id, val) {
@@ -1101,22 +1242,30 @@ tbody tr:hover{background:var(--pale)}
     tb.innerHTML = '';
     rows.forEach(r => {
       const cov = parseFloat(r.coverage_pct) || 0;
+      const lgaName = r.lga || '';
       const geoBtn = showGeoLink !== false
-        ? '<button class="lga-nav-btn" onclick="navToGeoLGA(' + JSON.stringify(r.lga||'') + ')" title="View this LGA on the map"><i class="fa-solid fa-eye"></i></button>'
+        ? '<button class="lga-nav-btn" data-lga-nav title="View this LGA on the map"><i class="fa-solid fa-eye"></i></button>'
         : '';
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
-      tr.title = 'Click to filter dashboard to ' + (r.lga || 'this LGA');
-      tr.onclick = () => { const sel=document.getElementById('f-lga'); if(sel){sel.value=r.lga||'';} applyFilter(); };
+      tr.title = 'Click to filter dashboard to ' + (lgaName || 'this LGA');
+      tr.onclick = () => { const sel=document.getElementById('f-lga'); if(sel) sel.value=lgaName; loadWardOptions(lgaName,'f-ward').then(applyFilter); };
       tr.innerHTML =
-        '<td><b>' + (r.lga || '—') + '</b></td>' +
+        '<td><b>' + (lgaName || '—') + '</b></td>' +
         '<td>' + fmt(r.baseline_total) + '</td>' +
         '<td>' + fmt(r.actual_treated) + '</td>' +
         '<td>' + fmt(r.forms) + '</td>' +
-        '<td><div class="bar-row"><span style="font-weight:700;min-width:52px;color:var(--navy)">' + cov.toFixed(1) + '%</span>' +
-          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%"></div></div></div></td>' +
-        '<td><span class="chip ' + covCls(cov) + '">' + (cov >= 80 ? '✓ On target' : cov >= 60 ? '⚠ Watch' : '✗ Below') + '</span></td>' +
+        '<td><div class="bar-row"><span style="font-weight:700;min-width:52px;color:' + (cov > 100 ? '#92400E' : 'var(--navy)') + '" title="' + (cov > 100 ? 'Treated count exceeds baseline target — may indicate over-counting or baseline gap' : '') + '">' + cov.toFixed(1) + '%</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%;background:' + (cov > 100 ? '#D97706' : 'var(--blue)') + '"></div></div></div></td>' +
+        '<td><span class="chip ' + covCls(cov) + '" title="' + (cov > 100 ? 'Over-coverage: treated count exceeds the baseline target. Check baseline accuracy and number_of_treated entries.' : '') + '">' + covLabel(cov) + '</span></td>' +
         '<td style="text-align:center">' + geoBtn + '</td>';
+      const navBtn = tr.querySelector('[data-lga-nav]');
+      if (navBtn) {
+        navBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          navToGeoLGA(lgaName);
+        });
+      }
       tb.appendChild(tr);
     });
     if (!rows.length) {
@@ -1139,20 +1288,30 @@ tbody tr:hover{background:var(--pale)}
     });
   }
 
-  function applyFilter() {
+  async function applyFilter() {
     FILTER.lga  = (document.getElementById('f-lga')  || {}).value || '';
     FILTER.ward = (document.getElementById('f-ward') || {}).value || '';
+    const { date_from: df, date_to: dt } = dpGetDates('f-dates');
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
     const txt = document.getElementById('active-filter-text');
-    const hasFilter = FILTER.lga || FILTER.ward;
+    const hasFilter = FILTER.lga || FILTER.ward || df || dt;
     if (hasFilter) {
       if (label) label.style.display = 'inline-flex';
       if (resetBtn) resetBtn.style.display = 'inline-flex';
-      if (txt) txt.textContent = [FILTER.lga, FILTER.ward].filter(Boolean).join(' › ');
+      if (txt) txt.textContent = [FILTER.lga, FILTER.ward, df && ('From: '+df), dt && ('To: '+dt)].filter(Boolean).join(' · ');
     } else {
       resetFilter();
+      return;
     }
+    // When dates are set, re-fetch coverage data from API so charts reflect the date range
+    if (df || dt) {
+      const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
+      const fresh = await api('/api/mda/coverage/lga' + qs);
+      if (fresh) lgaCovData = fresh;
+    }
+    delete built['teams'];
+    delete built['trends'];
     rebuildOverviewCharts();
   }
 
@@ -1160,6 +1319,8 @@ tbody tr:hover{background:var(--pale)}
     FILTER = { lga: '', ward: '' };
     CHART_FILTER = { lga: null, date: null, ageGroup: null };
     ['f-lga','f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    dpReset('f-dates');
+    const wSel = document.getElementById('f-ward'); if (wSel) while (wSel.options.length > 1) wSel.remove(1);
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
     if (label) label.style.display = 'none';
@@ -1176,6 +1337,148 @@ tbody tr:hover{background:var(--pale)}
   }
   window.applyFilter = applyFilter;
   window.resetFilter = resetFilter;
+
+  /* ── Wards pre-loaded once at startup: { lgaName: [ward1, ward2, ...] } ── */
+  let wardsByLGA = {};
+
+  async function preloadAllWards() {
+    const data = await api('/api/mda/wards');   // returns grouped dict
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      wardsByLGA = data;
+    }
+  }
+
+  /* Synchronous — never needs a network call, never races with other code */
+  function loadWardOptions(lgaVal, wardSelId) {
+    const sel = document.getElementById(wardSelId);
+    if (!sel) return Promise.resolve();
+    while (sel.options.length > 1) sel.remove(1);
+    if (!lgaVal) return Promise.resolve();
+    const wards = wardsByLGA[lgaVal] || [];
+    wards.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w; o.textContent = w;
+      sel.appendChild(o);
+    });
+    return Promise.resolve();
+  }
+  window.loadWardOptions  = loadWardOptions;
+  window.preloadAllWards  = preloadAllWards;
+
+  /* ── Multi-date picker ── */
+  // Populate all date pickers from campaign-dates API
+  async function preloadCampaignDates() {
+    const data = await api('/api/mda/campaign-dates');
+    if (!data || !data.min_date) return;
+    window._campaignDates = data;
+    const pickers = ['f-dates', 'cov-dates', 'qc-dates'];
+    pickers.forEach(pid => dpPopulate(pid, data.dates || []));
+  }
+  window.preloadCampaignDates = preloadCampaignDates;
+
+  // Build the checkbox list inside a picker panel
+  function dpPopulate(pid, dates) {
+    const list = document.getElementById(pid + '-list');
+    if (!list) return;
+    list.innerHTML = dates.map(d => {
+      const label = new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+      return `<label class="dp-opt"><input type="checkbox" data-date="${d}" onchange="dpItemChange('${pid}',this)"> ${label}</label>`;
+    }).join('');
+  }
+
+  // Toggle panel open/close
+  function dpToggle(pid) {
+    const btn   = document.getElementById(pid + '-btn');
+    const panel = document.getElementById(pid + '-panel');
+    if (!btn || !panel) return;
+    const isOpen = panel.classList.contains('open');
+    // Close all other pickers first
+    document.querySelectorAll('.dp-panel.open').forEach(p => {
+      p.classList.remove('open');
+      const b = document.getElementById(p.id.replace('-panel','-btn'));
+      if (b) b.classList.remove('open');
+    });
+    if (!isOpen) { panel.classList.add('open'); btn.classList.add('open'); }
+  }
+  window.dpToggle = dpToggle;
+
+  // "All Dates" checkbox toggled
+  function dpAllToggle(pid, allCb) {
+    const list = document.getElementById(pid + '-list');
+    if (!list) return;
+    list.querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = allCb.checked; });
+    dpUpdateLabel(pid);
+  }
+  window.dpAllToggle = dpAllToggle;
+
+  // Individual date checkbox toggled
+  function dpItemChange(pid, cb) {
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (!list) return;
+    const all  = [...list.querySelectorAll('input[type=checkbox][data-date]')];
+    const none = all.every(c => !c.checked);
+    // If none checked, re-check "All"
+    if (none && allCb) { allCb.checked = true; all.forEach(c => c.checked = true); }
+    // Uncheck "All" if any specific date is (un)checked
+    if (allCb) allCb.checked = all.every(c => c.checked);
+    dpUpdateLabel(pid);
+  }
+  window.dpItemChange = dpItemChange;
+
+  // Update the button label to reflect selection
+  function dpUpdateLabel(pid) {
+    const btn  = document.getElementById(pid + '-btn');
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (!btn || !list) return;
+    const all     = [...list.querySelectorAll('input[type=checkbox][data-date]')];
+    const checked = all.filter(c => c.checked);
+    let label;
+    if (!all.length || (allCb && allCb.checked) || checked.length === all.length) {
+      label = 'All Dates';
+    } else if (checked.length === 0) {
+      label = 'No dates';
+    } else {
+      label = checked.length + ' of ' + all.length + ' dates';
+    }
+    // Update button text (preserve icon)
+    btn.childNodes[0].textContent = label + ' ';
+  }
+
+  // Get date_from / date_to for a picker — returns {} if all selected
+  function dpGetDates(pid) {
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (!list) return {};
+    if (allCb && allCb.checked) return {};
+    const checked = [...list.querySelectorAll('input[type=checkbox][data-date]')]
+      .filter(c => c.checked).map(c => c.dataset.date).sort();
+    if (!checked.length) return {};
+    return { date_from: checked[0], date_to: checked[checked.length - 1] };
+  }
+
+  // Reset a picker back to "All Dates"
+  function dpReset(pid) {
+    const allCb = document.getElementById(pid + '-all');
+    const list  = document.getElementById(pid + '-list');
+    if (allCb) allCb.checked = true;
+    if (list) list.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = true);
+    dpUpdateLabel(pid);
+  }
+  window.dpReset = dpReset;
+
+  // Close picker when clicking outside
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.dp-wrap')) {
+      document.querySelectorAll('.dp-panel.open').forEach(p => {
+        p.classList.remove('open');
+        const b = document.getElementById(p.id.replace('-panel','-btn'));
+        if (b) b.classList.remove('open');
+      });
+    }
+  }, true);
+
 
   /* ── Fuzzy string similarity (normalised edit distance) ── */
   function strSimilarity(a, b) {
@@ -1199,19 +1502,18 @@ tbody tr:hover{background:var(--pale)}
     let attempts = 0;
     const tryDrill = () => {
       attempts++;
-      if (attempts > 60) return;
-      if (!geoMapBuilt || !geoPid || !geoNavData.lga.length) {
+      if (attempts > 80) return;
+      // Wait until map is built, project id known, LGA nav data AND LGA boundary FC are ready
+      if (!geoMapBuilt || !geoPid || !geoNavData.lga.length || !geoLGAfc) {
         setTimeout(tryDrill, 200);
         return;
       }
-      // Try exact match first, then fuzzy (threshold 0.6 = roughly 80%+ similarity)
       const needle = (lgaName || '').trim().toLowerCase();
       let item = geoNavData.lga.find(l =>
         (l.lga_name || '').trim().toLowerCase() === needle ||
         (l.lga || '').trim().toLowerCase() === needle
       );
       if (!item) {
-        // Fuzzy match — pick best scoring item above 0.6
         let best = null, bestScore = 0;
         geoNavData.lga.forEach(l => {
           const s1 = strSimilarity(lgaName, l.lga_name);
@@ -1219,37 +1521,45 @@ tbody tr:hover{background:var(--pale)}
           const s  = Math.max(s1, s2);
           if (s > bestScore) { bestScore = s; best = l; }
         });
-        if (bestScore >= 0.6) item = best;
+        if (bestScore >= 0.5) item = best;
       }
       if (item) {
         geodrillLGA(item);
-      } else if (geoNavData.lga.length > 0) {
+      } else if (geoNavData.lga.length > 0 && geoLGAfc) {
         console.warn('navToGeoLGA: no match for "' + lgaName + '"');
       } else {
         setTimeout(tryDrill, 200);
       }
     };
-    setTimeout(tryDrill, 300);
+    setTimeout(tryDrill, 150);
   }
   window.navToGeoLGA = navToGeoLGA;
 
   /* ── Coverage Analysis filter state ── */
-  let COV_FILTER = { lga: '', ward: '' };
+  let COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
 
-  function applyCovFilter() {
+  async function applyCovFilter() {
     COV_FILTER.lga  = (document.getElementById('cov-f-lga')  || {}).value || '';
     COV_FILTER.ward = (document.getElementById('cov-f-ward') || {}).value || '';
-    const hasFilter = COV_FILTER.lga || COV_FILTER.ward;
+    const { date_from, date_to } = dpGetDates('cov-dates');
+    COV_FILTER.date_from = date_from || '';
+    COV_FILTER.date_to   = date_to   || '';
+    const hasFilter = COV_FILTER.lga || COV_FILTER.ward || COV_FILTER.date_from || COV_FILTER.date_to;
     const label = document.getElementById('cov-filter-label');
     const resetBtn = document.getElementById('cov-reset-btn');
     const txt = document.getElementById('cov-filter-text');
     if (label)    label.style.display    = hasFilter ? 'inline-flex' : 'none';
     if (resetBtn) resetBtn.style.display = hasFilter ? 'inline-flex' : 'none';
-    if (txt) txt.textContent = [COV_FILTER.lga, COV_FILTER.ward].filter(Boolean).join(' › ');
-    // Re-render with filtered data
-    const filtered = lgaCovData.filter(r =>
-      (!COV_FILTER.lga || r.lga === COV_FILTER.lga)
-    );
+    if (txt) txt.textContent = [COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.date_from && ('From ' + COV_FILTER.date_from), COV_FILTER.date_to && ('To ' + COV_FILTER.date_to)].filter(Boolean).join(' · ');
+    // If date filter active, re-fetch from API; otherwise filter locally
+    let filtered;
+    if (COV_FILTER.date_from || COV_FILTER.date_to) {
+      const qs = _filterQS(COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.date_from, COV_FILTER.date_to);
+      const fresh = await api('/api/mda/coverage/lga' + qs);
+      filtered = fresh || [];
+    } else {
+      filtered = lgaCovData.filter(r => (!COV_FILTER.lga || r.lga === COV_FILTER.lga));
+    }
     buildLGATable('cov-lga-table-body', filtered, true);
     // Rebuild coverage bar chart with filtered data
     destroyChart('c_covLgaBar');
@@ -1266,7 +1576,10 @@ tbody tr:hover{background:var(--pale)}
           onClick: (evt, elems) => {
             if (!elems.length) return;
             const lga = sorted[elems[0].index]?.lga;
-            if (lga) { const sel=document.getElementById('cov-f-lga'); if(sel) sel.value=lga; applyCovFilter(); }
+            if (lga) {
+              const sel=document.getElementById('cov-f-lga'); if(sel) sel.value=lga;
+              loadWardOptions(lga,'cov-f-ward').then(()=>applyCovFilter());
+            }
           },
           plugins: {
             legend: { display: false },
@@ -1284,8 +1597,10 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function resetCovFilter() {
-    COV_FILTER = { lga: '', ward: '' };
+    COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
     ['cov-f-lga','cov-f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    dpReset('cov-dates');
+    const cwSel = document.getElementById('cov-f-ward'); if (cwSel) while (cwSel.options.length > 1) cwSel.remove(1);
     document.getElementById('cov-filter-label') && (document.getElementById('cov-filter-label').style.display='none');
     document.getElementById('cov-reset-btn')    && (document.getElementById('cov-reset-btn').style.display='none');
     buildLGATable('cov-lga-table-body', lgaCovData, true);
@@ -1308,6 +1623,7 @@ tbody tr:hover{background:var(--pale)}
 
   window.applyCovFilter = applyCovFilter;
   window.resetCovFilter = resetCovFilter;
+
 
   /* ── TOAST NOTIFICATION ── */
   let _toastTimer = null;
@@ -1342,16 +1658,12 @@ tbody tr:hover{background:var(--pale)}
     const lga  = CHART_FILTER.lga;
     const date = CHART_FILTER.date;
 
-    // Sync to the global LGA dropdown and apply
-    if (lga !== null) {
-      const sel = document.getElementById('f-lga');
-      if (sel) sel.value = lga;
-      FILTER.lga = lga;
-    } else {
-      const sel = document.getElementById('f-lga');
-      if (sel) sel.value = '';
-      FILTER.lga = '';
-    }
+    // Sync to the global LGA dropdown and load wards
+    const lgaVal = lga !== null ? lga : '';
+    const sel = document.getElementById('f-lga');
+    if (sel) sel.value = lgaVal;
+    FILTER.lga = lgaVal;
+    loadWardOptions(lgaVal, 'f-ward');
 
     // Rebuild overview charts with current filter
     rebuildOverviewCharts();
@@ -1429,9 +1741,9 @@ tbody tr:hover{background:var(--pale)}
   window.dlTableCSV = dlTableCSV;
   window.dlCovTableCSV = dlCovTableCSV;
 
-  /* ── SHARED CHART DEFAULTS ── eHealth Africa palette */
-  const C_BLUE1 = '#0099CC', C_BLUE2 = '#29CCF0', C_BLUE3 = '#7DE0F5';
-  const C_BLUE_ALPHA = 'rgba(0,153,204,.55)', C_GRID = '#E0F5FF';
+  /* ── SHARED CHART DEFAULTS ── */
+  const C_BLUE1 = '#006B2E', C_BLUE2 = '#44B568', C_BLUE3 = '#9FDAB5';
+  const C_BLUE_ALPHA = 'rgba(0,107,46,.55)', C_GRID = '#E9F7EE';
   const DL_BASE = { display: true, font: { size: 10, weight: '600', family: "'Inter','Segoe UI',sans-serif" }, color: '#5B6B82' };
   const DL_WHITE = { display: true, font: { size: 10, weight: '700', family: "'Inter','Segoe UI',sans-serif" }, color: '#ffffff' };
 
@@ -1499,7 +1811,7 @@ tbody tr:hover{background:var(--pale)}
   /* ── TEAMS DATA ── */
   let teamsData = [];
   async function loadTeams() {
-    teamsData = await api('/api/mda/teams/performance') || [];
+    teamsData = await api('/api/mda/teams/performance' + _filterQS(FILTER.lga, FILTER.ward)) || [];
     const meeting = teamsData.filter(t => t.avg_per_day >= 80).length;
     const below = teamsData.length - meeting;
     const avg = teamsData.length ? (teamsData.reduce((s,t)=>s+t.avg_per_day,0)/teamsData.length).toFixed(1) : 0;
@@ -1541,12 +1853,16 @@ tbody tr:hover{background:var(--pale)}
     const params = [];
     if (qcFilterLGA)  params.push('lga='  + encodeURIComponent(qcFilterLGA));
     if (qcFilterWard) params.push('ward=' + encodeURIComponent(qcFilterWard));
+    const { date_from: qcDf, date_to: qcDt } = dpGetDates('qc-dates');
+    if (qcDf) params.push('date_from=' + encodeURIComponent(qcDf));
+    if (qcDt) params.push('date_to='   + encodeURIComponent(qcDt));
     const qs = params.length ? '?' + params.join('&') : '';
 
-    const [summary, refusals, durations] = await Promise.all([
+    const [summary, refusals, durations, teamQC] = await Promise.all([
       api('/api/mda/qc/summary' + qs),
       api('/api/mda/qc/refusals-by-lga' + qs),
       api('/api/mda/qc/duration-by-lga' + qs),
+      api('/api/mda/qc/teams-summary' + qs),
     ]);
     if (!summary) return;
 
@@ -1608,9 +1924,10 @@ tbody tr:hover{background:var(--pale)}
             const cnt = refusals[elems[0].index]?.refusals;
             if (!lga) return;
             qcFilterLGA = qcFilterLGA === lga ? '' : lga;
+            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
+            loadWardOptions(qcFilterLGA, 'qc-f-ward');
             loadQC();
             showToast(qcFilterLGA ? lga + ' — ' + cnt + ' refusals selected (click again to reset)' : 'QC filter cleared');
-            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
           },
           onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
           plugins: {
@@ -1641,9 +1958,10 @@ tbody tr:hover{background:var(--pale)}
             const lga = durations[elems[0].index]?.lga;
             if (!lga) return;
             qcFilterLGA = qcFilterLGA === lga ? '' : lga;
+            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
+            loadWardOptions(qcFilterLGA, 'qc-f-ward');
             loadQC();
             showToast(qcFilterLGA ? 'Duration view filtered to ' + lga + ' (click again to reset)' : 'QC filter cleared');
-            const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
           },
           onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
           plugins: {
@@ -1655,7 +1973,59 @@ tbody tr:hover{background:var(--pale)}
         }
       });
     }
+
+    // ── QC Teams table ──
+    if (teamQC && teamQC.length) {
+      qcTeamsData = teamQC.map(r => ({ ...r, gps_issues: (r.gps_outside_lga||0)+(r.poor_gps||0) }));
+      renderQCTeamsTable();
+    }
   }
+
+  let qcTeamsData = [];
+  let qcTeamsSort = { col: 'error_rate', asc: false };
+
+  function renderQCTeamsTable() {
+    const tbody = document.getElementById('qc-teams-tbody');
+    if (!tbody) return;
+    const { col, asc } = qcTeamsSort;
+    const sorted = [...qcTeamsData].sort((a, b) => {
+      const va = a[col] ?? (typeof a[col] === 'string' ? '' : 0);
+      const vb = b[col] ?? (typeof b[col] === 'string' ? '' : 0);
+      if (typeof va === 'string') return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+      return asc ? va - vb : vb - va;
+    });
+    // Update sort indicators in header
+    ['hq_user','lga','total_forms','forms_with_error','error_rate','dup_forms','gps_issues','after_hours','fast_forms','refusals'].forEach(c => {
+      const el = document.getElementById('qcts-' + c);
+      if (el) el.textContent = c === col ? (asc ? '▲' : '▼') : '';
+    });
+    const errColour = r => r.error_rate >= 30 ? 'var(--bad)' : r.error_rate >= 15 ? 'var(--warn)' : 'var(--good)';
+    tbody.innerHTML = sorted.map(r => `
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:10px 14px;font-weight:700;color:var(--navy);white-space:nowrap">${r.hq_user || '—'}</td>
+        <td style="padding:10px 14px;color:var(--muted);white-space:nowrap">${r.lga || '—'}</td>
+        <td style="padding:10px 14px;text-align:right">${(r.total_forms||0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right;color:${errColour(r)};font-weight:700">${(r.forms_with_error||0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right">
+          <span style="background:${r.error_rate>=30?'var(--bad-bg)':r.error_rate>=15?'var(--warn-bg)':'var(--good-bg)'};color:${errColour(r)};padding:2px 8px;border-radius:99px;font-weight:700;font-size:11.5px">${r.error_rate}%</span>
+        </td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_forms||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.gps_issues||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.after_hours||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.fast_forms||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.refusals||0}</td>
+      </tr>`).join('');
+  }
+
+  function sortQCTeams(col) {
+    if (qcTeamsSort.col === col) {
+      qcTeamsSort.asc = !qcTeamsSort.asc;
+    } else {
+      qcTeamsSort = { col, asc: col === 'hq_user' || col === 'lga' };
+    }
+    renderQCTeamsTable();
+  }
+  window.sortQCTeams = sortQCTeams;
 
   /* ── CHART BUILDERS (lazy per view) ── */
   const built = {};
@@ -1672,8 +2042,147 @@ tbody tr:hover{background:var(--pale)}
     buildDonutChart(data);
     buildLGATable('lga-table-body', data);
     const lbl = document.getElementById('lga-table-filter-label');
-    if (lbl) lbl.textContent = FILTER.lga ? ('Filtered: ' + FILTER.lga) : '';
+    if (lbl) lbl.textContent = [FILTER.lga, FILTER.ward].filter(Boolean).join(' › ') || '';
+    // Reload KPI stats with active filter
+    _reloadOverviewKPIs();
   }
+
+  async function _reloadOverviewKPIs() {
+    const { date_from: df, date_to: dt } = dpGetDates('f-dates');
+    const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
+    const [ov, daily] = await Promise.all([
+      api('/api/mda/overview' + qs),
+      api('/api/mda/trends/daily' + qs),
+    ]);
+    if (!ov) return;
+    overviewData = ov;
+    dailyData    = daily || [];
+    const tf = ov.total_forms || 0, tt = ov.total_treated || 0;
+    setEl('kpi-forms',    fmt(tf));
+    setEl('kpi-treated',  fmt(tt));
+    setEl('kpi-teams',    fmt(ov.teams_active));
+    setEl('kpi-coverage', (ov.coverage_pct || 0).toFixed(1) + '%');
+    setEl('kpi-days',     ov.days_active || 0);
+    setEl('kpi-flags',    Number(ov.total_qc_flags || 0).toLocaleString());
+    setEl('trends-targeted',      fmt(ov.baseline_total));
+    setEl('trends-administered',  fmt(tt));
+    setEl('trends-flags',         ov.total_qc_flags || 0);
+    const tcEl = document.getElementById('trends-coverage');
+    if (tcEl) tcEl.innerHTML = '<span class="chip ' + covCls(ov.coverage_pct||0) + '">' + (ov.coverage_pct||0).toFixed(1) + '%</span>';
+    // Refresh age-summary for children
+    const ageSel = await api('/api/mda/individuals/age-summary' + qs);
+    if (ageSel) _renderAgeSummary(ageSel);
+  }
+
+  function _filterQS(lga, ward, dateFrom, dateTo) {
+    const p = [];
+    if (lga)      p.push('lga='       + encodeURIComponent(lga));
+    if (ward)     p.push('ward='      + encodeURIComponent(ward));
+    if (dateFrom) p.push('date_from=' + encodeURIComponent(dateFrom));
+    if (dateTo)   p.push('date_to='   + encodeURIComponent(dateTo));
+    return p.length ? '?' + p.join('&') : '';
+  }
+
+  /* ── WARD DRILL-DOWN — replaces LGA bar chart with ward breakdown ── */
+  async function drillDownToWards(lga) {
+    const el = document.getElementById('c_lgaBar');
+    if (!el) return;
+    const existing = Chart.getChart(el); if (existing) existing.destroy();
+
+    // Update chart card title to show drill-down context
+    const titleEl = el.closest('.card')?.querySelector('.card-title');
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Submissions by Ward — ' + lga +
+      ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> All LGAs</button>';
+
+    const data = await api('/api/mda/submissions/ward?lga=' + encodeURIComponent(lga)) || [];
+    if (!data.length) { showToast('No ward data for ' + lga); return; }
+
+    // Dynamic height: 34px per ward keeps bars full-size regardless of ward count
+    const wrap = el.parentElement;  // .chart-wrap — Chart.js reads *this* for canvas size
+    const rowH  = 34;
+    const totalH = Math.max(300, data.length * rowH);
+    const maxViewport = 500;
+    // Grow the chart-wrap to the full height so Chart.js renders all bars at correct size
+    wrap.style.height = totalH + 'px';
+    wrap.style.overflow = 'visible';
+    // Inject a scrollable viewport wrapper above the chart-wrap (if not already present)
+    if (!document.getElementById('ward-chart-scroller')) {
+      const scroller = document.createElement('div');
+      scroller.id = 'ward-chart-scroller';
+      scroller.style.cssText = 'max-height:' + maxViewport + 'px;overflow-y:auto;overflow-x:hidden;margin:0 -18px;padding:0 18px';
+      wrap.parentNode.insertBefore(scroller, wrap);
+      scroller.appendChild(wrap);
+    } else {
+      document.getElementById('ward-chart-scroller').style.maxHeight = maxViewport + 'px';
+    }
+
+    const maxVal = Math.max(...data.map(r => r.forms || 0), 1);
+    new Chart(el, {
+      type: 'bar',
+      data: {
+        labels: data.map(r => r.ward_name),
+        datasets: [{ label: 'Forms', data: data.map(r => r.forms || 0),
+          backgroundColor: data.map(r => `rgba(0,107,46,${Math.max(0.35, (r.forms||0)/maxVal * 0.9).toFixed(2)})`),
+          borderRadius: 5, maxBarThickness: 24 }]
+      },
+      options: {
+        indexAxis: 'y',
+        onClick: (evt, elems) => {
+          if (!elems.length) return;
+          const ward = data[elems[0].index]?.ward_name;
+          if (!ward) return;
+          if (FILTER.ward === ward) {
+            // same ward clicked again — reset to LGA drill-down
+            FILTER.ward = '';
+            const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = '';
+            delete built['teams']; delete built['trends'];
+            _reloadOverviewKPIs();
+            showToast('Ward filter cleared — showing all wards in ' + (FILTER.lga || 'selected LGA'));
+          } else {
+            const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = ward;
+            FILTER.ward = ward;
+            delete built['teams']; delete built['trends'];
+            _reloadOverviewKPIs();
+            showToast(ward + ' ward selected — dashboard filtered. Click again to deselect.');
+          }
+        },
+        onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
+        plugins: {
+          legend: { display: false },
+          datalabels: { ...DL_BASE, anchor: 'center', align: 'center',
+            color: ctx => (ctx.dataset.data[ctx.dataIndex]/maxVal) > 0.18 ? '#fff' : '#334155',
+            font: { size: 10, weight: '700' }, formatter: v => v.toLocaleString() }
+        },
+        scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
+        maintainAspectRatio: false
+      }
+    });
+  }
+
+  function drillUpToLGA() {
+    // Restore original LGA chart
+    const el = document.getElementById('c_lgaBar');
+    if (el) { const c = Chart.getChart(el); if (c) c.destroy(); }
+    // Remove the ward-chart scroller wrapper and restore chart-wrap to card
+    const scroller = document.getElementById('ward-chart-scroller');
+    if (scroller) {
+      const wrap = document.getElementById('c_lgaBar')?.parentElement;
+      if (wrap) scroller.parentNode.insertBefore(wrap, scroller);
+      scroller.remove();
+    }
+    // Reset chart-wrap inline styles back to CSS defaults
+    const wrap = el?.parentElement;
+    if (wrap) { wrap.style.height = ''; wrap.style.overflow = ''; }
+    const titleEl = el?.closest('.card')?.querySelector('.card-title');
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Household Form Submissions by LGA';
+    CHART_FILTER.lga = null;
+    const lgaSel = document.getElementById('f-lga'); if (lgaSel) lgaSel.value = '';
+    const wSel   = document.getElementById('f-ward'); if (wSel) { wSel.value=''; while(wSel.options.length>1) wSel.remove(1); }
+    FILTER.lga = ''; FILTER.ward = '';
+    delete built['teams']; delete built['trends'];
+    rebuildOverviewCharts();
+  }
+  window.drillUpToLGA = drillUpToLGA;
 
   function buildLGABarChart(data, sortBy) {
     const el = document.getElementById('c_lgaBar');
@@ -1688,7 +2197,7 @@ tbody tr:hover{background:var(--pale)}
         datasets: [{ label: 'Forms Submitted', data: top12.map(l => l[key]||0),
           backgroundColor: top12.map(l => {
             const cov = parseFloat(l.coverage_pct) || 0;
-            return cov >= 80 ? 'rgba(0,153,204,.95)' : cov >= 60 ? 'rgba(0,153,204,.7)' : 'rgba(0,153,204,.45)';
+            return cov >= 80 ? 'rgba(0,107,46,.95)' : cov >= 60 ? 'rgba(0,107,46,.7)' : 'rgba(0,107,46,.45)';
           }),
           borderRadius: 5, maxBarThickness: 24 }]
       },
@@ -1698,9 +2207,28 @@ tbody tr:hover{background:var(--pale)}
           if (!elems.length) return;
           const lga = top12[elems[0].index]?.lga;
           if (!lga) return;
-          setChartFilter('lga', lga);
-          const r = top12[elems[0].index] || {};
-          showToast(lga + ' — ' + Number(r.forms||0).toLocaleString() + ' forms · ' + (parseFloat(r.coverage_pct)||0).toFixed(1) + '% coverage  (click again to reset)');
+          const isReset = (typeof CHART_FILTER !== 'undefined' && CHART_FILTER.lga === lga);
+          if (isReset) {
+            // Second click on same LGA — reset back to all-LGA view
+            CHART_FILTER.lga = null;
+            const lgaSel = document.getElementById('f-lga'); if (lgaSel) lgaSel.value = '';
+            const wSel   = document.getElementById('f-ward'); if (wSel) { wSel.value=''; while(wSel.options.length>1) wSel.remove(1); }
+            FILTER.lga = ''; FILTER.ward = '';
+            delete built['teams']; delete built['trends'];
+            rebuildOverviewCharts();
+            showToast('Drill-down cleared — showing all LGAs');
+          } else {
+            // First click — drill down into this LGA's ward breakdown
+            CHART_FILTER.lga = lga;
+            const lgaSel = document.getElementById('f-lga'); if (lgaSel) lgaSel.value = lga;
+            loadWardOptions(lga, 'f-ward');
+            FILTER.lga = lga; FILTER.ward = '';
+            delete built['teams']; delete built['trends'];
+            _reloadOverviewKPIs();
+            // Replace the LGA bar chart with ward drill-down
+            drillDownToWards(lga);
+            showToast('Drilled into ' + lga + ' — showing wards. Click any ward bar or click ' + lga + ' again to go back.');
+          }
         },
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         layout: { padding: { right: 8 } },
@@ -1746,7 +2274,7 @@ tbody tr:hover{background:var(--pale)}
       type: 'doughnut',
       data: {
         labels: ['Treated', 'Remaining (gap to target)'],
-        datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, '#E0F5FF'], borderWidth: 0, hoverOffset: 8 }]
+        datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, '#E9F7EE'], borderWidth: 0, hoverOffset: 8 }]
       },
       options: {
         cutout: '68%',
@@ -1772,10 +2300,10 @@ tbody tr:hover{background:var(--pale)}
     });
   }
 
-  async function buildAgeBandChart() {
+  function _renderAgeSummary(d) {
     const el = document.getElementById('c_ageBar');
     if (!el) return;
-    const d = await api('/api/mda/individuals/age-summary') || {};
+    const existing = Chart.getChart(el); if (existing) existing.destroy();
     const enumerated = [d.total_1_11 || 0, d.total_12_59 || 0];
     const treated    = [d.treated_1_11 || 0, d.treated_12_59 || 0];
     const labels     = ['1–11 months', '12–59 months'];
@@ -1784,20 +2312,11 @@ tbody tr:hover{background:var(--pale)}
       data: {
         labels,
         datasets: [
-          { label: 'Enumerated (baseline)', data: enumerated, backgroundColor: '#CFE3F5', borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: '#B3D4F0' },
+          { label: 'Enumerated (baseline)', data: enumerated, backgroundColor: '#C8E6C9', borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: '#A5D6A7' },
           { label: 'Treated', data: treated, backgroundColor: C_BLUE1, borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: C_BLUE2 },
         ]
       },
       options: {
-        onClick: (evt, elems) => {
-          if (!elems.length) return;
-          const lbl   = labels[elems[0].index];
-          const dsLbl = elems[0].datasetIndex === 0 ? 'Enumerated' : 'Treated';
-          const val   = elems[0].datasetIndex === 0 ? enumerated[elems[0].index] : treated[elems[0].index];
-          const gap   = enumerated[elems[0].index] - treated[elems[0].index];
-          showToast(dsLbl + ' (' + lbl + '): ' + val.toLocaleString() + (gap > 0 ? ' · Gap: ' + gap.toLocaleString() : ''));
-        },
-        onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
           legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
           datalabels: { ...DL_BASE, anchor: 'end', align: 'top', formatter: v => v.toLocaleString() }
@@ -1806,6 +2325,13 @@ tbody tr:hover{background:var(--pale)}
         maintainAspectRatio: false, animation: { duration: 600 }
       }
     });
+  }
+
+  async function buildAgeBandChart() {
+    const { date_from: df, date_to: dt } = dpGetDates('f-dates');
+    const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
+    const d  = await api('/api/mda/individuals/age-summary' + qs) || {};
+    _renderAgeSummary(d);
   }
 
   function buildCharts(view) {
@@ -1841,7 +2367,7 @@ tbody tr:hover{background:var(--pale)}
             labels: dailyData.map(d => d.date),
             datasets: [
               { label: 'Forms Submitted', data: dailyData.map(d => d.forms),
-                borderColor: C_BLUE1, backgroundColor: ctx => gradient(ctx.chart.ctx, 'rgba(0,103,184,.22)', 'rgba(0,103,184,0)'),
+                borderColor: C_BLUE1, backgroundColor: ctx => gradient(ctx.chart.ctx, 'rgba(0,107,46,.22)', 'rgba(0,107,46,0)'),
                 fill: true, tension: 0.35, borderWidth: 2.5, pointRadius: 4,
                 pointBackgroundColor: C_BLUE1, pointHoverRadius: 6, order: 1 },
               { label: 'Team daily target (80/team)', data: dailyTargetData,
@@ -1896,7 +2422,7 @@ tbody tr:hover{background:var(--pale)}
             datasets: [{ label: 'Coverage %', data: sorted.map(l=>parseFloat(l.coverage_pct)||0),
               backgroundColor: sorted.map(l => {
                 const v = parseFloat(l.coverage_pct)||0;
-                return v >= 80 ? 'rgba(0,153,204,.95)' : v >= 60 ? 'rgba(0,153,204,.7)' : 'rgba(0,153,204,.45)';
+                return v >= 80 ? 'rgba(0,107,46,.95)' : v >= 60 ? 'rgba(0,107,46,.7)' : 'rgba(0,107,46,.45)';
               }), borderRadius: 5, maxBarThickness: 16 }]
           },
           options: {
@@ -1935,7 +2461,7 @@ tbody tr:hover{background:var(--pale)}
             type: 'line',
             data: { labels: dailyData.map(d=>d.date),
               datasets:[{ label:'Coverage %', data: cumTreated.map(v=>parseFloat((v/bl*100).toFixed(1))),
-                borderColor: C_BLUE1, backgroundColor: ctx=>gradient(ctx.chart.ctx,'rgba(0,153,204,.25)','rgba(0,153,204,0)'),
+                borderColor: C_BLUE1, backgroundColor: ctx=>gradient(ctx.chart.ctx,'rgba(0,107,46,.25)','rgba(0,153,204,0)'),
                 fill:true, tension:.3, borderWidth:2.5, pointRadius:4, pointHoverRadius:7, pointBackgroundColor: C_BLUE1 }]
             },
             options: {
@@ -1963,6 +2489,27 @@ tbody tr:hover{background:var(--pale)}
         setEl('cov-kpi-below',    covBelow);
         buildLGATable('cov-lga-table-body', lgaCovData, true);
         populateCovFilters();
+        // Surface campaign-scope details: how many LGAs are in this round's baseline
+        // vs how many polygons exist in the state. Helpful when 3 Sokoto LGAs
+        // (Binji / Sabon Birni / Silame) sit out of the MDA target set.
+        api('/api/projects/' + (SELECTED_PID || '') + '/analytics/lgas').then(allLgas => {
+          if (!Array.isArray(allLgas) || !lgaCovData) return;
+          const inScope = new Set(lgaCovData.map(r => (r.lga || '').toLowerCase().trim()));
+          const excluded = allLgas
+            .map(l => l.lga_name)
+            .filter(n => n && !inScope.has(n.toLowerCase().trim()));
+          const noteEl = document.getElementById('cov-scope-note');
+          const textEl = document.getElementById('cov-scope-text');
+          if (!noteEl || !textEl) return;
+          if (excluded.length === 0) {
+            noteEl.style.display = 'none';
+            return;
+          }
+          noteEl.style.display = 'block';
+          textEl.innerHTML = 'Coverage tracked for <strong>' + lgaCovData.length +
+            ' of ' + allLgas.length + ' LGAs</strong>. Not included in this campaign\'s ' +
+            'target set: <em>' + excluded.join(', ') + '</em>.';
+        });
       }
     }
 
@@ -2010,7 +2557,7 @@ tbody tr:hover{background:var(--pale)}
           type: 'line',
           data: { labels: dailyData.map(d=>d.date),
             datasets:[{ label:'Daily Forms', data:dailyData.map(d=>d.forms),
-              borderColor: C_BLUE1, backgroundColor:'rgba(0,103,184,.08)', fill:true, tension:.3, borderWidth:2.5, pointRadius:3 }]
+              borderColor: C_BLUE1, backgroundColor:'rgba(0,107,46,.08)', fill:true, tension:.3, borderWidth:2.5, pointRadius:3 }]
           },
           options: {
             plugins: { legend: { position: 'bottom' }, datalabels: { display: false } },
@@ -2024,7 +2571,7 @@ tbody tr:hover{background:var(--pale)}
           type: 'line',
           data: { labels: dailyData.map(d=>d.date),
             datasets:[{ label:'Cumulative Forms', data:cumul,
-              borderColor: C_BLUE2, backgroundColor:ctx=>gradient(ctx.chart.ctx,'rgba(29,204,240,.25)','rgba(29,204,240,0)'),
+              borderColor: C_BLUE2, backgroundColor:ctx=>gradient(ctx.chart.ctx,'rgba(68,181,104,.25)','rgba(29,204,240,0)'),
               fill:true, tension:.3, borderWidth:2.5, pointRadius:3, pointHoverRadius:7, pointBackgroundColor: C_BLUE2 }]
           },
           options: {
@@ -2300,12 +2847,28 @@ tbody tr:hover{background:var(--pale)}
     const activeWards  = d.reduce((s, r) => s + (r.visited_settlements > 0 ? 1 : 0), 0);
     const totalLGAs    = d.length;
 
+    // Compute avg completeness (visited_grids / total_grids per settlement)
+    const avgComp = d.length > 0
+      ? d.reduce((s, r) => s + (r.avg_completeness_pct || r.visitation_pct || 0), 0) / d.length
+      : 0;
+    const completedSetts = d.reduce((s, r) => s + ((r.visited_settlements_60 || 0)), 0);
+
     // Top KPI strip
     setEl('geo-coverage-pct', pct.toFixed(1) + '%');
     setEl('geo-sett-visited-count', visitedSett.toLocaleString());
     setEl('geo-sett-total-count', totalSett.toLocaleString());
+    setEl('geo-sett-notvisited-count', (totalSett - visitedSett).toLocaleString());
     setEl('geo-ward-active-count', activeWards);
     setEl('geo-ward-total-count', totalLGAs);
+    // Completeness — fetched separately from settlement_analytics
+    _loadGeoCompleteness();
+  }
+
+  async function _loadGeoCompleteness() {
+    const result = await api('/api/mda/geo/completeness');
+    if (!result) return;
+    setEl('geo-avg-completeness', result.overall_completeness.toFixed(1) + '%');
+    setEl('geo-completed-count', result.completed_60.toLocaleString());
   }
   async function loadGeoMetricsWard(lgacode) {
     const d = await api('/api/projects/' + geoPid + '/analytics/wards?lgacode=' + lgacode);
@@ -2411,6 +2974,7 @@ tbody tr:hover{background:var(--pale)}
     setEl('geo-coverage-pct', pct.toFixed(1) + '%');
     setEl('geo-sett-visited-count', visited);
     setEl('geo-sett-total-count', total);
+    setEl('geo-sett-notvisited-count', (total - visited).toLocaleString());
     setEl('geo-ward-active-count', pct.toFixed(0) + '% grids covered');
     // Zoom to settlement extent
     if (d.features && d.features.length) {
@@ -2439,25 +3003,10 @@ tbody tr:hover{background:var(--pale)}
 
   function geoGoBack() {
     if (geoNavLevel === 'ward') {
-      geoCurrentLGA = geoCurrentWard = null; geoNavLevel = 'lga';
-      ['lga-line', 'lga-label', 'lga-fill', 'ward-line', 'ward-label'].forEach(id => {
-        if (geoMap.getLayer(id)) geoMap.setFilter(id, null);
-      });
-      loadGeoBoundariesWard(null);
-      if (geoMap.getSource('settlement-src')) geoMap.getSource('settlement-src').setData(EMPTY_FC);
-      if (geoMap.getSource('points-src'))     geoMap.getSource('points-src').setData(EMPTY_FC);
-      clearGeoGrid();
-      renderGeoNav(geoNavData.lga, 'lga');
-      geoMap.flyTo({ center: [5.25, 13.05], zoom: 7, duration: 700 });
+      geoGoRoot();
     } else if (geoNavLevel === 'settlement') {
-      geoCurrentWard = null; geoNavLevel = 'ward';
-      ['ward-line', 'ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, null); });
-      if (geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(EMPTY_FC);
-      clearGeoGrid();
-      renderGeoNav(geoNavData.ward, 'ward');
-      if (geoCurrentLGA) zoomGeoTo(geoLGAfc, 'lgacode', geoCurrentLGA.lgacode);
+      geoGoLGA();
     }
-    updateGeoNavHeader();
   }
 
   function geoResetView() {
@@ -2477,22 +3026,84 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function updateGeoNavHeader() {
-    const backBtn = document.getElementById('geo-back-btn');
-    const title   = document.getElementById('geo-nav-title');
-    if (!backBtn || !title) return;
+    const lgaSep  = document.getElementById('geo-bc-lga-sep');
+    const lgaEl   = document.getElementById('geo-bc-lga');
+    const wardSep = document.getElementById('geo-bc-ward-sep');
+    const wardEl  = document.getElementById('geo-bc-ward');
+    const covBtn  = document.getElementById('geo-view-cov-btn');
+    if (!lgaEl) return;
+
     if (geoNavLevel === 'lga') {
-      backBtn.style.display = 'none';
-      title.textContent = 'All LGAs';
+      if (lgaSep)  lgaSep.style.display  = 'none';
+      if (lgaEl)   lgaEl.style.display   = 'none';
+      if (wardSep) wardSep.style.display = 'none';
+      if (wardEl)  wardEl.style.display  = 'none';
+      if (covBtn)  covBtn.style.display  = 'none';
     } else if (geoNavLevel === 'ward') {
-      backBtn.style.display = 'inline';
-      title.innerHTML =
-        '<span style="color:var(--good);font-size:10px;text-transform:uppercase;letter-spacing:.5px">' + (geoCurrentLGA ? geoCurrentLGA.lga_name : '') + '</span><br>Wards';
+      if (lgaSep)  { lgaSep.style.display  = 'inline'; }
+      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
+      if (wardSep) { wardSep.style.display = 'none'; }
+      if (wardEl)  { wardEl.style.display  = 'none'; }
+      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (geoCurrentLGA?.lga_name || 'this LGA'); }
     } else {
-      backBtn.style.display = 'inline';
-      title.innerHTML =
-        '<span style="color:var(--blue);font-size:10px;text-transform:uppercase;letter-spacing:.5px">' + (geoCurrentWard ? geoCurrentWard.ward_name : '') + '</span><br>Settlements';
+      if (lgaSep)  { lgaSep.style.display  = 'inline'; }
+      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
+      if (wardSep) { wardSep.style.display = 'inline'; }
+      if (wardEl)  { wardEl.style.display  = 'inline'; wardEl.textContent = geoCurrentWard ? geoCurrentWard.ward_name : ''; }
+      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (geoCurrentLGA?.lga_name || 'this LGA'); }
     }
   }
+
+  function geoViewCoverage() {
+    const lgaName = geoCurrentLGA?.lga_name;
+    switchView('coverage');  // queues buildCharts('coverage') in rAF slot 1
+    if (!lgaName) { showToast('Navigate to an LGA first'); return; }
+    // Apply filter in rAF slot 2 — guaranteed to run AFTER buildCharts
+    requestAnimationFrame(() => {
+      const sel = document.getElementById('cov-f-lga');
+      if (sel) sel.value = lgaName;
+      loadWardOptions(lgaName, 'cov-f-ward').then(() => applyCovFilter());
+      showToast('Showing coverage for ' + lgaName);
+    });
+  }
+  window.geoViewCoverage = geoViewCoverage;
+
+  async function geoGoRoot() {
+    geoCurrentLGA = null; geoCurrentWard = null; geoNavLevel = 'lga';
+    updateGeoNavHeader();
+    ['lga-line','lga-label','lga-fill','ward-line','ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, null); });
+    if (geoMap.getSource('points-src'))    geoMap.getSource('points-src').setData(EMPTY_FC);
+    if (geoMap.getSource('sett-src'))      geoMap.getSource('sett-src').setData(EMPTY_FC);
+    if (geoMap.getSource('grid-src'))      geoMap.getSource('grid-src').setData(EMPTY_FC);
+    renderGeoNav(geoNavData.lga, 'lga');
+    await loadGeoBoundariesLGA();
+    if (geoLGAfc) geoMap.fitBounds(turf_bbox(geoLGAfc), { padding: 30, duration: 600 });
+  }
+  function turf_bbox(fc) {
+    let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+    (fc.features||[]).forEach(f=>{
+      function walk(c){if(typeof c[0]==='number'){if(c[0]<minx)minx=c[0];if(c[0]>maxx)maxx=c[0];if(c[1]<miny)miny=c[1];if(c[1]>maxy)maxy=c[1];}else c.forEach(walk);}
+      walk(f.geometry.coordinates);
+    });
+    return [[minx,miny],[maxx,maxy]];
+  }
+  async function geoGoLGA() {
+    if (!geoCurrentLGA) return;
+    geoCurrentWard = null; geoNavLevel = 'ward';
+    updateGeoNavHeader();
+    const f = ['==', ['get', 'lgacode'], geoCurrentLGA.lgacode];
+    ['lga-line','lga-label','lga-fill'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, f); });
+    ['ward-line','ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, null); });
+    if (geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(EMPTY_FC);
+    await Promise.all([
+      loadGeoBoundariesWard(geoCurrentLGA.lgacode),
+      loadGeoBoundariesSettlement(geoCurrentLGA.lgacode, null),
+      loadGeoMetricsWard(geoCurrentLGA.lgacode),
+    ]);
+    zoomGeoTo(geoLGAfc, 'lgacode', geoCurrentLGA.lgacode);
+  }
+  window.geoGoRoot = geoGoRoot;
+  window.geoGoLGA  = geoGoLGA;
 
   function zoomGeoTo(fc, keyProp, keyVal) {
     if (!fc || !fc.features) return;
@@ -2519,11 +3130,11 @@ tbody tr:hover{background:var(--pale)}
       const pct = r.visitation_pct || 0;
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:13px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">' + (p.lga_name || '—') + '</b><br>' +
-        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#0099CC">' + pct.toFixed(0) + '%</b></span><br>' +
+        '<b style="color:#003D1A">' + (p.lga_name || '—') + '</b><br>' +
+        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#006B2E">' + pct.toFixed(0) + '%</b></span><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (r.visited_settlements || 0) + '/' + (r.total_settlements || 0) + ' settlements visited</span><br>' +
         '<button onclick="window._geoDrillLGA(\'' + p.lgacode + '\')" ' +
-          'style="margin-top:6px;background:#0099CC;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Drill into wards →</button>' +
+          'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Drill into wards →</button>' +
         '</div>'
       ).addTo(geoMap);
     });
@@ -2533,11 +3144,11 @@ tbody tr:hover{background:var(--pale)}
       const pct = r.visitation_pct || 0;
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:13px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">' + (p.ward_name || '—') + '</b><br>' +
+        '<b style="color:#003D1A">' + (p.ward_name || '—') + '</b><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (p.lga_name || '') + '</span><br>' +
-        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#0099CC">' + pct.toFixed(0) + '%</b></span><br>' +
+        '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#006B2E">' + pct.toFixed(0) + '%</b></span><br>' +
         '<button onclick="window._geoDrillWard(\'' + p.wardcode + '\')" ' +
-          'style="margin-top:6px;background:#0099CC;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show settlements →</button>' +
+          'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show settlements →</button>' +
         '</div>'
       ).addTo(geoMap);
     });
@@ -2547,12 +3158,12 @@ tbody tr:hover{background:var(--pale)}
       const isV = p.is_visited;
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:12.5px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">' + (p.settlement_name || 'Settlement') + '</b><br>' +
+        '<b style="color:#003D1A">' + (p.settlement_name || 'Settlement') + '</b><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (p.ward_name || '') + ' › ' + (p.lga_name || '') + '</span><br>' +
         '<span style="color:' + (isV ? '#15803d' : '#b91c1c') + ';font-weight:700;font-size:12px">' + (isV ? '✓ Complete (≥70%)' : '✗ Incomplete') + '</span><br>' +
         '<span style="color:#5B6B82;font-size:11px">Grids: <b>' + (p.visited_grids || 0) + '/' + (p.total_grids || 0) + '</b> · Completeness: <b>' + compPct + '</b></span><br>' +
         '<button onclick="window._geoDrillSett(\'' + (p.unique_cod||'') + '\',\'' + (p.settlement_name||'').replace(/'/g,'') + '\')" ' +
-          'style="margin-top:6px;background:#0099CC;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show grid cells →</button>' +
+          'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show grid cells →</button>' +
         '</div>'
       ).addTo(geoMap);
     });
@@ -2574,7 +3185,7 @@ tbody tr:hover{background:var(--pale)}
       const inGrid = p.in_grid === true || p.in_grid === 'true';
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:12px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#004A7C">GPS Point</b><br>' +
+        '<b style="color:#003D1A">GPS Point</b><br>' +
         '<span style="color:' + (inGrid ? '#15803d' : '#b91c1c') + ';font-weight:700">' +
           (inGrid ? '✓ Inside a grid cell' : '✗ Outside all grid cells') +
         '</span><br>' +
@@ -2678,7 +3289,8 @@ tbody tr:hover{background:var(--pale)}
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && geoIsFullscreen) toggleGeoFullscreen(); });
 
   /* ── GEO HEATMAP / MOVEMENT OVERLAYS ── */
-  let activeHeatmapFlag = null, movementActive = false;
+  let activeHeatmapFlag = null, movementActive = false, movementAllFC = null;
+  const TEAM_COLOURS = ['#006B2E','#D97706','#DC2626','#7C3AED','#0891B2','#BE185D','#059669','#B45309','#1D4ED8','#9333EA','#0F766E','#92400E'];
 
   function initOverlaySources() {
     if (!geoMap.getSource('heatmap-src')) {
@@ -2688,8 +3300,8 @@ tbody tr:hover{background:var(--pale)}
           'heatmap-weight': 1,
           'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 12, 1.2],
           'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
-            0, 'rgba(0,103,184,0)', 0.2, 'rgba(0,164,228,.5)',
-            0.5, 'rgba(0,103,184,.8)', 0.8, '#D97706', 1, '#DC2626'],
+            0, 'rgba(0,107,46,0)', 0.2, 'rgba(0,140,58,.5)',
+            0.5, 'rgba(0,107,46,.8)', 0.8, '#D97706', 1, '#DC2626'],
           'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 12, 12, 28],
           'heatmap-opacity': 0.8,
         }
@@ -2699,24 +3311,44 @@ tbody tr:hover{background:var(--pale)}
           'circle-stroke-color': '#fff', 'circle-stroke-width': 1 }
       });
     }
-    if (!geoMap.getSource('movement-src')) {
-      geoMap.addSource('movement-src', { type: 'geojson', data: EMPTY_FC });
-      geoMap.addLayer({ id: 'movement-pts', type: 'circle', source: 'movement-src',
-        paint: {
-          'circle-radius': 4,
-          'circle-color': ['interpolate', ['linear'], ['get', 'local_hour'],
-            6, '#4FC3F7', 10, '#0067B8', 14, '#002F5F', 18, '#D97706', 23, '#374151'],
-          'circle-opacity': 0.75,
-          'circle-stroke-color': '#fff', 'circle-stroke-width': 0.7
-        }
+    if (!geoMap.getSource('movement-lines-src')) {
+      geoMap.addSource('movement-lines-src', { type: 'geojson', data: EMPTY_FC });
+      geoMap.addLayer({ id: 'movement-line-casing', type: 'line', source: 'movement-lines-src',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#fff', 'line-width': 5, 'line-opacity': 0.4 }
+      });
+      geoMap.addLayer({ id: 'movement-line', type: 'line', source: 'movement-lines-src',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': ['get','colour'], 'line-width': ['interpolate',['linear'],['zoom'],8,2,14,4], 'line-opacity': 0.85 }
       });
     }
+    if (!geoMap.getSource('movement-pts-src')) {
+      geoMap.addSource('movement-pts-src', { type: 'geojson', data: EMPTY_FC });
+      geoMap.addLayer({ id: 'movement-pts', type: 'circle', source: 'movement-pts-src',
+        paint: { 'circle-radius': ['interpolate',['linear'],['zoom'],8,3,14,6],
+          'circle-color': ['get','colour'], 'circle-opacity': 0.9,
+          'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 }
+      });
+    }
+  }
+
+  function _buildMovementLayers(pts, colourMap) {
+    pts.forEach(f => { f.properties.colour = colourMap[f.properties.hq_user] || '#006B2E'; });
+    const byTeam = {};
+    pts.forEach(f => { const k=f.properties.hq_user||'?'; if(!byTeam[k]) byTeam[k]=[]; byTeam[k].push(f); });
+    const lines = [];
+    Object.entries(byTeam).forEach(([t,tp]) => {
+      tp.sort((a,b)=>(a.properties.started_time||'')<(b.properties.started_time||'')?-1:1);
+      const coords = tp.map(p=>p.geometry.coordinates).filter(c=>c&&c.length===2);
+      if (coords.length>=2) lines.push({ type:'Feature', geometry:{type:'LineString',coordinates:coords},
+        properties:{hq_user:t,colour:colourMap[t]||'#006B2E',point_count:coords.length} });
+    });
+    return lines;
   }
 
   async function geoHeatmap(flag, btn) {
     if (!geoMap || !geoMapBuilt) return;
     if (!geoMap.getSource('heatmap-src')) initOverlaySources();
-    // Toggle off if same flag active
     if (activeHeatmapFlag === flag) {
       geoMap.getSource('heatmap-src').setData(EMPTY_FC);
       activeHeatmapFlag = null;
@@ -2727,40 +3359,131 @@ tbody tr:hover{background:var(--pale)}
     if (btn) btn.classList.add('active');
     activeHeatmapFlag = flag;
     const fc = await api('/api/mda/qc/heatmap-geojson?flag=' + flag);
-    if (fc && geoMap.getSource('heatmap-src')) {
-      geoMap.getSource('heatmap-src').setData(fc);
-      const count = fc.features ? fc.features.length : 0;
-      if (count === 0) addBotMsg && addBotMsg('No QC anomalies found for this flag type.');
-    }
+    if (fc && geoMap.getSource('heatmap-src')) geoMap.getSource('heatmap-src').setData(fc);
   }
 
   async function geoToggleMovement(btn) {
     if (!geoMap || !geoMapBuilt) return;
-    if (!geoMap.getSource('movement-src')) initOverlaySources();
+    if (!geoMap.getSource('movement-lines-src')) initOverlaySources();
     movementActive = !movementActive;
     if (btn) btn.classList.toggle('active', movementActive);
+    const teamSel = document.getElementById('geo-team-select');
+    const dateSel = document.getElementById('geo-movement-date');
     if (!movementActive) {
-      geoMap.getSource('movement-src').setData(EMPTY_FC);
+      geoMap.getSource('movement-lines-src').setData(EMPTY_FC);
+      geoMap.getSource('movement-pts-src').setData(EMPTY_FC);
+      movementAllFC = null;
+      if (teamSel) { teamSel.style.display='none'; teamSel.value=''; }
+      if (dateSel) { dateSel.style.display='none'; dateSel.value=''; }
       return;
     }
     const fc = await api('/api/mda/teams/movement-geojson');
-    if (fc && geoMap.getSource('movement-src')) {
-      geoMap.getSource('movement-src').setData(fc);
+    if (!fc || !fc.features) return;
+    movementAllFC = fc;
+    const teams = [...new Set(fc.features.map(f=>f.properties.hq_user).filter(Boolean))].sort();
+    const colourMap = {}; teams.forEach((t,i)=>{ colourMap[t]=TEAM_COLOURS[i%TEAM_COLOURS.length]; });
+    const lines = _buildMovementLayers(fc.features, colourMap);
+    geoMap.getSource('movement-lines-src').setData({type:'FeatureCollection',features:lines});
+    geoMap.getSource('movement-pts-src').setData(fc);
+    if (dateSel) {
+      dateSel.style.display = 'block';
+      // Populate with campaign dates if not already done
+      if (dateSel.options.length <= 1 && window._campaignDates?.dates?.length) {
+        window._campaignDates.dates.forEach(d => {
+          const o = document.createElement('option');
+          o.value = d;
+          o.textContent = new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short' });
+          dateSel.appendChild(o);
+        });
+      }
     }
+    if (teamSel) {
+      teamSel.style.display='block';
+      while(teamSel.options.length>1) teamSel.remove(1);
+      teams.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; teamSel.appendChild(o); });
+    }
+  }
+
+  function geoFilterTeam(team) {
+    if (!geoMap || !movementAllFC) return;
+    const teams = [...new Set(movementAllFC.features.map(f=>f.properties.hq_user).filter(Boolean))].sort();
+    const colourMap = {}; teams.forEach((t,i)=>{ colourMap[t]=TEAM_COLOURS[i%TEAM_COLOURS.length]; });
+    const pts = team ? movementAllFC.features.filter(f=>f.properties.hq_user===team) : movementAllFC.features;
+    const lines = _buildMovementLayers(pts.map(f=>({...f,properties:{...f.properties}})), colourMap);
+    geoMap.getSource('movement-lines-src').setData({type:'FeatureCollection',features:lines});
+    geoMap.getSource('movement-pts-src').setData({type:'FeatureCollection',features:pts});
+    if (team && pts.length) {
+      const lngs=pts.map(f=>f.geometry.coordinates[0]), lats=pts.map(f=>f.geometry.coordinates[1]);
+      geoMap.fitBounds([[Math.min(...lngs)-.05,Math.min(...lats)-.05],[Math.max(...lngs)+.05,Math.max(...lats)+.05]],{padding:40,maxZoom:13,duration:800});
+    }
+  }
+
+  /* Combined team + date filter for movement overlay */
+  async function geoFilterMovement() {
+    if (!geoMap || !geoMapBuilt || !movementActive) return;
+    if (!geoMap.getSource('movement-lines-src')) initOverlaySources();
+    const team    = (document.getElementById('geo-team-select')?.value)  || '';
+    const dateVal = (document.getElementById('geo-movement-date')?.value) || '';
+
+    // If a date is selected, re-fetch from the API with the date filter
+    if (dateVal) {
+      let qs = '?date=' + encodeURIComponent(dateVal);
+      if (team) qs += '&hq_user=' + encodeURIComponent(team);
+      const fc = await api('/api/mda/teams/movement-geojson' + qs);
+      if (!fc || !fc.features) return;
+      const teams = [...new Set(fc.features.map(f=>f.properties.hq_user).filter(Boolean))].sort();
+      const colourMap = {}; teams.forEach((t,i)=>{ colourMap[t]=TEAM_COLOURS[i%TEAM_COLOURS.length]; });
+      fc.features.forEach(f => { f.properties.colour = colourMap[f.properties.hq_user] || '#006B2E'; });
+      const lines = _buildMovementLayers(fc.features.map(f=>({...f,properties:{...f.properties}})), colourMap);
+      geoMap.getSource('movement-lines-src').setData({type:'FeatureCollection',features:lines});
+      geoMap.getSource('movement-pts-src').setData(fc);
+      if (team && fc.features.length) {
+        const lngs=fc.features.map(f=>f.geometry.coordinates[0]), lats=fc.features.map(f=>f.geometry.coordinates[1]);
+        geoMap.fitBounds([[Math.min(...lngs)-.05,Math.min(...lats)-.05],[Math.max(...lngs)+.05,Math.max(...lats)+.05]],{padding:40,maxZoom:13,duration:800});
+      }
+      return;
+    }
+
+    // No date selected — filter the cached movementAllFC by team only
+    geoFilterTeam(team);
   }
 
   function geoClearOverlays() {
-    activeHeatmapFlag = null; movementActive = false;
+    activeHeatmapFlag = null; movementActive = false; movementAllFC = null;
     document.querySelectorAll('.geo-ctrl-btn').forEach(b => b.classList.remove('active'));
+    const teamSel = document.getElementById('geo-team-select');
+    const dateSel = document.getElementById('geo-movement-date');
+    if (teamSel) { teamSel.style.display='none'; teamSel.value=''; }
+    if (dateSel) { dateSel.style.display='none'; dateSel.value=''; }
     if (geoMap) {
-      if (geoMap.getSource('heatmap-src'))   geoMap.getSource('heatmap-src').setData(EMPTY_FC);
-      if (geoMap.getSource('movement-src'))  geoMap.getSource('movement-src').setData(EMPTY_FC);
+      if (geoMap.getSource('heatmap-src'))        geoMap.getSource('heatmap-src').setData(EMPTY_FC);
+      if (geoMap.getSource('movement-lines-src')) geoMap.getSource('movement-lines-src').setData(EMPTY_FC);
+      if (geoMap.getSource('movement-pts-src'))   geoMap.getSource('movement-pts-src').setData(EMPTY_FC);
     }
   }
 
-  window.geoHeatmap        = geoHeatmap;
-  window.geoToggleMovement = geoToggleMovement;
-  window.geoClearOverlays  = geoClearOverlays;
+  window.geoHeatmap          = geoHeatmap;
+  window.geoToggleMovement   = geoToggleMovement;
+  window.geoClearOverlays    = geoClearOverlays;
+  window.geoFilterTeam       = geoFilterTeam;
+  window.geoFilterMovement   = geoFilterMovement;
+
+  /* ── Settlement status Excel download ── */
+  async function downloadSettlementStatus() {
+    const token = localStorage.getItem('token') || '';
+    const res = await fetch('/api/mda/settlement-status/download', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+    if (!res.ok) { showToast('Download failed — no data available'); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'settlement_status.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.downloadSettlementStatus = downloadSettlementStatus;
 
   /* ── SIDEBAR COLLAPSE ── */
   let sidebarCollapsed = false;
@@ -2795,13 +3518,14 @@ tbody tr:hover{background:var(--pale)}
     const wardSel = document.getElementById('qc-f-ward');
     qcFilterLGA  = lgaSel  ? lgaSel.value  : '';
     qcFilterWard = wardSel ? wardSel.value : '';
+    const { date_from: qcDf, date_to: qcDt } = dpGetDates('qc-dates');
     const label    = document.getElementById('qc-filter-label');
     const resetBtn = document.getElementById('qc-reset-btn');
     const txt      = document.getElementById('qc-filter-text');
-    const hasFilter = qcFilterLGA || qcFilterWard;
+    const hasFilter = qcFilterLGA || qcFilterWard || qcDf || qcDt;
     if (label)    label.style.display    = hasFilter ? 'inline-flex' : 'none';
     if (resetBtn) resetBtn.style.display = hasFilter ? 'inline-flex' : 'none';
-    if (txt) txt.textContent = [qcFilterLGA, qcFilterWard].filter(Boolean).join(' › ');
+    if (txt) txt.textContent = [qcFilterLGA, qcFilterWard, qcDf && ('From ' + qcDf), qcDt && ('To ' + qcDt)].filter(Boolean).join(' · ');
     // Destroy and reload QC charts with new params
     ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
     delete built['quality'];
@@ -2813,7 +3537,8 @@ tbody tr:hover{background:var(--pale)}
     const lgaSel = document.getElementById('qc-f-lga');
     const wardSel = document.getElementById('qc-f-ward');
     if (lgaSel)  lgaSel.value  = '';
-    if (wardSel) wardSel.value = '';
+    if (wardSel) { wardSel.value = ''; while (wardSel.options.length > 1) wardSel.remove(1); }
+    dpReset('qc-dates');
     document.getElementById('qc-filter-label') && (document.getElementById('qc-filter-label').style.display = 'none');
     document.getElementById('qc-reset-btn')    && (document.getElementById('qc-reset-btn').style.display = 'none');
     ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
@@ -2821,20 +3546,6 @@ tbody tr:hover{background:var(--pale)}
     buildCharts('quality');
   }
 
-  // Populate ward select when LGA changes
-  document.getElementById('qc-f-lga') && document.getElementById('qc-f-lga').addEventListener('change', function() {
-    const lgaVal = this.value;
-    const wardSel = document.getElementById('qc-f-ward');
-    if (!wardSel) return;
-    while (wardSel.options.length > 1) wardSel.remove(1);
-    if (lgaVal && qcWardMap[lgaVal]) {
-      qcWardMap[lgaVal].forEach(w => {
-        const o = document.createElement('option');
-        o.value = w; o.textContent = w;
-        wardSel.appendChild(o);
-      });
-    }
-  });
 
   window.applyQCFilter  = applyQCFilter;
   window.resetQCFilter  = resetQCFilter;
@@ -2889,7 +3600,7 @@ tbody tr:hover{background:var(--pale)}
     const fd = new FormData();
     fd.append('file', input.files[0]);
     statusEl.style.display='block';
-    statusEl.style.color='#0067B8';
+    statusEl.style.color='#006B2E';
     statusEl.textContent='Uploading…';
     try {
       const r = await fetch(endpoint, { method:'POST', headers:{ Authorization:'Bearer '+token }, body:fd });
@@ -2920,6 +3631,49 @@ tbody tr:hover{background:var(--pale)}
   Chart.defaults.color='#5B6B82';
   // Disable datalabels globally by default — enable per chart
   Chart.defaults.set('plugins.datalabels', { display: false });
+
+  /* ── PROJECT SELECTOR (state / round) ── */
+  async function populateProjectSelector() {
+    const sel = document.getElementById('project-selector');
+    if (!sel) return;
+    const projects = await api('/api/projects');
+    if (!Array.isArray(projects) || !projects.length) {
+      sel.innerHTML = '<option value="">No projects</option>';
+      sel.disabled = true;
+      return;
+    }
+    // Sort by state then round ascending
+    projects.sort((a, b) => {
+      const sa = (a.state_name || '').localeCompare(b.state_name || '');
+      if (sa !== 0) return sa;
+      return (a.round_number || 0) - (b.round_number || 0);
+    });
+    // Default if nothing stored: the server-side active project
+    const active = projects.find(p => p.is_active) || projects[0];
+    if (SELECTED_PID == null) SELECTED_PID = active ? active.id : null;
+
+    const opts = projects.map(p => {
+      const state = p.state_name || 'Unknown state';
+      const round = p.round_number != null ? `Round ${p.round_number}` : null;
+      const status = p.is_active ? ' (live)' : '';
+      // "Sokoto Round 5 (live)" — falls back to project name if round_number is missing
+      const label = round ? `${state} ${round}${status}` : (p.name || `Project ${p.id}`) + status;
+      const sel = p.id === SELECTED_PID ? ' selected' : '';
+      return `<option value="${p.id}"${sel}>${label}</option>`;
+    });
+    sel.innerHTML = opts.join('');
+
+    sel.addEventListener('change', () => {
+      const v = parseInt(sel.value, 10);
+      if (!Number.isFinite(v)) return;
+      SELECTED_PID = v;
+      localStorage.setItem('selected_project_id', String(v));
+      // Hard reload so every cached chart / map layer re-fetches with the new scope
+      window.location.reload();
+    });
+  }
+
+  populateProjectSelector();
 
   loadOverview().then(()=>{
     populateLGAFilter();

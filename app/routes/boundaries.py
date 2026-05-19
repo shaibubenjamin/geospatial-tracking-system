@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.database import get_db
 from app.models import GeoProject, User
-from app.routes.auth import require_admin
+from app.routes.auth import require_admin, require_superadmin
 from app.services.boundary_importer import (
     import_lga_shapefile,
     import_ward_shapefile,
@@ -35,7 +35,7 @@ async def upload_lga_boundary(
     project_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     await _get_project(project_id, db)
     if not file.filename.endswith(".zip"):
@@ -50,7 +50,7 @@ async def upload_ward_boundary(
     project_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     await _get_project(project_id, db)
     if not file.filename.endswith(".zip"):
@@ -65,7 +65,7 @@ async def upload_settlement_boundary(
     project_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     await _get_project(project_id, db)
     if not file.filename.endswith(".zip"):
@@ -80,7 +80,7 @@ async def upload_grid_boundary(
     project_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     await _get_project(project_id, db)
     if not file.filename.endswith(".zip"):
