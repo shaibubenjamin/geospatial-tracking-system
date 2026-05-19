@@ -27,8 +27,14 @@ async def _resolve_boundary_pid(project_id: int, db: AsyncSession) -> int:
 
 
 async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
-    """Return GeoJSON FeatureCollection for all LGAs in a project (state-fallback)."""
-    pid = await _resolve_boundary_pid(project_id, db)
+    """Return GeoJSON FeatureCollection for all LGAs of the state.
+
+    Geometries come from the state's canonical boundary project (state-shared).
+    Coverage analytics come from the requested project so a round whose data
+    has not been synced yet shows grey polygons with zero metrics, not the
+    previous round's colouring.
+    """
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
     result = await db.execute(
         text("""
             SELECT
@@ -45,12 +51,12 @@ async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
                      ELSE 0 END AS visitation_pct
             FROM lgas l
             LEFT JOIN settlements s ON s.lgacode = l.lgacode AND s.project_id = l.project_id
-            LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id AND sa.project_id = l.project_id
-            WHERE l.project_id = :project_id
+            LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
+            WHERE l.project_id = :boundary_pid
             GROUP BY l.id, l.lgacode, l.lga_name, l.geom
             ORDER BY l.lga_name
         """),
-        {"project_id": pid},
+        {"boundary_pid": boundary_pid, "mda_pid": project_id},
     )
     rows = result.fetchall()
     features = []
@@ -76,9 +82,12 @@ async def get_ward_geojson(
     db: AsyncSession,
     lgacode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Return GeoJSON FeatureCollection for wards, optionally filtered by LGA (state-fallback)."""
-    project_id = await _resolve_boundary_pid(project_id, db)
-    params: Dict[str, Any] = {"project_id": project_id}
+    """Return GeoJSON FeatureCollection for wards, optionally filtered by LGA.
+
+    Geometries from the state's boundary project; analytics from ``project_id``.
+    """
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
     where_extra = ""
     if lgacode:
         where_extra = "AND w.lgacode = :lgacode"
@@ -102,8 +111,8 @@ async def get_ward_geojson(
                      ELSE 0 END AS visitation_pct
             FROM wards w
             LEFT JOIN settlements s ON s.wardcode = w.wardcode AND s.project_id = w.project_id
-            LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id AND sa.project_id = w.project_id
-            WHERE w.project_id = :project_id {where_extra}
+            LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
+            WHERE w.project_id = :boundary_pid {where_extra}
             GROUP BY w.id, w.wardcode, w.lgacode, w.ward_name, w.lga_name, w.geom
             ORDER BY w.ward_name
         """),
@@ -136,9 +145,12 @@ async def get_settlement_geojson(
     lgacode: Optional[str] = None,
     wardcode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Return GeoJSON for settlements with analytics, filtered by LGA or ward (state-fallback)."""
-    project_id = await _resolve_boundary_pid(project_id, db)
-    params: Dict[str, Any] = {"project_id": project_id}
+    """Return GeoJSON for settlements with analytics, filtered by LGA or ward.
+
+    Geometries from the state's boundary project; analytics from ``project_id``.
+    """
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
     filters = []
     if lgacode:
         filters.append("s.lgacode = :lgacode")
@@ -167,8 +179,8 @@ async def get_settlement_geojson(
                 COALESCE(sa.point_count, 0) AS point_count
             FROM settlements s
             LEFT JOIN settlement_analytics sa
-                   ON sa.settlement_id = s.id AND sa.project_id = s.project_id
-            WHERE s.project_id = :project_id {where_extra}
+                   ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
+            WHERE s.project_id = :boundary_pid {where_extra}
             ORDER BY s.settlement_name
         """),
         params,
