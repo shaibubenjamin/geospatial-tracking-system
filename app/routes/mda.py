@@ -242,7 +242,7 @@ async def upload_mda(
             sync_lag_hours = round(delta / 3600.0, 2)
 
         # QC flags
-        flag_gps_poor_accuracy = bool(accuracy is not None and accuracy > 20)
+        flag_gps_poor_accuracy = bool(accuracy is not None and accuracy > 10)
         flag_gps_zero = bool(
             lat is not None and lon is not None and lat == 0.0 and lon == 0.0
         )
@@ -611,8 +611,12 @@ async def qc_summary(
     if ward:
         filters.append("ward_name = :ward")
         params["ward"] = ward
-    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
-    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
+    # Date filter / "days active" both key off received_on — the timestamp at
+    # which CommCare HQ accepted the form. Field workers can backfill date_trt
+    # / check_treatment_date inconsistently, so received_on is the only column
+    # that reflects what the platform actually has data for.
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
@@ -630,7 +634,7 @@ async def qc_summary(
           SUM(CASE WHEN flag_sync_lag THEN 1 ELSE 0 END) AS sync_lag,
           SUM(CASE WHEN flag_refusal THEN 1 ELSE 0 END) AS refusals,
           COUNT(*) FILTER (WHERE flag_refusal) * 100.0 / NULLIF(COUNT(*), 0) AS refusal_pct,
-          COUNT(DISTINCT date_trt) AS days_active,
+          COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_active,
           COUNT(DISTINCT lga) AS lgas_covered,
           COUNT(DISTINCT ra_key) AS ra_count,
           (SELECT COUNT(*) FROM mda_individuals WHERE project_id = :pid) AS total_individuals,
@@ -675,20 +679,24 @@ async def qc_ra_performance(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
+    # date_trt (treatment date as entered by RA) replaced with received_on
+    # so every "by date" surface in the dashboard uses the same column.
     result = await db.execute(text("""
         SELECT
           data_entry_persons,
           phone_number_data,
           lga,
-          date_trt::text AS date_trt,
+          (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date::text AS date_trt,
           ra_key,
           COUNT(*) AS forms_submitted,
           SUM(CASE WHEN flag_refusal THEN 1 ELSE 0 END) AS refusals,
           ROUND(AVG(form_duration_min)::numeric, 1) AS avg_duration_min
         FROM mda_households
         WHERE project_id = :pid AND ra_key IS NOT NULL
-        GROUP BY data_entry_persons, phone_number_data, lga, date_trt, ra_key
-        ORDER BY lga, date_trt, data_entry_persons
+        GROUP BY data_entry_persons, phone_number_data, lga,
+                 (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date, ra_key
+        ORDER BY lga,
+                 (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date, data_entry_persons
     """), {"pid": pid})
     rows = result.fetchall()
     keys = [
@@ -818,7 +826,7 @@ async def submissions_by_ward(
           COUNT(*) AS forms,
           COALESCE(SUM(number_of_treated), 0) AS treated,
           COUNT(DISTINCT hq_user) AS teams,
-          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT check_treatment_date), 0), 1) AS avg_per_day
+          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date), 0), 1) AS avg_per_day
         FROM mda_households {where}
         GROUP BY ward_name, lga
         ORDER BY forms DESC
@@ -846,8 +854,8 @@ async def qc_teams_summary(
     params: dict = {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
-    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
-    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
@@ -893,10 +901,14 @@ async def qc_teams_summary(
 
 async def _gps_geojson(db: AsyncSession, pid: int, where_clause: str, limit: int = 20000):
     """Shared helper for filtered GPS GeoJSON endpoints."""
+    # Map tooltip shows received_on (the platform's date of record). The
+    # outer property key stays `date_trt` so the frontend tooltip template
+    # doesn't have to change.
     result = await db.execute(text(f"""
         SELECT
           formid, lga, data_entry_persons,
-          date_trt::text, gps_accuracy, form_duration_min,
+          (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date::text AS date_trt,
+          gps_accuracy, form_duration_min,
           flag_gps_outside_lga, flag_gps_outside_ward,
           flag_gps_outside_state, flag_duplicate_gps,
           latitude, longitude,
@@ -964,15 +976,15 @@ async def mda_overview(
     filters, params = [], {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
-    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
-    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           COUNT(*) AS total_forms,
           COALESCE(SUM(number_of_treated), 0) AS total_treated,
           COUNT(DISTINCT hq_user) AS teams_active,
-          COUNT(DISTINCT check_treatment_date) AS days_active,
+          COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_active,
           COUNT(DISTINCT lga) AS lgas_covered,
           SUM(CASE WHEN flag_refusal THEN 1 ELSE 0 END) AS refusals,
           SUM(CASE WHEN flag_fast_form THEN 1 ELSE 0 END) AS fast_forms,
@@ -980,8 +992,8 @@ async def mda_overview(
           SUM(CASE WHEN flag_gps_outside_lga THEN 1 ELSE 0 END) AS gps_outside_lga,
           SUM(CASE WHEN flag_duplicate_gps THEN 1 ELSE 0 END) AS duplicate_gps,
           (SELECT COALESCE(SUM(total_treated),0) FROM mda_baseline WHERE project_id = :pid) AS baseline_total,
-          MIN(check_treatment_date)::text AS campaign_start,
-          MAX(check_treatment_date)::text AS campaign_end
+          MIN((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS campaign_start,
+          MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS campaign_end
         FROM mda_households {where}
     """), params)
     row = result.fetchone()
@@ -1016,22 +1028,22 @@ async def mda_trends_daily(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    filters = ["check_treatment_date IS NOT NULL"]
+    filters = ["received_on IS NOT NULL"]
     params: dict = {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
-    if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
-    if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
     where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
-          check_treatment_date::text AS date,
+          (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date::text AS date,
           COUNT(*) AS forms,
           COALESCE(SUM(number_of_treated), 0) AS treated,
           COUNT(DISTINCT hq_user) AS teams
         FROM mda_households {where}
-        GROUP BY check_treatment_date
-        ORDER BY check_treatment_date
+        GROUP BY (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
+        ORDER BY (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
     """), params)
     return [dict(zip(["date","forms","treated","teams"], row)) for row in result.fetchall()]
 
@@ -1058,8 +1070,8 @@ async def mda_teams(
           hq_user,
           lga,
           COUNT(*) AS total_forms,
-          COUNT(DISTINCT check_treatment_date) AS days_active,
-          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT check_treatment_date), 0), 1) AS avg_per_day,
+          COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_active,
+          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date), 0), 1) AS avg_per_day,
           COALESCE(SUM(number_of_treated), 0) AS total_treated,
           SUM(CASE WHEN flag_after_hours THEN 1 ELSE 0 END) AS after_hours,
           SUM(CASE WHEN flag_fast_form THEN 1 ELSE 0 END) AS fast_forms
@@ -1107,10 +1119,10 @@ async def mda_coverage_lga(
         hh_extra_filters.append("h.ward_name = :ward")
         params["ward"] = ward
     if date_from:
-        hh_extra_filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
+        hh_extra_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
         params["date_from"] = date_from
     if date_to:
-        hh_extra_filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
+        hh_extra_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
         params["date_to"] = date_to
     hh_on_clause = "h.project_id = :pid AND UPPER(TRIM(h.lga)) = b.lga_key" + "".join(
         " AND " + f for f in hh_extra_filters if f != "h.project_id = :pid"
@@ -1142,7 +1154,7 @@ async def mda_coverage_lga(
                THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
                ELSE 0 END                            AS coverage_pct,
           COUNT(DISTINCT h.hq_user)                  AS teams,
-          COUNT(DISTINCT h.check_treatment_date)     AS days_reported
+          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_reported
         FROM baseline b
         LEFT JOIN mda_households h
           ON {hh_on_clause}
@@ -1183,7 +1195,7 @@ async def mda_coverage_ward(
                THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
                ELSE 0 END AS coverage_pct,
           COUNT(DISTINCT h.hq_user) AS teams,
-          COUNT(DISTINCT h.check_treatment_date) AS days_reported
+          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_reported
         FROM mda_households h
         LEFT JOIN (
           SELECT UPPER(TRIM(lga)) AS lga, UPPER(TRIM(ward)) AS ward, SUM(total_treated) AS baseline_total
@@ -1374,15 +1386,15 @@ async def campaign_dates(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Returns min/max completed_time dates plus list of all distinct dates."""
+    """Returns min/max received_on dates plus list of all distinct dates."""
     result = await db.execute(text("""
         SELECT
-          MIN(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS min_date,
-          MAX(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS max_date,
-          array_agg(DISTINCT (completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-                    ORDER BY (completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS dates
+          MIN(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS min_date,
+          MAX(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS max_date,
+          array_agg(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
+                    ORDER BY (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS dates
         FROM mda_households
-        WHERE project_id = :pid AND completed_time IS NOT NULL
+        WHERE project_id = :pid AND received_on IS NOT NULL
     """), {"pid": pid})
     row = result.fetchone()
     if not row or not row[0]:
@@ -1440,10 +1452,10 @@ async def geo_completeness(
 async def download_settlement_status(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
-    _u: Optional[User] = Depends(get_current_user_optional),
+    _admin: User = Depends(require_admin),
 ):
     """Download Excel file for the selected round: LGA, Ward, Settlement,
-    Visited (Yes/No), Completeness %."""
+    Visited (Yes/No), Completeness %. Admin/superadmin only."""
     result = await db.execute(text("""
         SELECT
             sa.lga_name,
@@ -1497,6 +1509,169 @@ async def download_settlement_status(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Geospatial View — bulk-export downloads (admin / superadmin only).
+#
+# Three Excel exports mirroring the LGA → Ward → Settlement hierarchy in the
+# geospatial nav panel, sharing the styling and column-width logic from the
+# settlement-status download above so the team sees a consistent file shape.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _style_workbook(ws) -> None:
+    """Apply the standard green header + auto-width to a worksheet."""
+    from openpyxl.styles import Font, PatternFill, Alignment
+    header_fill = PatternFill("solid", fgColor="003D1A")
+    header_font = Font(bold=True, color="FFFFFF")
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or "")) for cell in col), default=8)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+
+
+def _xlsx_response(wb, basename: str) -> StreamingResponse:
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"{basename}_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/geo/download/lgas")
+async def download_geo_lgas(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Per-LGA coverage Excel for the active round (admin/superadmin only)."""
+    result = await db.execute(text("""
+        WITH baseline AS (
+          SELECT INITCAP(LOWER(TRIM(lga))) AS lga,
+                 UPPER(TRIM(lga))          AS lga_key,
+                 SUM(total_treated)        AS baseline_total
+          FROM mda_baseline WHERE project_id = :pid
+          GROUP BY INITCAP(LOWER(TRIM(lga))), UPPER(TRIM(lga))
+        )
+        SELECT
+          b.lga,
+          b.baseline_total,
+          COUNT(h.id)                                                       AS forms,
+          COALESCE(SUM(h.number_of_treated), 0)                             AS treated,
+          CASE WHEN b.baseline_total > 0
+               THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
+               ELSE 0 END                                                    AS coverage_pct,
+          COUNT(DISTINCT h.hq_user)                                         AS teams,
+          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
+                                                                            AS days_active
+        FROM baseline b
+        LEFT JOIN mda_households h
+          ON h.project_id = :pid AND UPPER(TRIM(h.lga)) = b.lga_key
+        GROUP BY b.lga, b.baseline_total
+        ORDER BY coverage_pct DESC, b.lga
+    """), {"pid": pid})
+    rows = result.fetchall()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "LGAs"
+    ws.append(["LGA", "Baseline Target", "Forms", "Treated", "Coverage %", "Teams", "Days Active"])
+    for r in rows:
+        ws.append(list(r))
+    _style_workbook(ws)
+    return _xlsx_response(wb, "lga_coverage")
+
+
+@router.get("/geo/download/wards")
+async def download_geo_wards(
+    lga: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Per-Ward coverage Excel for the active round (admin/superadmin only).
+    Optionally narrow to a single LGA via ``?lga=…``."""
+    filters: list = []
+    params: dict = {"pid": pid}
+    if lga:
+        filters.append("UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))")
+        params["lga"] = lga
+    where = _scoped_where(pid, filters, params, alias="h")
+    result = await db.execute(text(f"""
+        SELECT
+          h.lga,
+          h.ward_name,
+          COALESCE(b.baseline_total, 0) AS baseline_total,
+          COUNT(*)                                       AS forms,
+          COALESCE(SUM(h.number_of_treated), 0)          AS treated,
+          CASE WHEN COALESCE(b.baseline_total, 0) > 0
+               THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
+               ELSE 0 END                                AS coverage_pct,
+          COUNT(DISTINCT h.hq_user)                       AS teams,
+          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
+                                                          AS days_active
+        FROM mda_households h
+        LEFT JOIN (
+          SELECT UPPER(TRIM(lga)) AS lga, UPPER(TRIM(ward)) AS ward,
+                 SUM(total_treated) AS baseline_total
+          FROM mda_baseline WHERE project_id = :pid
+          GROUP BY UPPER(TRIM(lga)), UPPER(TRIM(ward))
+        ) b ON UPPER(TRIM(h.lga)) = b.lga AND UPPER(TRIM(h.ward_name)) = b.ward
+        {where}
+        GROUP BY h.lga, h.ward_name, b.baseline_total
+        ORDER BY h.lga, coverage_pct DESC NULLS LAST
+    """), params)
+    rows = result.fetchall()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Wards"
+    ws.append(["LGA", "Ward", "Baseline Target", "Forms", "Treated", "Coverage %", "Teams", "Days Active"])
+    for r in rows:
+        ws.append(list(r))
+    _style_workbook(ws)
+    return _xlsx_response(wb, "ward_coverage")
+
+
+@router.get("/geo/download/settlements")
+async def download_geo_settlements(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Per-settlement detail Excel for the active round (admin/superadmin only).
+    Adds GPS points + grid completeness alongside the visit status."""
+    result = await db.execute(text("""
+        SELECT
+            sa.lga_name,
+            sa.ward_name,
+            sa.settlement_name,
+            CASE WHEN sa.is_visited THEN 'Visited' ELSE 'Not Visited' END AS visit_status,
+            ROUND(sa.completeness_pct::numeric, 1) AS completeness_pct,
+            sa.visited_grids,
+            sa.total_grids,
+            sa.point_count
+        FROM settlement_analytics sa
+        WHERE sa.project_id = :pid
+        ORDER BY sa.lga_name, sa.ward_name, sa.settlement_name
+    """), {"pid": pid})
+    rows = result.fetchall()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Settlements"
+    ws.append(["LGA", "Ward", "Settlement", "Status", "Completeness %", "Grids Visited", "Total Grids", "GPS Points"])
+    for r in rows:
+        ws.append(list(r))
+    _style_workbook(ws)
+    return _xlsx_response(wb, "settlement_detail")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

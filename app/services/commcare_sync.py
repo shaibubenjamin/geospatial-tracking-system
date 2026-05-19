@@ -230,7 +230,7 @@ def _map_household(row: Dict[str, Any], set_name: str) -> Dict[str, Any]:
 
     # Flags computed locally (spatial flags come from a separate UPDATE pass)
     out["flag_gps_zero"]        = bool(lat == 0.0 and lon == 0.0) if (lat is not None and lon is not None) else False
-    out["flag_gps_poor_accuracy"] = bool(acc is not None and acc > 20)
+    out["flag_gps_poor_accuracy"] = bool(acc is not None and acc > 10)
     out["flag_after_hours"]     = False
     if started:
         local_hour = (started + timedelta(hours=1)).hour

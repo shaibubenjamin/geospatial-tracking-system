@@ -76,6 +76,28 @@ async def lifespan(app: FastAPI):
                 pass
         await db.commit()
 
+    # One-time backfill: tighten flag_gps_poor_accuracy from >20m to >10m.
+    # Scoped to the ACTIVE project only — R4 historical data stays at its
+    # original threshold so existing reports aren't retroactively rewritten.
+    # This runs every startup but is a no-op once the flag matches; the
+    # WHERE clause ensures we only update rows whose flag is stale.
+    async with AsyncSessionLocal() as db:
+        try:
+            res = await db.execute(text("""
+                UPDATE mda_households h
+                SET flag_gps_poor_accuracy = (h.gps_accuracy > 10)
+                WHERE h.project_id IN (
+                        SELECT id FROM geo_projects WHERE is_active = TRUE
+                      )
+                  AND h.gps_accuracy IS NOT NULL
+                  AND h.flag_gps_poor_accuracy IS DISTINCT FROM (h.gps_accuracy > 10)
+            """))
+            await db.commit()
+            if res.rowcount:
+                logger.info("GPS poor-accuracy backfill: %d row(s) updated on active project", res.rowcount)
+        except Exception as e:
+            logger.warning("GPS poor-accuracy backfill skipped: %s", e)
+
     async with AsyncSessionLocal() as db:
         # Seed default superadmin from env (only if no user with this username exists)
         result = await db.execute(select(User).where(User.username == SUPERADMIN_USERNAME))
