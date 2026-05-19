@@ -3,10 +3,11 @@
 All endpoints are superadmin-only. Passwords are encrypted at rest using
 ``app.services.crypto`` (Fernet) and never returned by the GET endpoint.
 """
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -17,7 +18,21 @@ from app.routes.auth import require_superadmin
 from app.services.crypto import encrypt, CryptoNotConfigured
 from app.services.commcare_sync import run_sync, test_connection
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sync", tags=["sync"])
+
+
+async def _run_sync_background(project_id: int) -> None:
+    """Background-task wrapper around run_sync.
+
+    Catches any exception so it doesn't bubble out of the BackgroundTasks
+    queue. The error is already recorded into sync_history / sync_config by
+    run_sync's own except-handler, so we just log here.
+    """
+    try:
+        await run_sync(project_id)
+    except Exception:
+        logger.exception("Background CommCare sync failed for project %s", project_id)
 
 
 class FormEntry(BaseModel):
@@ -177,16 +192,38 @@ async def test_sync(
 @router.post("/run")
 async def trigger_sync(
     project_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
     _super: User = Depends(require_superadmin),
 ):
-    """Run a full incremental sync for the project (synchronous; large pulls
-    may take a few minutes)."""
-    try:
-        return await run_sync(project_id)
-    except RuntimeError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(500, f"Sync failed: {e}")
+    """Queue a CommCare sync for the project. Returns immediately.
+
+    The sync runs as a FastAPI background task — it can take several minutes
+    for a large pull and would otherwise time out behind an ALB or reverse
+    proxy. The admin panel watches progress by polling ``GET /api/sync/config``
+    (which reports ``last_progress_step`` / ``last_progress_total``) and
+    refreshes the history once ``last_status`` flips to ``ok`` or ``error``.
+
+    Returns 409 if a sync is already running for this project — a single
+    superadmin shouldn't be able to fire two parallel pulls.
+    """
+    # Pre-flight checks against current state. Use raw SQL to avoid hitting the
+    # ORM's update-tracking against fields the background task will mutate.
+    res = await db.execute(
+        text("SELECT last_status FROM sync_config WHERE project_id = :pid"),
+        {"pid": project_id},
+    )
+    row = res.fetchone()
+    if not row:
+        raise HTTPException(400, f"No sync_config for project {project_id}. Set credentials first.")
+    if row[0] == "running":
+        raise HTTPException(
+            409,
+            "A sync is already in progress for this project. Wait for it to finish.",
+        )
+
+    background_tasks.add_task(_run_sync_background, project_id)
+    return {"queued": True, "project_id": project_id}
 
 
 @router.get("/feeds")
