@@ -9,11 +9,11 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
     :root{
-      --navy:#002F5F;--deep:#003D7A;--blue:#0067B8;--bright:#0F86D6;
-      --sky:#00A4E4;--cyan:#4FC3F7;--mist:#E8F1FA;--pale:#F4F9FE;
-      --ink:#0E1E33;--muted:#5B6B82;--line:#DCE6F2;
+      --navy:#003D1A;--deep:#005225;--blue:#006B2E;--bright:#008C3A;
+      --sky:#44B568;--cyan:#9FDAB5;--mist:#E9F7EE;--pale:#F4FBF6;
+      --ink:#0C1E10;--muted:#4A6852;--line:#C3E8CE;
       --good:#16A34A;--good-bg:#DCFCE7;--warn:#D97706;--warn-bg:#FEF3C7;
-      --bad:#DC2626;--bad-bg:#FEE2E2;
+      --bad:#DC2626;--bad-bg:#FEE2E2;--gold:#C8A000;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family:'Inter',system-ui,sans-serif; background:var(--pale); color:var(--ink); font-size:14px; height:100vh; overflow:hidden; }
@@ -22,7 +22,7 @@
     /* ── SIDEBAR ── */
     .sidebar {
       width: 240px; flex-shrink: 0;
-      background: linear-gradient(180deg, #001229, var(--navy) 40%, var(--deep));
+      background: linear-gradient(180deg, #001A08, var(--navy) 40%, var(--deep));
       display: flex; flex-direction: column;
       color: #cfe0f3; overflow-y: auto;
       box-shadow: 2px 0 20px rgba(0,0,0,.18);
@@ -37,7 +37,7 @@
       background: linear-gradient(135deg, var(--sky), var(--bright));
       display: grid; place-items: center;
       color: #fff; font-size: 16px;
-      box-shadow: 0 2px 12px rgba(0,164,228,.4);
+      box-shadow: 0 2px 12px rgba(0,107,46,.45);
     }
     .brand-name { color: #fff; font-weight: 700; font-size: 13.5px; }
     .brand-sub  { color: #7ea9d4; font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px; }
@@ -56,13 +56,15 @@
     .nav-item {
       display: flex; align-items: center; gap: 10px;
       padding: 10px 14px; margin: 0 8px; border-radius: 8px;
-      cursor: pointer; color: #bfd4ea; font-size: 13px; font-weight: 500;
-      transition: all .15s; user-select: none;
+      cursor: pointer; color: #a8d4b8; font-size: 13px; font-weight: 500;
+      transition: background .18s, color .18s, transform .15s, box-shadow .18s;
+      user-select: none; border: 1px solid transparent; position: relative;
     }
-    .nav-item i { width: 17px; text-align: center; color: #7ea9d4; }
-    .nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
-    .nav-item.active { background: rgba(15,134,214,.25); color: #fff; border: 1px solid rgba(79,195,247,.25); }
-    .nav-item.active i { color: var(--cyan); }
+    .nav-item i { width: 17px; text-align: center; color: #7ec49a; transition: color .18s, transform .18s; }
+    .nav-item:hover { background: rgba(255,255,255,.1); color: #fff; transform: translateX(4px); }
+    .nav-item:hover i { color: var(--cyan); transform: scale(1.15); }
+    .nav-item.active { background: linear-gradient(90deg,rgba(0,107,46,.55),rgba(0,107,46,.25)); color: #fff; border-left: 3px solid #44B568; border-radius: 0 8px 8px 0; box-shadow: 0 2px 14px rgba(0,0,0,.22); transform: translateX(2px); }
+    .nav-item.active i { color: #9FDAB5; }
     .sidebar-footer {
       margin-top: auto; padding: 12px 16px;
       border-top: 1px solid rgba(255,255,255,.07);
@@ -120,10 +122,10 @@
       font-size: 12.5px; font-weight: 600; cursor: pointer;
       border: 1px solid transparent; transition: all .15s; font-family: inherit;
     }
-    .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,103,184,.25); }
+    .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 2px 8px rgba(0,107,46,.25); }
     .btn-primary:hover { background: var(--deep); }
     .btn-ghost   { background: #fff; color: var(--deep); border-color: var(--line); }
-    .btn-ghost:hover { background: var(--mist); border-color: rgba(0,103,184,.3); }
+    .btn-ghost:hover { background: var(--mist); border-color: rgba(0,107,46,.3); }
     .btn-danger  { background: var(--bad); color: #fff; }
     .btn-danger:hover { background: #b91c1c; }
     .btn-sm { padding: 5px 10px; font-size: 11.5px; }
@@ -256,20 +258,20 @@
       </div>
     </div>
 
-    <div class="admin-badge">
-      <i class="fa-solid fa-shield-halved"></i> Administrator Access
+    <div class="admin-badge" id="role-badge">
+      <i class="fa-solid fa-shield-halved"></i> <span id="role-badge-label">Administrator Access</span>
     </div>
 
-    <div class="nav-section">Data Management</div>
-    <div class="nav-item active" data-view="uploads"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
-    <div class="nav-item" data-view="sync"><i class="fa-solid fa-rotate"></i> API Sync</div>
+    <div class="nav-section super-only" style="display:none">Data Management</div>
+    <div class="nav-item super-only" data-view="uploads" style="display:none"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
+    <div class="nav-item super-only" data-view="sync" style="display:none"><i class="fa-solid fa-rotate"></i> Data Sources</div>
 
     <div class="nav-section">Configuration</div>
-    <div class="nav-item" data-view="projects"><i class="fa-solid fa-folder-open"></i> Projects</div>
-    <div class="nav-item" data-view="users"><i class="fa-solid fa-users"></i> Users</div>
+    <div class="nav-item super-only" data-view="projects" style="display:none"><i class="fa-solid fa-folder-open"></i> Projects</div>
+    <div class="nav-item active" data-view="users"><i class="fa-solid fa-users"></i> Users</div>
 
-    <div class="nav-section">Tools</div>
-    <div class="nav-item" data-view="qc"><i class="fa-solid fa-shield-halved"></i> QC Re-run</div>
+    <div class="nav-section super-only" style="display:none">Tools</div>
+    <div class="nav-item super-only" data-view="qc" style="display:none"><i class="fa-solid fa-shield-halved"></i> QC Re-run</div>
     <div class="nav-item" data-view="system"><i class="fa-solid fa-server"></i> System Status</div>
 
     <div class="sidebar-footer">
@@ -383,15 +385,18 @@
         </div>
       </section>
 
-      <!-- ═══════════ API SYNC ═══════════ -->
+      <!-- ═══════════ DATA SOURCES (CommCare sync) ═══════════ -->
       <section class="view" id="view-sync">
         <div class="page-head">
           <div>
-            <div class="page-title">API Sync</div>
-            <div class="page-sub">Configure automatic data synchronisation from an external ODK / KoboToolbox API</div>
+            <div class="page-title">Data Sources</div>
+            <div class="page-sub">CommCare HQ pull — incremental, scoped to one project (state + round)</div>
           </div>
           <div class="actions">
-            <button class="btn btn-primary" onclick="triggerSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
+            <select id="sync-project-selector" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;background:#fff;cursor:pointer">
+              <option value="">Loading projects…</option>
+            </select>
+            <button class="btn btn-primary" onclick="runSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
           </div>
         </div>
 
@@ -399,30 +404,28 @@
           <div>
             <div class="card">
               <div class="card-head">
-                <div class="card-title"><i class="fa-solid fa-plug"></i> Sync Configuration</div>
+                <div class="card-title"><i class="fa-solid fa-plug"></i> CommCare Connection</div>
               </div>
               <div class="card-body">
-                <div class="form-group">
-                  <label>API Endpoint URL</label>
-                  <input type="url" id="sync-url" placeholder="https://kf.kobotoolbox.org/api/v2/assets/…/data/" value="">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Base URL</label>
+                    <input type="url" id="cc-base-url" value="https://www.commcarehq.org">
+                  </div>
+                  <div class="form-group">
+                    <label>App slug</label>
+                    <input type="text" id="cc-app-slug" placeholder="e.g. sarmaan">
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label>API Key / Token</label>
-                  <input type="password" id="sync-key" placeholder="Token xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
-                </div>
-                <div class="form-group">
-                  <label>Sync Frequency</label>
-                  <select id="sync-freq">
-                    <option value="manual">Manual only</option>
-                    <option value="1h">Every 1 hour</option>
-                    <option value="6h">Every 6 hours</option>
-                    <option value="daily" selected>Daily at 06:00</option>
-                    <option value="realtime">Real-time (webhook)</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label>Data Form / Asset ID</label>
-                  <input type="text" id="sync-form-id" placeholder="e.g. aBcDeF12345">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="cc-username" autocomplete="username">
+                  </div>
+                  <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="cc-password" placeholder="leave blank to keep existing" autocomplete="new-password">
+                  </div>
                 </div>
                 <div style="display:flex;gap:10px;margin-top:4px">
                   <button class="btn btn-primary" style="flex:1" onclick="saveSyncConfig()">
@@ -438,42 +441,79 @@
 
             <div class="card">
               <div class="card-head">
-                <div class="card-title"><i class="fa-solid fa-circle-info"></i> Sync Status</div>
+                <div class="card-title"><i class="fa-solid fa-list"></i> Form IDs</div>
+                <div class="card-head-right">
+                  <button class="btn btn-ghost btn-sm" onclick="addFormRow()"><i class="fa-solid fa-plus"></i> Add</button>
+                </div>
               </div>
               <div class="card-body">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                  <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Last Sync</div>
-                    <div style="font-weight:600;color:var(--ink)" id="sync-last">—</div>
-                  </div>
-                  <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Next Sync</div>
-                    <div style="font-weight:600;color:var(--ink)" id="sync-next">—</div>
-                  </div>
-                  <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Records Synced</div>
-                    <div style="font-weight:600;color:var(--ink)" id="sync-count">—</div>
-                  </div>
-                  <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Status</div>
-                    <div id="sync-status-badge"><span class="chip info">Not configured</span></div>
-                  </div>
-                </div>
+                <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+                  One row per CommCare form. Each form contributes both Household (<code>/feed</code>) and Individual (<code>/1/feed</code>) records.
+                </p>
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                  <thead><tr style="background:var(--pale);color:var(--deep);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px">
+                    <th style="padding:8px;text-align:left">Set name</th>
+                    <th style="padding:8px;text-align:left">Form ID</th>
+                    <th style="padding:8px;width:30px"></th>
+                  </tr></thead>
+                  <tbody id="form-ids-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Sync History</div>
+                <div class="card-head-right" style="color:var(--muted);font-size:11.5px">Last 5 runs</div>
+              </div>
+              <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                  <thead>
+                    <tr style="background:var(--pale);color:var(--deep);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px">
+                      <th style="padding:10px 14px;text-align:left">When</th>
+                      <th style="padding:10px 14px;text-align:left">Result</th>
+                      <th style="padding:10px 14px;text-align:right">Rows</th>
+                      <th style="padding:10px 14px;text-align:left">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sync-history-body">
+                    <tr><td colspan="4" style="padding:18px;text-align:center;color:var(--muted)">No syncs yet</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="sync-last-err-wrap" style="display:none;background:var(--bad-bg);border-top:1px solid #FECACA;padding:10px 18px">
+                <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Latest error</div>
+                <div style="color:var(--bad);font-size:12.5px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace" id="sync-last-err">—</div>
               </div>
             </div>
           </div>
 
-          <div class="card" style="height:fit-content">
-            <div class="card-head">
-              <div class="card-title"><i class="fa-solid fa-terminal"></i> Sync Log</div>
-              <div class="card-head-right">
-                <button class="btn btn-ghost btn-sm" onclick="clearLog()"><i class="fa-solid fa-trash"></i></button>
+          <div>
+            <div class="card" style="margin-bottom:14px">
+              <div class="card-head">
+                <div class="card-title"><i class="fa-solid fa-terminal"></i> Sync Log</div>
+                <div class="card-head-right">
+                  <button class="btn btn-ghost btn-sm" onclick="clearLog()"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </div>
+              <div class="card-body" style="padding:14px">
+                <div class="log-box" id="sync-log">
+<span class="log-entry info">[INFO]  Select a project and configure CommCare credentials to begin.</span>
+                </div>
               </div>
             </div>
-            <div class="card-body" style="padding:14px">
-              <div class="log-box" id="sync-log">
-<span class="log-entry info">[INFO]  Sync log initialised.</span>
-<span class="log-entry info">[INFO]  Configure API endpoint above and click "Sync Now" to begin.</span>
+
+            <!-- Progress (visible only while a sync is running) -->
+            <div class="card" id="sync-progress-card" style="display:none;margin-bottom:0">
+              <div class="card-head"><div class="card-title"><i class="fa-solid fa-spinner fa-spin"></i> Sync in progress</div></div>
+              <div class="card-body" style="padding:16px 18px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+                  <span style="font-size:12.5px;color:var(--ink);font-weight:600" id="sync-progress-label">Starting…</span>
+                  <span style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums" id="sync-progress-counter">0 of 0</span>
+                </div>
+                <div style="height:10px;background:var(--mist);border-radius:99px;overflow:hidden">
+                  <div id="sync-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--bright),var(--good));border-radius:99px;transition:width .35s cubic-bezier(.4,0,.2,1)"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -560,9 +600,10 @@
               </div>
               <div class="form-group">
                 <label>Access Level</label>
-                <select id="new-is-admin">
-                  <option value="false">Analyst / Viewer (standard access)</option>
-                  <option value="true">Administrator (full access)</option>
+                <select id="new-role">
+                  <option value="user">Analyst / Viewer (standard access)</option>
+                  <option value="admin" class="super-only-opt">Administrator</option>
+                  <option value="superadmin" class="super-only-opt">Superadmin (full data + user control)</option>
                 </select>
               </div>
               <button class="btn btn-primary" style="width:100%" onclick="createUser()">
@@ -743,24 +784,130 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
+<!-- ─── Custom confirm / alert modal ──────────────────────────────────── -->
+<div id="app-modal" style="display:none;position:fixed;inset:0;background:rgba(0,26,8,.55);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px);font-family:'Inter',system-ui,sans-serif">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.32);max-width:460px;width:92vw;overflow:hidden">
+    <div style="padding:22px 26px 6px;display:flex;align-items:flex-start;gap:14px">
+      <div id="app-modal-icon" style="width:42px;height:42px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex-shrink:0;background:var(--mist);color:var(--blue)">
+        <i class="fa-solid fa-circle-question"></i>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div id="app-modal-title" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px;letter-spacing:-.2px">Confirm action</div>
+        <div id="app-modal-message" style="font-size:13.5px;color:var(--muted);line-height:1.55;word-break:break-word"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:18px 22px 22px 22px;background:var(--pale);border-top:1px solid var(--line);margin-top:18px">
+      <button id="app-modal-cancel" type="button" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i> Cancel</button>
+      <button id="app-modal-confirm" type="button" class="btn btn-primary"><i class="fa-solid fa-check"></i> Confirm</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   'use strict';
 
   /* ── AUTH ── */
-  const token    = localStorage.getItem('token');
-  const username = localStorage.getItem('username') || 'admin';
-  const isAdmin  = localStorage.getItem('is_admin') === 'true';
+  const token       = localStorage.getItem('token');
+  const username    = localStorage.getItem('username') || 'admin';
+  const isAdmin     = localStorage.getItem('is_admin') === 'true';
+  const isSuperadmin= localStorage.getItem('is_superadmin') === 'true';
 
-  if (!token) { window.location.href = '/'; return; }
+  if (!token) { window.location.href = '/login'; return; }
   if (!isAdmin) { window.location.href = '/home'; return; }
 
   // Set user display
   document.getElementById('topbar-username').textContent = username;
   document.getElementById('topbar-avatar').textContent   = username.charAt(0).toUpperCase();
 
-  function handleLogout() { localStorage.clear(); window.location.href = '/'; }
+  // Reveal superadmin-only nav and update role badge
+  if (isSuperadmin) {
+    document.querySelectorAll('.super-only').forEach(el => { el.style.display = ''; });
+    const lbl = document.getElementById('role-badge-label');
+    if (lbl) lbl.textContent = 'Superadmin Access';
+    const badge = document.getElementById('role-badge');
+    if (badge) badge.style.background = 'rgba(200,160,0,.18)';
+  }
+
+  // Default landing view: superadmin sees Data Uploads; admin sees Users.
+  (function setDefaultView() {
+    const target = isSuperadmin ? 'uploads' : 'users';
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
+    const navEl = document.querySelector(`.nav-item[data-view="${target}"]`);
+    const viewEl = document.getElementById('view-' + target);
+    if (navEl) navEl.classList.add('active');
+    if (viewEl) viewEl.classList.add('active');
+    const crumb = document.getElementById('crumb-section');
+    if (crumb) crumb.textContent = target === 'uploads' ? 'Data Uploads' : 'Users';
+  })();
+
+  function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
   window.handleLogout = handleLogout;
+
+  /* ── Custom confirm / alert modal ── */
+  let _modalCleanup = null;
+  function _openModal({ title, message, confirmLabel, cancelLabel, danger, alertOnly }) {
+    return new Promise(resolve => {
+      const el = document.getElementById('app-modal');
+      const titleEl = document.getElementById('app-modal-title');
+      const msgEl   = document.getElementById('app-modal-message');
+      const confirmBtn = document.getElementById('app-modal-confirm');
+      const cancelBtn  = document.getElementById('app-modal-cancel');
+      const iconEl  = document.getElementById('app-modal-icon');
+
+      titleEl.textContent = title || (alertOnly ? 'Notice' : 'Confirm action');
+      msgEl.textContent   = message || '';
+
+      // Icon + colour: danger → red, alert → amber, default → blue
+      if (danger) {
+        iconEl.style.background = 'var(--bad-bg)'; iconEl.style.color = 'var(--bad)';
+        iconEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+      } else if (alertOnly) {
+        iconEl.style.background = 'var(--warn-bg)'; iconEl.style.color = 'var(--warn)';
+        iconEl.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+      } else {
+        iconEl.style.background = 'var(--mist)'; iconEl.style.color = 'var(--blue)';
+        iconEl.innerHTML = '<i class="fa-solid fa-circle-question"></i>';
+      }
+
+      confirmBtn.innerHTML = (danger ? '<i class="fa-solid fa-trash"></i> ' : '<i class="fa-solid fa-check"></i> ') + (confirmLabel || (alertOnly ? 'OK' : 'Confirm'));
+      confirmBtn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+      cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ' + (cancelLabel || 'Cancel');
+      cancelBtn.style.display = alertOnly ? 'none' : '';
+
+      const close = (result) => {
+        el.style.display = 'none';
+        confirmBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        el.removeEventListener('click', onBackdrop);
+        document.removeEventListener('keydown', onKey);
+        _modalCleanup = null;
+        resolve(result);
+      };
+      const onOk      = () => close(true);
+      const onCancel  = () => close(false);
+      const onBackdrop= (e) => { if (e.target === el) close(false); };
+      const onKey     = (e) => {
+        if (e.key === 'Escape') close(false);
+        if (e.key === 'Enter')  close(true);
+      };
+
+      // If a previous modal is mid-flight, force-close it first
+      if (_modalCleanup) _modalCleanup();
+      _modalCleanup = () => close(false);
+
+      confirmBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      el.addEventListener('click', onBackdrop);
+      document.addEventListener('keydown', onKey);
+
+      el.style.display = 'flex';
+      setTimeout(() => confirmBtn.focus(), 30);
+    });
+  }
+  window.confirmDialog = (opts) => _openModal({ alertOnly: false, ...opts });
+  window.alertDialog   = (opts) => _openModal({ alertOnly: true,  ...opts });
 
   /* ── API HELPER ── */
   async function api(path, opts = {}) {
@@ -777,7 +924,7 @@
 
   /* ── NAVIGATION ── */
   const crumbs = {
-    uploads: 'Data Uploads', sync: 'API Sync', projects: 'Projects',
+    uploads: 'Data Uploads', sync: 'Data Sources', projects: 'Projects',
     users: 'Users', qc: 'QC Re-run', system: 'System Status'
   };
   document.querySelectorAll('.nav-item[data-view]').forEach(el => {
@@ -797,6 +944,7 @@
     if (v === 'projects') { loadProjects(); }
     if (v === 'users')    { loadUsers(); }
     if (v === 'system')   { loadSystemStatus(); }
+    if (v === 'sync')     { loadSyncProjects(); }
   }
 
   /* ── FEEDBACK HELPERS ── */
@@ -898,45 +1046,279 @@
   }
   window.loadUploadHistory = loadUploadHistory;
 
-  /* ── SYNC ── */
-  window.saveSyncConfig = function() {
-    const url = document.getElementById('sync-url').value.trim();
-    const key = document.getElementById('sync-key').value.trim();
-    if (!url) { setFeedback('sync-config-feedback', 'API endpoint URL is required.', 'err'); return; }
-    localStorage.setItem('sync_url', url);
-    localStorage.setItem('sync_freq', document.getElementById('sync-freq').value);
-    setFeedback('sync-config-feedback', '✓ Configuration saved locally.', 'ok');
-  };
+  /* ── SYNC (CommCare) ── */
+  let SYNC_PROJECT_ID = null;
 
-  window.testSyncConnection = async function() {
-    const url = document.getElementById('sync-url').value.trim();
-    const key = document.getElementById('sync-key').value.trim();
-    if (!url) { setFeedback('sync-config-feedback', 'Enter an API URL first.', 'err'); return; }
-    setFeedback('sync-config-feedback', 'Testing connection…', 'info');
-    try {
-      const res = await fetch(url, { headers: key ? { Authorization: 'Token ' + key } : {} });
-      if (res.ok) {
-        setFeedback('sync-config-feedback', '✓ Connection successful (HTTP ' + res.status + ')', 'ok');
-        appendLog('sync-log', 'Connection test successful: ' + url, 'ok');
+  function syncProjectId() {
+    const sel = document.getElementById('sync-project-selector');
+    return sel ? parseInt(sel.value, 10) : null;
+  }
+
+  function renderFormIdRows(formIds) {
+    const tb = document.getElementById('form-ids-body');
+    if (!tb) return;
+    tb.innerHTML = '';
+    (formIds || []).forEach(entry => addFormRowWith(entry.set_name, entry.form_id));
+    if (!(formIds || []).length) addFormRowWith('', '');
+  }
+
+  function addFormRowWith(setName, formId) {
+    const tb = document.getElementById('form-ids-body');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="padding:6px 8px"><input class="cc-set-name" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px" placeholder="SET 1" value="${(setName||'').replace(/"/g,'&quot;')}"></td>
+      <td style="padding:6px 8px"><input class="cc-form-id" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:11.5px" placeholder="32-char CommCare form ID" value="${(formId||'').replace(/"/g,'&quot;')}"></td>
+      <td style="padding:6px 8px;text-align:center"><button class="btn btn-ghost btn-sm" style="padding:4px 8px" onclick="this.closest('tr').remove()" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>
+    `;
+    tb.appendChild(tr);
+  }
+  window.addFormRow = () => addFormRowWith('', '');
+
+  function collectFormIds() {
+    const rows = Array.from(document.querySelectorAll('#form-ids-body tr'));
+    const out = [];
+    for (const tr of rows) {
+      const setName = tr.querySelector('.cc-set-name')?.value?.trim() || '';
+      const formId  = tr.querySelector('.cc-form-id')?.value?.trim() || '';
+      if (formId) out.push({ set_name: setName || ('SET ' + (out.length + 1)), form_id: formId });
+    }
+    return out;
+  }
+
+  async function loadSyncProjects() {
+    const sel = document.getElementById('sync-project-selector');
+    if (!sel) return;
+    const res = await api('/api/projects');
+    if (!res || !res.ok) { sel.innerHTML = '<option value="">Failed to load</option>'; return; }
+    const projects = await res.json();
+    projects.sort((a,b) => (a.state_name||'').localeCompare(b.state_name||'') || (a.round_number||0) - (b.round_number||0));
+    // Default: active project
+    const active = projects.find(p => p.is_active) || projects[0];
+    SYNC_PROJECT_ID = SYNC_PROJECT_ID || (active && active.id) || null;
+    sel.innerHTML = projects.map(p => {
+      const lbl = p.state_name && p.round_number != null
+        ? `${p.state_name} Round ${p.round_number}${p.is_active ? ' (live)' : ''}`
+        : p.name;
+      return `<option value="${p.id}"${p.id === SYNC_PROJECT_ID ? ' selected' : ''}>${lbl}</option>`;
+    }).join('');
+    sel.onchange = () => { SYNC_PROJECT_ID = parseInt(sel.value, 10); loadSyncConfig(); };
+    await loadSyncConfig();
+  }
+
+  function _humanDuration(startISO, endISO) {
+    if (!startISO || !endISO) return '—';
+    const ms = new Date(endISO) - new Date(startISO);
+    if (!isFinite(ms) || ms < 0) return '—';
+    if (ms < 1000)   return ms + 'ms';
+    if (ms < 60000)  return (ms / 1000).toFixed(1) + 's';
+    return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
+  }
+
+  async function loadSyncHistory() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) return;
+    const res = await api('/api/sync/history?project_id=' + pid + '&limit=5');
+    const tb = document.getElementById('sync-history-body');
+    if (!tb) return;
+    if (!res || !res.ok) {
+      tb.innerHTML = '<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--muted)">Could not load history</td></tr>';
+      return;
+    }
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      tb.innerHTML = '<tr><td colspan="4" style="padding:18px;text-align:center;color:var(--muted)">No syncs yet</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(r => {
+      const chip = r.status === 'ok'      ? '<span class="chip good">✓ OK</span>'
+                 : r.status === 'running' ? '<span class="chip warn">Running…</span>'
+                 : r.status === 'error'   ? '<span class="chip bad">Error</span>'
+                 : `<span class="chip info">${r.status || '—'}</span>`;
+      const when = r.started_at ? new Date(r.started_at).toLocaleString() : '—';
+      const rows_f = (r.rows_fetched != null) ? r.rows_fetched.toLocaleString() : '—';
+      const dur = _humanDuration(r.started_at, r.ended_at);
+      return `<tr style="border-top:1px solid var(--line)">
+        <td style="padding:10px 14px;color:var(--ink);font-size:12.5px;font-variant-numeric:tabular-nums">${when}</td>
+        <td style="padding:10px 14px">${chip}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums">${rows_f}</td>
+        <td style="padding:10px 14px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums">${dur}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function _updateProgressFromCfg(cfg) {
+    const card = document.getElementById('sync-progress-card');
+    const bar  = document.getElementById('sync-progress-bar');
+    const label= document.getElementById('sync-progress-label');
+    const ctr  = document.getElementById('sync-progress-counter');
+    const isRunning = cfg.last_status === 'running' && cfg.last_progress_total;
+    if (!isRunning) {
+      // Animate to 100% briefly on completion, then hide
+      if (card.style.display === 'block') {
+        bar.style.width = '100%';
+        setTimeout(() => { card.style.display = 'none'; bar.style.width = '0%'; }, 600);
       } else {
-        setFeedback('sync-config-feedback', 'Server returned HTTP ' + res.status, 'err');
-        appendLog('sync-log', 'Connection test failed: HTTP ' + res.status, 'err');
+        card.style.display = 'none';
+        bar.style.width = '0%';
       }
-    } catch(e) {
-      setFeedback('sync-config-feedback', 'Connection failed: ' + e.message, 'err');
-      appendLog('sync-log', 'Connection error: ' + e.message, 'err');
+      return;
+    }
+    card.style.display = 'block';
+    const step = cfg.last_progress_step || 0;
+    const total = cfg.last_progress_total || 1;
+    const pct = Math.min(100, Math.round(100 * step / total));
+    bar.style.width = pct + '%';
+    label.textContent = `Pulling feed ${step} of ${total} from CommCare…`;
+    ctr.textContent = `${pct}% · ${step}/${total}`;
+  }
+
+  let _syncPollTimer = null;
+  function startProgressPolling() {
+    stopProgressPolling();
+    _syncPollTimer = setInterval(async () => {
+      const pid = SYNC_PROJECT_ID || syncProjectId();
+      if (!pid) return;
+      const res = await api('/api/sync/config?project_id=' + pid);
+      if (!res || !res.ok) return;
+      const cfg = await res.json();
+      _updateProgressFromCfg(cfg);
+      if (cfg.last_status !== 'running') {
+        stopProgressPolling();
+        loadSyncHistory();           // refresh history once the run completes
+        loadSyncConfig();             // refresh last_error etc.
+      }
+    }, 1500);
+  }
+  function stopProgressPolling() {
+    if (_syncPollTimer) { clearInterval(_syncPollTimer); _syncPollTimer = null; }
+  }
+
+  async function loadSyncConfig() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) return;
+    const res = await api('/api/sync/config?project_id=' + pid);
+    if (!res || !res.ok) return;
+    const cfg = await res.json();
+    document.getElementById('cc-base-url').value = cfg.commcare_base_url || 'https://www.commcarehq.org';
+    document.getElementById('cc-app-slug').value = cfg.commcare_app_slug || '';
+    document.getElementById('cc-username').value = cfg.commcare_username || '';
+    const pw = document.getElementById('cc-password');
+    pw.value = ''; pw.placeholder = cfg.has_password ? '•••••••• (saved — leave blank to keep)' : 'CommCare password';
+    renderFormIdRows(cfg.form_ids || []);
+
+    // Latest error inline below the history table
+    const errWrap = document.getElementById('sync-last-err-wrap');
+    const errEl   = document.getElementById('sync-last-err');
+    if (cfg.last_error) { errEl.textContent = cfg.last_error; errWrap.style.display = 'block'; }
+    else                { errEl.textContent = '—'; errWrap.style.display = 'none'; }
+
+    // History rows
+    await loadSyncHistory();
+    // Progress bar reflects current status
+    _updateProgressFromCfg(cfg);
+    // If a sync is already running (e.g. user reloaded the page mid-run), start polling
+    if (cfg.last_status === 'running') startProgressPolling();
+  }
+
+  window.saveSyncConfig = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { setFeedback('sync-config-feedback', 'Pick a project first.', 'err'); return; }
+    const body = {
+      commcare_base_url: document.getElementById('cc-base-url').value.trim(),
+      commcare_app_slug: document.getElementById('cc-app-slug').value.trim(),
+      commcare_username: document.getElementById('cc-username').value.trim(),
+      form_ids: collectFormIds(),
+    };
+    const pw = document.getElementById('cc-password').value;
+    if (pw) body.commcare_password = pw;  // null = keep existing
+    setFeedback('sync-config-feedback', 'Saving…', 'info');
+    const res = await api('/api/sync/config?project_id=' + pid, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+    if (res && res.ok) {
+      setFeedback('sync-config-feedback', '✓ Configuration saved.', 'ok');
+      appendLog('sync-log', 'Config saved for project ' + pid, 'ok');
+      await loadSyncConfig();
+    } else {
+      const detail = res ? (await res.json().catch(() => ({})))?.detail : 'Network error';
+      setFeedback('sync-config-feedback', 'Save failed: ' + detail, 'err');
+      appendLog('sync-log', 'Config save failed: ' + detail, 'err');
     }
   };
 
-  window.triggerSync = async function() {
-    appendLog('sync-log', 'Manual sync triggered at ' + new Date().toLocaleTimeString(), 'info');
-    document.getElementById('sync-status-badge').innerHTML = '<span class="chip warn">Syncing…</span>';
-    document.getElementById('sync-last').textContent = 'In progress…';
-    // Simulate sync (real implementation would call backend)
-    await new Promise(r => setTimeout(r, 1200));
-    appendLog('sync-log', 'Sync complete. Use upload endpoint for real data ingestion.', 'info');
-    document.getElementById('sync-status-badge').innerHTML = '<span class="chip info">Manual</span>';
-    document.getElementById('sync-last').textContent = new Date().toLocaleString();
+  window.testSyncConnection = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { setFeedback('sync-config-feedback', 'Pick a project first.', 'err'); return; }
+
+    // Auto-save the current form values first so Test reflects what's on screen,
+    // not whatever (possibly stale) credentials are in the DB.
+    const body = {
+      commcare_base_url: document.getElementById('cc-base-url').value.trim(),
+      commcare_app_slug: document.getElementById('cc-app-slug').value.trim(),
+      commcare_username: document.getElementById('cc-username').value.trim(),
+      form_ids: collectFormIds(),
+    };
+    const pw = document.getElementById('cc-password').value;
+    if (pw) body.commcare_password = pw;
+
+    if (!body.commcare_app_slug || !body.commcare_username || !body.form_ids.length) {
+      setFeedback('sync-config-feedback', 'Fill in app slug, username, and at least one form ID before testing.', 'err');
+      return;
+    }
+
+    setFeedback('sync-config-feedback', 'Saving config + hitting CommCare…', 'info');
+    appendLog('sync-log', 'Auto-saving config before test…', 'info');
+    const saveRes = await api('/api/sync/config?project_id=' + pid, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+    if (!saveRes || !saveRes.ok) {
+      const d = saveRes ? (await saveRes.json().catch(() => ({}))) : {};
+      setFeedback('sync-config-feedback', 'Save failed: ' + (d.detail || 'network error'), 'err');
+      appendLog('sync-log', 'Auto-save failed: ' + (d.detail || 'network'), 'err');
+      return;
+    }
+
+    appendLog('sync-log', 'Saved. Hitting CommCare feed (SET 1 household) to verify access…', 'info');
+    const res = await api('/api/sync/test?project_id=' + pid, { method: 'POST' });
+    if (!res) { setFeedback('sync-config-feedback', 'Network error.', 'err'); return; }
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      setFeedback('sync-config-feedback', `✓ Connected (HTTP ${data.status}). Sample fetched: ${data.sample_rows}`, 'ok');
+      appendLog('sync-log', `Test OK — HTTP ${data.status}, sample_rows=${data.sample_rows}`, 'ok');
+    } else {
+      const msg = data.detail || data.status || 'Unknown error';
+      setFeedback('sync-config-feedback', 'Connection failed: ' + msg, 'err');
+      appendLog('sync-log', `Test FAILED (HTTP ${data.status || '?'}): ${msg}`, 'err');
+      if (data.url) appendLog('sync-log', `  URL hit: ${data.url}`, 'info');
+    }
+    await loadSyncConfig();
+  };
+
+  window.runSync = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { await alertDialog({ title: 'No project selected', message: 'Pick a project from the dropdown above before running a sync.' }); return; }
+    const ok = await confirmDialog({
+      title: 'Sync from CommCare?',
+      message: 'Pull the latest submissions for this project from CommCare HQ. Only new or edited records since the last successful sync are fetched, and the existing data stays intact.',
+      confirmLabel: 'Sync now',
+    });
+    if (!ok) return;
+    appendLog('sync-log', `Sync started for project ${pid} at ${new Date().toLocaleTimeString()}`, 'info');
+    // Start polling immediately so the progress bar moves while the request is in flight
+    startProgressPolling();
+    const res = await api('/api/sync/run?project_id=' + pid, { method: 'POST' });
+    if (!res) { appendLog('sync-log', 'Network error', 'err'); stopProgressPolling(); await loadSyncConfig(); return; }
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      appendLog('sync-log', `Sync OK — households=${data.households_fetched}, individuals=${data.individuals_fetched}`, 'ok');
+      (data.per_feed || []).forEach(f => appendLog('sync-log', `  ${f.set_name} ${f.record_type}: ${f.fetched} rows`, 'info'));
+    } else {
+      appendLog('sync-log', 'Sync FAILED: ' + (data.detail || 'unknown'), 'err');
+    }
+    stopProgressPolling();
+    await loadSyncConfig();
   };
 
   window.clearLog = function() {
@@ -1036,7 +1418,25 @@
         return;
       }
       const users = await res.json();
-      let rows = users.map(u => `
+      let rows = users.map(u => {
+        const roleChip = u.is_superadmin
+          ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Superadmin</span>'
+          : (u.is_admin
+              ? '<span class="chip warn">Administrator</span>'
+              : '<span class="chip info">Analyst / Viewer</span>');
+        const usernameEsc = String(u.username || '').replace(/'/g, "\\'");
+        const actions = [];
+        if (isSuperadmin && !u.is_superadmin) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="promoteUser(${u.id})" title="Promote to Superadmin"><i class="fa-solid fa-arrow-up"></i> Promote</button>`);
+        }
+        if (isSuperadmin && u.is_superadmin && u.username !== username) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="demoteUser(${u.id})" title="Demote to Admin"><i class="fa-solid fa-arrow-down"></i> Demote</button>`);
+        }
+        if (u.username !== 'admin' && u.username !== username && (isSuperadmin || !u.is_superadmin)) {
+          actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${usernameEsc}')"><i class="fa-solid fa-trash"></i></button>`);
+        }
+        const actionsHtml = actions.length ? actions.join(' ') : '<span style="color:var(--muted);font-size:11px">—</span>';
+        return `
         <tr>
           <td>
             <div style="display:flex;align-items:center;gap:9px">
@@ -1045,13 +1445,12 @@
             </div>
           </td>
           <td style="color:var(--muted);font-size:12.5px">${u.email || '—'}</td>
-          <td>${u.is_admin ? '<span class="chip warn">Administrator</span>' : '<span class="chip info">Analyst</span>'}</td>
+          <td>${roleChip}</td>
           <td>${u.is_active !== false ? '<span class="chip good">Active</span>' : '<span class="chip bad">Inactive</span>'}</td>
           <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-          <td>
-            ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${u.username}')"><i class="fa-solid fa-trash"></i></button>` : '<span style="color:var(--muted);font-size:11px">Protected</span>'}
-          </td>
-        </tr>`).join('');
+          <td>${actionsHtml}</td>
+        </tr>`;
+      }).join('');
       container.innerHTML = `
         <div style="overflow-x:auto">
           <table>
@@ -1065,17 +1464,24 @@
   }
   window.loadUsers = loadUsers;
 
+  // Hide admin/superadmin role options from non-superadmins
+  if (!isSuperadmin) {
+    document.querySelectorAll('#new-role option.super-only-opt').forEach(o => o.remove());
+  }
+
   window.createUser = async function() {
     const uname    = document.getElementById('new-username').value.trim();
     const email    = document.getElementById('new-email').value.trim();
     const password = document.getElementById('new-password').value;
-    const isAdm    = document.getElementById('new-is-admin').value === 'true';
+    const role     = document.getElementById('new-role').value;
+    const isAdm    = role === 'admin' || role === 'superadmin';
+    const isSup    = role === 'superadmin';
     if (!uname || !password) { setFeedback('user-feedback', 'Username and password are required.', 'err'); return; }
     if (password.length < 6) { setFeedback('user-feedback', 'Password must be at least 6 characters.', 'err'); return; }
     try {
       const res = await api('/api/auth/users', {
         method: 'POST',
-        body: JSON.stringify({ username: uname, email: email || null, password, is_admin: isAdm }),
+        body: JSON.stringify({ username: uname, email: email || null, password, is_admin: isAdm, is_superadmin: isSup }),
       });
       if (!res) return;
       const d = await res.json();
@@ -1084,6 +1490,7 @@
         document.getElementById('new-username').value = '';
         document.getElementById('new-email').value    = '';
         document.getElementById('new-password').value = '';
+        document.getElementById('new-role').value     = 'user';
         loadUsers();
       } else {
         setFeedback('user-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');
@@ -1093,16 +1500,56 @@
     }
   };
 
+  window.promoteUser = async function(id) {
+    const ok = await confirmDialog({
+      title: 'Promote to Superadmin?',
+      message: 'This user will gain full control over the data pipeline, user management, and project configuration. They can then create or demote other superadmins.',
+      confirmLabel: 'Promote',
+    });
+    if (!ok) return;
+    try {
+      const res = await api('/api/auth/users/' + id + '/promote', { method: 'POST' });
+      if (res && res.ok) { loadUsers(); }
+      else {
+        const d = res ? await res.json() : {};
+        await alertDialog({ title: 'Promote failed', message: d.detail || 'Unknown error' });
+      }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); }
+  };
+
+  window.demoteUser = async function(id) {
+    const ok = await confirmDialog({
+      title: 'Demote from Superadmin?',
+      message: 'This user will keep their Administrator privileges but lose access to data sync, user management of admins, and project configuration.',
+      confirmLabel: 'Demote',
+    });
+    if (!ok) return;
+    try {
+      const res = await api('/api/auth/users/' + id + '/demote', { method: 'POST' });
+      if (res && res.ok) { loadUsers(); }
+      else {
+        const d = res ? await res.json() : {};
+        await alertDialog({ title: 'Demote failed', message: d.detail || 'Unknown error' });
+      }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); }
+  };
+
   window.deleteUser = async function(id, uname) {
-    if (!confirm('Delete user "' + uname + '"? This cannot be undone.')) return;
+    const ok = await confirmDialog({
+      title: `Delete user "${uname}"?`,
+      message: 'This permanently removes the account. They will be signed out immediately and cannot recover access. This cannot be undone.',
+      confirmLabel: 'Delete user',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const res = await api('/api/auth/users/' + id, { method: 'DELETE' });
       if (res && res.ok) { loadUsers(); }
       else {
         const d = res ? await res.json() : {};
-        alert('Delete failed: ' + (d.detail || 'Unknown error'));
+        await alertDialog({ title: 'Delete failed', message: d.detail || 'Unknown error' });
       }
-    } catch(e) { alert('Network error'); }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); }
   };
 
   /* ── QC RE-RUN ── */

@@ -17,6 +17,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     username: str
     is_admin: bool
+    is_superadmin: bool = False
 
 
 class UserCreate(BaseModel):
@@ -24,6 +25,7 @@ class UserCreate(BaseModel):
     password: str
     email: Optional[str] = None
     is_admin: bool = False
+    is_superadmin: bool = False
 
 
 class UserOut(BaseModel):
@@ -31,6 +33,7 @@ class UserOut(BaseModel):
     username: str
     email: Optional[str]
     is_admin: bool
+    is_superadmin: bool = False
     is_active: bool
     created_at: datetime
 
@@ -57,6 +60,8 @@ class ProjectOut(BaseModel):
     slug: str
     description: str
     is_active: bool
+    state_name: Optional[str] = None
+    round_number: Optional[int] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

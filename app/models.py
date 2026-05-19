@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Boolean,
-    Float, DateTime, Date, ForeignKey, UniqueConstraint
+    Float, DateTime, Date, ForeignKey, UniqueConstraint, PrimaryKeyConstraint
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
 from app.database import Base
@@ -18,6 +18,8 @@ class GeoProject(Base):
     slug = Column(Text, unique=True, nullable=False)
     description = Column(Text, default="")
     is_active = Column(Boolean, default=False)
+    state_name = Column(Text)
+    round_number = Column(Integer)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     lgas = relationship("LGA", back_populates="project", cascade="all, delete-orphan")
@@ -172,6 +174,7 @@ class User(Base):
     email = Column(Text, unique=True)
     hashed_password = Column(Text, nullable=False)
     is_admin = Column(Boolean, default=False)
+    is_superadmin = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -180,6 +183,7 @@ class MdaHousehold(Base):
     __tablename__ = "mda_households"
 
     id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     formid = Column(Text, unique=True, nullable=False, index=True)
     username = Column(Text)
     teamcode = Column(Text)
@@ -226,6 +230,7 @@ class MdaHousehold(Base):
     flag_refusal = Column(Boolean, default=False)
     check_treatment_date = Column(Date, index=True)   # form check_treatment_date_calc col 21
     hq_user = Column(Text, index=True)                # col 37
+    ward_name = Column(Text, index=True)              # populated via spatial join post-upload
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     individuals = relationship(
@@ -237,11 +242,17 @@ class MdaHousehold(Base):
 class MdaBaseline(Base):
     __tablename__ = "mda_baseline"
     id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     state = Column(Text)
     lga = Column(Text, index=True)
     ward = Column(Text, index=True)
     settlement = Column(Text)
     total_treated = Column(Integer)
+    # Age/sex breakdown — populated by R5+ uploads. Nullable for R4 historical rows.
+    target_1_11_f = Column(Integer)
+    target_1_11_m = Column(Integer)
+    target_12_59_f = Column(Integer)
+    target_12_59_m = Column(Integer)
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
@@ -249,6 +260,7 @@ class MdaIndividual(Base):
     __tablename__ = "mda_individuals"
 
     id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     hh_formid = Column(Text, index=True)
     mother_name = Column(Text)
     child_name = Column(Text)
@@ -270,3 +282,79 @@ class MdaIndividual(Base):
         "MdaHousehold", back_populates="individuals",
         primaryjoin="foreign(MdaIndividual.hh_formid) == MdaHousehold.formid",
     )
+
+
+class MlosSettlement(Base):
+    __tablename__ = "mlos_settlements"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
+    state_name = Column(Text)
+    lga_name = Column(Text, index=True)
+    ward_name_raw = Column(Text)        # ward_name as written in MLOS file
+    ward_name = Column(Text, index=True)  # ward_name from spatial join with wards boundary
+    settlement_name = Column(Text)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    source = Column(Text)
+    geom = Column(Geometry("POINT", srid=4326))
+    uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+# ── CommCare sync configuration & state ──────────────────────────────────────
+
+class SyncConfig(Base):
+    """Per-project CommCare credentials + form IDs to pull from.
+
+    One row per geo_project. Owned by superadmins via the admin panel.
+    The password is encrypted at rest using app.services.crypto.
+    """
+    __tablename__ = "sync_config"
+
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), primary_key=True)
+    commcare_base_url = Column(Text, default="https://www.commcarehq.org")
+    commcare_app_slug = Column(Text)  # e.g. 'sarmaan'
+    commcare_username = Column(Text)
+    commcare_password_encrypted = Column(Text)
+    form_ids = Column(JSONB, default=list)  # [{"set_name": "SET 1", "form_id": "..."}, ...]
+    last_synced_at = Column(DateTime(timezone=True))
+    last_status = Column(Text)        # 'ok' / 'error' / 'running'
+    last_error = Column(Text)
+    last_row_count = Column(Integer, default=0)
+    # Live progress for the currently-running sync (polled by the admin panel)
+    last_progress_step = Column(Integer)   # feeds processed so far in this run
+    last_progress_total = Column(Integer)  # total feeds for this run (= len(form_ids) * 2)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SyncHistory(Base):
+    """One row per CommCare sync run for audit / history display."""
+    __tablename__ = "sync_history"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
+    started_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    ended_at = Column(DateTime(timezone=True))
+    status = Column(Text, default="running")  # 'running' / 'ok' / 'error'
+    rows_fetched = Column(Integer, default=0)
+    error_message = Column(Text)
+
+
+class SyncFeedState(Base):
+    """Per-feed watermark for incremental CommCare syncs.
+
+    Composite PK (project_id, form_id, record_type). After each successful
+    pull from a feed, ``last_received_on`` is advanced to the MAX(received_on)
+    of the freshly-ingested rows so the next sync only pulls newer records.
+    """
+    __tablename__ = "sync_feed_state"
+    __table_args__ = (
+        PrimaryKeyConstraint("project_id", "form_id", "record_type", name="pk_sync_feed_state"),
+    )
+
+    project_id = Column(Integer, ForeignKey("geo_projects.id"))
+    form_id = Column(Text)
+    record_type = Column(Text)  # 'household' | 'individual'
+    last_received_on = Column(DateTime(timezone=True))
+    last_synced_at = Column(DateTime(timezone=True))
+    last_row_count = Column(Integer, default=0)

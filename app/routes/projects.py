@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models import GeoProject, User
 from app.schemas import ProjectCreate, ProjectUpdate, ProjectOut
-from app.routes.auth import get_current_user, require_admin
+from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 @router.get("", response_model=List[ProjectOut])
 async def list_projects(
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     result = await db.execute(select(GeoProject).order_by(GeoProject.name))
     return result.scalars().all()
@@ -24,7 +24,7 @@ async def list_projects(
 async def create_project(
     data: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     existing = await db.execute(select(GeoProject).where(GeoProject.slug == data.slug))
     if existing.scalar_one_or_none():
@@ -41,7 +41,7 @@ async def create_project(
 async def get_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _user: Optional[User] = Depends(get_current_user_optional),
 ):
     result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
     project = result.scalar_one_or_none()
@@ -55,7 +55,7 @@ async def update_project(
     project_id: int,
     data: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
     project = result.scalar_one_or_none()
@@ -85,7 +85,7 @@ async def update_project(
 async def delete_project(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _super: User = Depends(require_superadmin),
 ):
     result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
     project = result.scalar_one_or_none()
