@@ -64,6 +64,20 @@ data "aws_iam_policy_document" "github_deploy_perms" {
     ]
     resources = ["*"]
   }
+
+  # SSM Run Command — used by the deploy workflow to roll the container on
+  # the EC2 instance without needing to SSH through the bastion. The EC2's
+  # SSM agent + instance role do the rest.
+  statement {
+    actions = [
+      "ssm:SendCommand",
+      "ssm:ListCommands",
+      "ssm:ListCommandInvocations",
+      "ssm:GetCommandInvocation",
+      "ssm:DescribeInstanceInformation",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "github_deploy" {
