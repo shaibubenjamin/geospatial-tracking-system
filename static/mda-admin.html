@@ -1173,8 +1173,10 @@
   }
 
   let _syncPollTimer = null;
+  let _lastPollStatus = null;
   function startProgressPolling() {
     stopProgressPolling();
+    _lastPollStatus = 'running';
     _syncPollTimer = setInterval(async () => {
       const pid = SYNC_PROJECT_ID || syncProjectId();
       if (!pid) return;
@@ -1182,6 +1184,15 @@
       if (!res || !res.ok) return;
       const cfg = await res.json();
       _updateProgressFromCfg(cfg);
+      // Detect the transition into a terminal state and log it once
+      if (cfg.last_status !== 'running' && _lastPollStatus === 'running') {
+        if (cfg.last_status === 'ok') {
+          appendLog('sync-log', `Sync complete — ${(cfg.last_row_count || 0).toLocaleString()} rows fetched.`, 'ok');
+        } else if (cfg.last_status === 'error') {
+          appendLog('sync-log', 'Sync FAILED: ' + (cfg.last_error || 'unknown error'), 'err');
+        }
+      }
+      _lastPollStatus = cfg.last_status;
       if (cfg.last_status !== 'running') {
         stopProgressPolling();
         loadSyncHistory();           // refresh history once the run completes
@@ -1305,20 +1316,28 @@
       confirmLabel: 'Sync now',
     });
     if (!ok) return;
-    appendLog('sync-log', `Sync started for project ${pid} at ${new Date().toLocaleTimeString()}`, 'info');
-    // Start polling immediately so the progress bar moves while the request is in flight
-    startProgressPolling();
+    appendLog('sync-log', `Queuing sync for project ${pid}…`, 'info');
     const res = await api('/api/sync/run?project_id=' + pid, { method: 'POST' });
-    if (!res) { appendLog('sync-log', 'Network error', 'err'); stopProgressPolling(); await loadSyncConfig(); return; }
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && data.ok) {
-      appendLog('sync-log', `Sync OK — households=${data.households_fetched}, individuals=${data.individuals_fetched}`, 'ok');
-      (data.per_feed || []).forEach(f => appendLog('sync-log', `  ${f.set_name} ${f.record_type}: ${f.fetched} rows`, 'info'));
-    } else {
-      appendLog('sync-log', 'Sync FAILED: ' + (data.detail || 'unknown'), 'err');
+    if (!res) {
+      appendLog('sync-log', 'Network error', 'err');
+      await loadSyncConfig();
+      return;
     }
-    stopProgressPolling();
-    await loadSyncConfig();
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      appendLog('sync-log', 'A sync is already in progress — watching that one instead.', 'info');
+      startProgressPolling();
+      return;
+    }
+    if (!res.ok) {
+      appendLog('sync-log', 'Queue failed: ' + (data.detail || `HTTP ${res.status}`), 'err');
+      return;
+    }
+    // 200 with {queued: true}. Backend kicked off a background task; the progress
+    // bar + history table fill in via polling. The final summary (rows, errors)
+    // appears in the Sync History card the moment status flips off 'running'.
+    appendLog('sync-log', `Sync queued at ${new Date().toLocaleTimeString()} — fetching from CommCare in the background. Watch the progress bar.`, 'ok');
+    startProgressPolling();
   };
 
   window.clearLog = function() {

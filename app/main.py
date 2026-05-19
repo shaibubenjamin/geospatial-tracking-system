@@ -188,6 +188,35 @@ async def lifespan(app: FastAPI):
 
         await db.commit()
 
+    # Recover from any sync that was 'running' when the app last shut down.
+    # Without this, a sync_config marked 'running' at the moment of crash /
+    # restart would stay 'running' forever, blocking new sync attempts.
+    async with AsyncSessionLocal() as db:
+        try:
+            res1 = await db.execute(text("""
+                UPDATE sync_config SET
+                  last_status = 'error',
+                  last_error = 'Sync was interrupted by app restart',
+                  last_progress_step = NULL,
+                  last_progress_total = NULL
+                WHERE last_status = 'running'
+            """))
+            res2 = await db.execute(text("""
+                UPDATE sync_history SET
+                  status = 'error',
+                  ended_at = NOW(),
+                  error_message = 'Sync was interrupted by app restart'
+                WHERE status = 'running'
+            """))
+            await db.commit()
+            if res1.rowcount or res2.rowcount:
+                logger.info(
+                    "Recovered %d sync_config + %d sync_history rows stuck at 'running'",
+                    res1.rowcount, res2.rowcount,
+                )
+        except Exception as e:
+            logger.warning("Sync-recovery cleanup skipped: %s", e)
+
     logger.info("Startup complete.")
     yield
     logger.info("Shutdown complete.")

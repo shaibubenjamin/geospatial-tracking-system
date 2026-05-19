@@ -7,7 +7,25 @@
       "Bash(docker-compose logs *)",
       "Bash(curl -s http://localhost:8090/)",
       "Bash(curl -s http://localhost:8090/login)",
-      "Bash(docker-compose restart *)"
+      "Bash(docker-compose restart *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(cat /tmp/sync.json | head -c 500)",
+      "Read(//private/tmp/**)",
+      "Bash(gh pr create --base main --head dev --title 'feat: Superadmin tier, public dashboard, multi-round CommCare sync \\(Sokoto R5\\)' --body ' *)",
+      "Bash(gh pr *)",
+      "Bash(terraform fmt *)",
+      "Bash(terraform init *)",
+      "Bash(terraform validate *)",
+      "Read(//Users/godsgift/Desktop/**)",
+      "Bash(terraform apply *)",
+      "Bash(terraform plan *)",
+      "Bash(PGPASSWORD='G_0d5th*3H$10' pg_dump \"host=10.11.52.96 port=5434 user=server_admin dbname=geospatial_tracking_system\" --no-owner --no-acl --no-publications --no-subscriptions --format=custom --file=/tmp/sarmaan-onprem.pgdump)",
+      "Bash(ssh -A -J ec2-user@75.101.208.163 ec2-user@10.50.10.229 \"set -e; cd /opt/mda-dashboard; echo '=== Pull new image ==='; sudo /home/ec2-user/ecr-login.sh 2>&1 | tail -1; sudo docker compose pull 2>&1 | tail -5; echo; echo '=== Restart ==='; sudo docker compose up -d --force-recreate 2>&1 | tail -8; echo; sleep 12; echo '=== Status ==='; sudo docker compose ps; echo; echo '=== Recent logs ==='; sudo docker compose logs --tail=15 api 2>&1 | tail -20\")",
+      "Bash(aws secretsmanager *)",
+      "Bash(PGPASSWORD=$\\(aws secretsmanager get-secret-value --secret-id mda-dashboard/rds-master-password --query SecretString --output text\\) psql \"host=localhost port=25432 user=postgres_admin dbname=geospatial_tracking_system sslmode=require\" -c \"SELECT \\(SELECT COUNT\\(*\\) FROM mda_households\\) AS hh, \\(SELECT COUNT\\(*\\) FROM mda_individuals\\) AS ind, \\(SELECT COUNT\\(*\\) FROM lgas\\) AS lgas, \\(SELECT COUNT\\(*\\) FROM wards\\) AS wards, \\(SELECT COUNT\\(*\\) FROM settlements\\) AS settlements, \\(SELECT COUNT\\(*\\) FROM grids\\) AS grids;\")",
+      "Bash(PGPASSWORD=$\\(aws secretsmanager get-secret-value --secret-id mda-dashboard/rds-master-password --query SecretString --output text\\) psql \"host=localhost port=25432 user=postgres_admin dbname=geospatial_tracking_system sslmode=require\" -c \"SELECT COUNT\\(*\\) FROM mda_households\")"
     ]
   }
 }

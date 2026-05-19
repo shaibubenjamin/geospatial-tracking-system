@@ -1,0 +1,27 @@
+###############################################################################
+# Copy this file to terraform.tfvars (gitignored) and fill in real values
+# before running `terraform apply`.
+###############################################################################
+
+# Your SSH public key — used for the bastion + the private-subnet app EC2.
+# Get yours with:  cat ~/.ssh/id_ed25519.pub
+ssh_public_key = "ssh-ed25519 AAAA... your-key-here"
+
+# CIDRs allowed to SSH the bastion. Find your public IP with `curl ifconfig.me`.
+# Multiple operators? Add each one. NEVER use 0.0.0.0/0 here.
+ssh_allowed_cidrs = [
+  "203.0.113.42/32",  # your office / VPN exit
+]
+
+# Initial CommCare HQ credentials seeded into Secrets Manager.
+# Rotated via the admin panel afterwards.
+commcare_username = "adeyemi.adebisi@ehealthnigeria.org"
+commcare_password = "REPLACE_BEFORE_APPLY"
+
+# Optional overrides — defaults in variables.tf are usually fine
+# aws_region              = "us-east-1"
+# domain_name             = "eha-mda-dashboard.ehealthnigeria.org"
+# ec2_instance_type       = "t3.medium"
+# rds_instance_class      = "db.t3.large"
+# rds_allocated_storage_gb = 50
+# rds_multi_az            = false
