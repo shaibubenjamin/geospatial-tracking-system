@@ -34,7 +34,9 @@
       "Bash(curl -s 'http://localhost:8090/api/mda/overview?project_id=2')",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'  forms={d[\\\\\"total_forms\\\\\"]:,}  treated={d[\\\\\"total_treated\\\\\"]:,}  teams={d[\\\\\"teams_active\\\\\"]}'\\)\")",
       "Bash(curl -s -X POST http://localhost:8090/api/sync/run?project_id=2 -H 'Authorization: Bearer fake' -w \"\\\\n  HTTP %{http_code} \\(auth-rejected before reaching DB, but if it tried to write, app_dev would refuse\\)\")",
-      "Bash(gh run *)"
+      "Bash(gh run *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)"
     ]
   }
 }

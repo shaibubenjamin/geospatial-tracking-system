@@ -78,6 +78,180 @@ def _check_available() -> None:
         )
 
 
+# ── Target-side schema bootstrap ─────────────────────────────────────────────
+#
+# The on-prem database (e.g. mda_pipeline) is not guaranteed to carry the
+# dashboard schema. On first mirror run we lazily create exactly the three
+# tables we write to. Idempotent: subsequent runs no-op.
+
+_TARGET_DDL = [
+    # PostGIS is required for the geom column on mda_households. CREATE
+    # EXTENSION needs superuser; we run it in its own short-lived txn so a
+    # permission failure on the extension doesn't poison the schema work.
+    'CREATE EXTENSION IF NOT EXISTS postgis',
+
+    # mda_households — the geom column needs the PostGIS extension above.
+    """
+    CREATE TABLE IF NOT EXISTS mda_households (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER,
+        formid TEXT UNIQUE NOT NULL,
+        username TEXT,
+        teamcode TEXT,
+        data_type TEXT,
+        data_entry_persons TEXT,
+        data_entry_persons_norm TEXT,
+        phone_number_data TEXT,
+        ra_key TEXT,
+        lga TEXT,
+        admin3_code TEXT,
+        admin5_code TEXT,
+        trt_day TEXT,
+        date_trt DATE,
+        consent_trt TEXT,
+        reasons_for_refusal TEXT,
+        others_reasons_for_refusal TEXT,
+        hh_num TEXT,
+        hh_seq TEXT,
+        serial_number_hh_id TEXT,
+        number_of_treated INTEGER,
+        housemarking_code TEXT,
+        gps_raw TEXT,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        gps_accuracy DOUBLE PRECISION,
+        geom geometry(Point, 4326),
+        started_time TIMESTAMPTZ,
+        completed_time TIMESTAMPTZ,
+        received_on TIMESTAMPTZ,
+        form_duration_min DOUBLE PRECISION,
+        sync_lag_hours DOUBLE PRECISION,
+        flag_duplicate BOOLEAN DEFAULT FALSE,
+        flag_duplicate_gps BOOLEAN DEFAULT FALSE,
+        flag_gps_outside_lga BOOLEAN DEFAULT FALSE,
+        flag_gps_outside_ward BOOLEAN DEFAULT FALSE,
+        flag_gps_outside_state BOOLEAN DEFAULT FALSE,
+        flag_gps_poor_accuracy BOOLEAN DEFAULT FALSE,
+        flag_gps_zero BOOLEAN DEFAULT FALSE,
+        flag_after_hours BOOLEAN DEFAULT FALSE,
+        flag_fast_form BOOLEAN DEFAULT FALSE,
+        flag_slow_form BOOLEAN DEFAULT FALSE,
+        flag_sync_lag BOOLEAN DEFAULT FALSE,
+        flag_refusal BOOLEAN DEFAULT FALSE,
+        check_treatment_date DATE,
+        hq_user TEXT,
+        ward_name TEXT,
+        uploaded_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_mirror_hh_project ON mda_households (project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_mirror_hh_formid ON mda_households (formid)",
+
+    # mda_individuals — children rows
+    """
+    CREATE TABLE IF NOT EXISTS mda_individuals (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER,
+        hh_formid TEXT,
+        mother_name TEXT,
+        child_name TEXT,
+        dob DATE,
+        dob_checknote TEXT,
+        sex TEXT,
+        height_cm TEXT,
+        age_in_months INTEGER,
+        treatment_status TEXT,
+        not_treated TEXT,
+        vomit_spill_azt TEXT,
+        child_id_r2 TEXT,
+        respondent_hh_id TEXT,
+        individual_id TEXT,
+        flag_orphan BOOLEAN DEFAULT FALSE,
+        uploaded_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_mirror_ind_hh ON mda_individuals (project_id, hh_formid)",
+
+    # mda_baseline — per-settlement target population
+    """
+    CREATE TABLE IF NOT EXISTS mda_baseline (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER,
+        state TEXT,
+        lga TEXT,
+        ward TEXT,
+        settlement TEXT,
+        total_treated INTEGER,
+        target_1_11_f INTEGER,
+        target_1_11_m INTEGER,
+        target_12_59_f INTEGER,
+        target_12_59_m INTEGER,
+        uploaded_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_mirror_bl_project ON mda_baseline (project_id)",
+]
+
+
+def _ensure_target_schema(tgt) -> None:
+    """Create the three mirror target tables on the on-prem DB if missing.
+
+    PostGIS extension is created in its own short-lived transaction so that a
+    permission failure on CREATE EXTENSION doesn't abort the whole bootstrap.
+    Most on-prem Postgres instances already have PostGIS installed; this is
+    just an extra safety net for fresh targets.
+    """
+    # Extension first, in its own connection so the failure path is isolated
+    try:
+        ext_conn = psycopg2.connect(ONPREM_BACKUP_DATABASE_URL, connect_timeout=20)
+        ext_conn.autocommit = True
+        with ext_conn.cursor() as c:
+            c.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+        ext_conn.close()
+    except Exception as e:
+        logger.info("Skipping CREATE EXTENSION postgis (likely already installed or unprivileged): %s",
+                    str(e).splitlines()[0][:120])
+
+    # Tables + indexes — these run inside the caller's main txn
+    cur = tgt.cursor()
+    for stmt in _TARGET_DDL[1:]:   # skip the extension; we handled it above
+        cur.execute(stmt)
+
+
+# ── Progress reporting (mirrors the CommCare-sync progress UX) ───────────────
+#
+# Steps are deliberately small so the progress bar moves visibly: bootstrap,
+# read each table, write each table, advance watermark. Step labels are
+# human-readable and surfaced to the admin panel via get_state_for_ui.
+
+_MIRROR_STEPS: List[str] = [
+    "Connecting to on-prem",        # 1
+    "Bootstrapping target schema",  # 2
+    "Reading households",            # 3
+    "Reading individuals",           # 4
+    "Reading baseline",              # 5
+    "Writing households",            # 6
+    "Writing individuals",           # 7
+    "Writing baseline",              # 8
+    "Advancing watermark",           # 9
+]
+_MIRROR_TOTAL = len(_MIRROR_STEPS)
+
+
+def _set_progress(src_cur, project_id: int, step: int, label: Optional[str] = None) -> None:
+    """Update the per-project mirror progress counter so the UI can poll it."""
+    src_cur.execute(
+        """
+        UPDATE onprem_mirror_state
+        SET last_progress_step  = %s,
+            last_progress_total = %s,
+            last_progress_label = %s
+        WHERE project_id = %s
+        """,
+        (step, _MIRROR_TOTAL, label, project_id),
+    )
+
+
 def _get_state(src_cur, project_id: int) -> Tuple[Optional[datetime], int]:
     """Return (last_mirror_at, last_row_count) for the project, or (None, 0)."""
     src_cur.execute(
@@ -115,14 +289,18 @@ def _set_state_done(
     rows: int,
     new_watermark: Optional[datetime],
 ) -> None:
+    # Terminal status — clear progress fields so the UI hides the bar.
     if new_watermark is not None:
         src_cur.execute(
             """
             UPDATE onprem_mirror_state
-            SET last_status     = %s,
-                last_error      = %s,
-                last_row_count  = %s,
-                last_mirror_at  = %s
+            SET last_status         = %s,
+                last_error          = %s,
+                last_row_count      = %s,
+                last_mirror_at      = %s,
+                last_progress_step  = NULL,
+                last_progress_total = NULL,
+                last_progress_label = NULL
             WHERE project_id = %s
             """,
             (status, error, rows, new_watermark, project_id),
@@ -131,9 +309,12 @@ def _set_state_done(
         src_cur.execute(
             """
             UPDATE onprem_mirror_state
-            SET last_status     = %s,
-                last_error      = %s,
-                last_row_count  = %s
+            SET last_status         = %s,
+                last_error          = %s,
+                last_row_count      = %s,
+                last_progress_step  = NULL,
+                last_progress_total = NULL,
+                last_progress_label = NULL
             WHERE project_id = %s
             """,
             (status, error, rows, project_id),
@@ -284,28 +465,56 @@ def run_mirror(project_id: int) -> Dict[str, Any]:
 
     src = psycopg2.connect(DATABASE_URL_SYNC)
     src.autocommit = False
-    tgt = psycopg2.connect(ONPREM_BACKUP_DATABASE_URL, connect_timeout=20)
-    tgt.autocommit = False
+    tgt = None  # opened later after the running-state row is committed
     try:
         src_cur = src.cursor()
-        tgt_cur = tgt.cursor()
 
         # Reserve the slot first (and commit so the UI can see 'running')
         _set_state_running(src_cur, project_id)
+        _set_progress(src_cur, project_id, 1, _MIRROR_STEPS[0])  # Connecting…
         src.commit()
+
+        # Step 1: open the target connection. Done after the running-state
+        # row exists so a connect failure is recorded as an error, not a hang.
+        tgt = psycopg2.connect(ONPREM_BACKUP_DATABASE_URL, connect_timeout=20)
+        tgt.autocommit = False
+        tgt_cur = tgt.cursor()
+
+        # Step 2: bootstrap the target schema (no-op once tables exist).
+        _set_progress(src_cur, project_id, 2, _MIRROR_STEPS[1]); src.commit()
+        _ensure_target_schema(tgt)
 
         since, _prev_rows = _get_state(src_cur, project_id)
         summary["watermark_before"] = since.isoformat() if since else None
 
+        # Steps 3-5: pull source rows
+        _set_progress(src_cur, project_id, 3, _MIRROR_STEPS[2]); src.commit()
         households = _select_households_since(src_cur, project_id, since)
         hh_formids = [r[HOUSEHOLD_PLAIN_COLS.index("formid")] for r in households]
+
+        _set_progress(src_cur, project_id, 4, _MIRROR_STEPS[3]); src.commit()
         individuals = _select_individuals_for_households(src_cur, project_id, hh_formids)
+
+        _set_progress(src_cur, project_id, 5, _MIRROR_STEPS[4]); src.commit()
         baseline = _select_baseline_since(src_cur, project_id, since)
 
+        # Steps 6-8: write to target
+        _set_progress(src_cur, project_id, 6,
+                      f"{_MIRROR_STEPS[5]} ({len(households)} rows)"); src.commit()
         _upsert_households(tgt_cur, households)
+
+        _set_progress(src_cur, project_id, 7,
+                      f"{_MIRROR_STEPS[6]} ({len(individuals)} rows)"); src.commit()
         _replace_individuals(tgt_cur, project_id, hh_formids, individuals)
+
+        _set_progress(src_cur, project_id, 8,
+                      f"{_MIRROR_STEPS[7]} ({len(baseline)} rows)"); src.commit()
         _upsert_baseline(tgt_cur, baseline)
+
         tgt.commit()
+
+        # Step 9: advance watermark + mark ok
+        _set_progress(src_cur, project_id, 9, _MIRROR_STEPS[8]); src.commit()
 
         # New watermark = max(uploaded_at) of what we just sent.
         new_watermark = since
@@ -343,7 +552,8 @@ def run_mirror(project_id: int) -> Dict[str, Any]:
     except Exception as e:
         logger.exception("On-prem mirror failed for project %s", project_id)
         try:
-            tgt.rollback()
+            if tgt is not None:
+                tgt.rollback()
         except Exception:
             pass
         try:
@@ -367,7 +577,8 @@ def run_mirror(project_id: int) -> Dict[str, Any]:
         except Exception:
             pass
         try:
-            tgt.close()
+            if tgt is not None:
+                tgt.close()
         except Exception:
             pass
 
@@ -392,7 +603,8 @@ def get_state_for_ui(project_id: int) -> Dict[str, Any]:
         cur = src.cursor()
         cur.execute(
             "SELECT last_mirror_at, last_run_at, last_status, last_error, "
-            "       COALESCE(last_row_count, 0) "
+            "       COALESCE(last_row_count, 0), "
+            "       last_progress_step, last_progress_total, last_progress_label "
             "FROM onprem_mirror_state WHERE project_id = %s",
             (project_id,),
         )
@@ -405,14 +617,20 @@ def get_state_for_ui(project_id: int) -> Dict[str, Any]:
                 "last_status": None,
                 "last_error": None,
                 "last_row_count": 0,
+                "last_progress_step": None,
+                "last_progress_total": None,
+                "last_progress_label": None,
             }
         return {
             "available": True,
-            "last_mirror_at": row[0].isoformat() if row[0] else None,
-            "last_run_at": row[1].isoformat() if row[1] else None,
-            "last_status": row[2],
-            "last_error": row[3],
-            "last_row_count": row[4],
+            "last_mirror_at":      row[0].isoformat() if row[0] else None,
+            "last_run_at":         row[1].isoformat() if row[1] else None,
+            "last_status":         row[2],
+            "last_error":          row[3],
+            "last_row_count":      row[4],
+            "last_progress_step":  row[5],
+            "last_progress_total": row[6],
+            "last_progress_label": row[7],
         }
     finally:
         src.close()

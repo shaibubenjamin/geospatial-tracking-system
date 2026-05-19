@@ -782,37 +782,43 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
-        <!-- Geo KPI strip -->
-        <div style="display:flex;gap:10px;margin-bottom:10px;align-items:stretch;flex-wrap:wrap">
-          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-chart-pie" style="font-size:13px"></i></div>
-            <div class="lbl">% Visitation Coverage</div>
-            <div class="val" style="font-size:22px;color:var(--blue)" id="geo-coverage-pct">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">Settlements with &ge;70% grid coverage</div>
+        <!-- Geo top row: 2x2 KPIs on the left, 2x2 download tiles on the right.
+             For non-admins the download grid stays hidden and the KPI grid
+             stretches to use the full width via CSS Grid auto-fit. -->
+        <div class="geo-top-row" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;margin-bottom:10px;align-items:stretch">
+          <!-- 2x2 KPI grid -->
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:1fr 1fr;gap:10px">
+            <div class="kpi" style="padding:12px 16px">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-chart-pie" style="font-size:13px"></i></div>
+              <div class="lbl">% Visitation Coverage</div>
+              <div class="val" style="font-size:22px;color:var(--blue)" id="geo-coverage-pct">&mdash;</div>
+              <div class="sub" style="font-size:10.5px">Settlements with &ge;70% grid coverage</div>
+            </div>
+            <div class="kpi" style="padding:12px 16px">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-circle-check" style="font-size:13px"></i></div>
+              <div class="lbl">Visited Settlements</div>
+              <div class="val" style="font-size:22px;color:var(--good)" id="geo-sett-visited-count">&mdash;</div>
+              <div class="sub" style="font-size:10.5px">of <span id="geo-sett-total-count">—</span> total settlements</div>
+            </div>
+            <div class="kpi" style="padding:12px 16px">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-circle-xmark" style="font-size:13px"></i></div>
+              <div class="lbl">Not Yet Visited</div>
+              <div class="val" style="font-size:22px;color:var(--bad)" id="geo-sett-notvisited-count">&mdash;</div>
+              <div class="sub" style="font-size:10.5px">settlements remaining</div>
+            </div>
+            <div class="kpi" style="padding:12px 16px">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-layer-group" style="font-size:13px"></i></div>
+              <div class="lbl">Overall Grid Completeness</div>
+              <div class="val" style="font-size:22px;color:var(--warn)" id="geo-avg-completeness">&mdash;</div>
+              <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements &ge;60% complete</div>
+            </div>
           </div>
-          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-circle-check" style="font-size:13px"></i></div>
-            <div class="lbl">Visited Settlements</div>
-            <div class="val" style="font-size:22px;color:var(--good)" id="geo-sett-visited-count">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">of <span id="geo-sett-total-count">—</span> total settlements</div>
-          </div>
-          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-circle-xmark" style="font-size:13px"></i></div>
-            <div class="lbl">Not Yet Visited</div>
-            <div class="val" style="font-size:22px;color:var(--bad)" id="geo-sett-notvisited-count">&mdash;</div>
-            <div class="sub" style="font-size:10.5px">settlements remaining</div>
-          </div>
-          <div class="kpi" style="flex:1;min-width:160px;padding:12px 16px">
-            <div class="kpi-icon-strip"><i class="fa-solid fa-layer-group" style="font-size:13px"></i></div>
-            <div class="lbl">Overall Grid Completeness</div>
-            <div class="val" style="font-size:22px;color:var(--warn)" id="geo-avg-completeness">&mdash;</div>
-            <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements &ge;60% complete · <i>total grids visited ÷ total grids across all settlements</i></div>
-          </div>
-          <!-- hidden but still set by JS for back-compat -->
+          <!-- hidden back-compat counters -->
           <span id="geo-ward-active-count" style="display:none"></span>
           <span id="geo-ward-total-count" style="display:none"></span>
-          <!-- Bulk downloads (admin / superadmin only — hidden in public view) -->
-          <div id="geo-downloads" style="display:none;flex-wrap:wrap;gap:8px;align-items:center">
+
+          <!-- 2x2 download grid — admin/superadmin only. Hidden in public view. -->
+          <div id="geo-downloads" style="display:none;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:1fr 1fr;gap:8px;align-self:stretch">
             <button onclick="downloadGeoExport('lgas','LGAs')" title="Download per-LGA coverage as Excel"
               class="geo-dl-btn"
               onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
@@ -1163,7 +1169,7 @@ tbody tr:hover{background:var(--pale)}
   if (!PUBLIC_MODE && (isAdmin || isSuperadmin)) {
     document.addEventListener('DOMContentLoaded', () => {
       const dl = document.getElementById('geo-downloads');
-      if (dl) dl.style.display = 'flex';
+      if (dl) dl.style.display = 'grid';
     });
   }
 
