@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+# Cancel in-flight runs on the same branch / PR if a new push arrives.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Python lint — ruff covers flake8 + black + isort in one fast tool.
+  # ────────────────────────────────────────────────────────────────────────────
+  python-lint:
+    name: Python lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Ruff check
+        # Permissive config for the existing codebase — strict rules can be turned on later.
+        # E501 (line length) and a few stylistic rules are silenced so this gates
+        # real bugs (undefined names, unused imports, syntax) rather than churn.
+        run: |
+          ruff check app/ scripts/ --select E,F,W --ignore E501,E402,W291,W293 --exit-non-zero-on-fix=false || true
+          ruff check app/ --select F,E9 --output-format=github   # bugs only — these must pass
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Docker build — verifies the Dockerfile still produces a valid image.
+  # No push; that happens in the deploy workflow once AWS is up.
+  # ────────────────────────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: mda-dashboard:ci
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Terraform — fmt + validate. Doesn't apply anything.
+  # ────────────────────────────────────────────────────────────────────────────
+  terraform:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: terraform fmt
+        run: terraform -chdir=terraform fmt -check -recursive
+
+      - name: terraform init (no backend — validate only)
+        run: terraform -chdir=terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform -chdir=terraform validate
+
+      - name: bootstrap fmt + validate
+        run: |
+          terraform -chdir=terraform/bootstrap fmt -check
+          terraform -chdir=terraform/bootstrap init -backend=false
+          terraform -chdir=terraform/bootstrap validate
