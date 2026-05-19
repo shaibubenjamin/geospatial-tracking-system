@@ -7,7 +7,14 @@
       "Bash(docker-compose logs *)",
       "Bash(curl -s http://localhost:8090/)",
       "Bash(curl -s http://localhost:8090/login)",
-      "Bash(docker-compose restart *)"
+      "Bash(docker-compose restart *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(cat /tmp/sync.json | head -c 500)",
+      "Read(//private/tmp/**)",
+      "Bash(gh pr create --base main --head dev --title 'feat: Superadmin tier, public dashboard, multi-round CommCare sync \\(Sokoto R5\\)' --body ' *)",
+      "Bash(gh pr *)"
     ]
   }
 }
