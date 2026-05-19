@@ -60,23 +60,20 @@ async def _fetch_all_pages(
     since: Optional[datetime],
     client: httpx.AsyncClient,
 ) -> List[Dict[str, Any]]:
-    """Walk every page of an OData feed, returning all rows.
+    """Walk every page of an OData feed via ``@odata.nextLink``, returning all rows.
 
-    If ``since`` is provided, applies ``$filter=received_on gt <ISO>`` so we
-    only pull rows newer than the last successful sync's watermark.
+    CommCare's OData implementation gates query options (``$top``, ``$filter``,
+    etc.) behind a separate feature flag from basic feed access — for our
+    account these come back "Feature flag not enabled." So we don't pass them.
+    The ``since`` watermark is used for reporting only; deduplication relies on
+    the ``ON CONFLICT (formid) DO UPDATE`` upsert downstream.
     """
     rows: List[Dict[str, Any]] = []
-    params = None
-    if since is not None:
-        # OData v4 datetime comparison; CommCare expects ISO-8601 with timezone.
-        iso = since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        params = {"$filter": f"received_on gt {iso}"}
     next_url: Optional[str] = url
     page = 0
     while next_url:
         page += 1
-        # Pass params only on the first request; subsequent pages already encode them in nextLink
-        resp = await client.get(next_url, auth=auth, params=(params if page == 1 else None), timeout=120.0)
+        resp = await client.get(next_url, auth=auth, timeout=120.0)
         resp.raise_for_status()
         payload = resp.json()
         rows.extend(payload.get("value", []) or [])
@@ -296,9 +293,17 @@ async def test_connection(
             payload = resp.json()
             count = len(payload.get("value", []))
             return {"ok": True, "status": 200, "sample_rows": count}
-        return {"ok": False, "status": resp.status_code, "detail": resp.text[:300]}
+        # Try to surface CommCare's structured JSON error if present
+        detail = resp.text.strip()[:500]
+        try:
+            err_body = resp.json()
+            if isinstance(err_body, dict):
+                detail = err_body.get("error") or err_body.get("detail") or err_body.get("message") or detail
+        except Exception:
+            pass
+        return {"ok": False, "status": resp.status_code, "detail": detail, "url": url}
     except Exception as e:
-        return {"ok": False, "detail": str(e)}
+        return {"ok": False, "detail": str(e), "url": url}
 
 
 def _decrypt_config(row) -> Dict[str, Any]:

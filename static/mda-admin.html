@@ -1057,8 +1057,37 @@
   window.testSyncConnection = async function() {
     const pid = SYNC_PROJECT_ID || syncProjectId();
     if (!pid) { setFeedback('sync-config-feedback', 'Pick a project first.', 'err'); return; }
-    setFeedback('sync-config-feedback', 'Testing connection (hitting one CommCare feed)…', 'info');
-    appendLog('sync-log', 'Connection test starting…', 'info');
+
+    // Auto-save the current form values first so Test reflects what's on screen,
+    // not whatever (possibly stale) credentials are in the DB.
+    const body = {
+      commcare_base_url: document.getElementById('cc-base-url').value.trim(),
+      commcare_app_slug: document.getElementById('cc-app-slug').value.trim(),
+      commcare_username: document.getElementById('cc-username').value.trim(),
+      form_ids: collectFormIds(),
+    };
+    const pw = document.getElementById('cc-password').value;
+    if (pw) body.commcare_password = pw;
+
+    if (!body.commcare_app_slug || !body.commcare_username || !body.form_ids.length) {
+      setFeedback('sync-config-feedback', 'Fill in app slug, username, and at least one form ID before testing.', 'err');
+      return;
+    }
+
+    setFeedback('sync-config-feedback', 'Saving config + hitting CommCare…', 'info');
+    appendLog('sync-log', 'Auto-saving config before test…', 'info');
+    const saveRes = await api('/api/sync/config?project_id=' + pid, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+    if (!saveRes || !saveRes.ok) {
+      const d = saveRes ? (await saveRes.json().catch(() => ({}))) : {};
+      setFeedback('sync-config-feedback', 'Save failed: ' + (d.detail || 'network error'), 'err');
+      appendLog('sync-log', 'Auto-save failed: ' + (d.detail || 'network'), 'err');
+      return;
+    }
+
+    appendLog('sync-log', 'Saved. Hitting CommCare feed (SET 1 household) to verify access…', 'info');
     const res = await api('/api/sync/test?project_id=' + pid, { method: 'POST' });
     if (!res) { setFeedback('sync-config-feedback', 'Network error.', 'err'); return; }
     const data = await res.json().catch(() => ({}));
@@ -1068,8 +1097,10 @@
     } else {
       const msg = data.detail || data.status || 'Unknown error';
       setFeedback('sync-config-feedback', 'Connection failed: ' + msg, 'err');
-      appendLog('sync-log', 'Test FAILED: ' + msg, 'err');
+      appendLog('sync-log', `Test FAILED (HTTP ${data.status || '?'}): ${msg}`, 'err');
+      if (data.url) appendLog('sync-log', `  URL hit: ${data.url}`, 'info');
     }
+    await loadSyncConfig();
   };
 
   window.runSync = async function() {
