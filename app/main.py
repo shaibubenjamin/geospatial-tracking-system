@@ -208,11 +208,24 @@ async def lifespan(app: FastAPI):
                   error_message = 'Sync was interrupted by app restart'
                 WHERE status = 'running'
             """))
+            # Same idea for the on-prem mirror — clear stale 'running'
+            # locks so the button isn't permanently disabled after a crash.
+            # The table may not exist yet on older deployments; ignore that.
+            try:
+                res3 = await db.execute(text("""
+                    UPDATE onprem_mirror_state SET
+                      last_status = 'error',
+                      last_error = 'Mirror was interrupted by app restart'
+                    WHERE last_status = 'running'
+                """))
+            except Exception:
+                res3 = None
             await db.commit()
-            if res1.rowcount or res2.rowcount:
+            mirror_n = res3.rowcount if res3 is not None else 0
+            if res1.rowcount or res2.rowcount or mirror_n:
                 logger.info(
-                    "Recovered %d sync_config + %d sync_history rows stuck at 'running'",
-                    res1.rowcount, res2.rowcount,
+                    "Recovered %d sync_config + %d sync_history + %d mirror rows stuck at 'running'",
+                    res1.rowcount, res2.rowcount, mirror_n,
                 )
         except Exception as e:
             logger.warning("Sync-recovery cleanup skipped: %s", e)

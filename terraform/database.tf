@@ -105,9 +105,12 @@ resource "aws_db_instance" "main" {
 #   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_prod;
 #   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_prod;
 #
-#   -- The dev tunnel role: SELECT only
+#   -- The dev tunnel role: same read/write grants as app_prod, separate
+#   -- credential so dev/prod sessions can be told apart in logs.
 #   CREATE ROLE app_dev LOGIN PASSWORD '<separately-managed>';
 #   GRANT CONNECT ON DATABASE geospatial_tracking_system TO app_dev;
-#   GRANT USAGE ON SCHEMA public TO app_dev;
-#   GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_dev;
-#   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO app_dev;
+#   GRANT USAGE, CREATE ON SCHEMA public TO app_dev;
+#   GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_dev;
+#   GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_dev;
+#   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_dev;
+#   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_dev;

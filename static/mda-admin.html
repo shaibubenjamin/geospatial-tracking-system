@@ -486,6 +486,38 @@
                 <div style="color:var(--bad);font-size:12.5px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace" id="sync-last-err">—</div>
               </div>
             </div>
+
+            <!-- On-prem mirror card — only visible when ONPREM_BACKUP_DATABASE_URL is set
+                 (i.e. on dev laptops connected to the VPN). Hidden on the production
+                 deployment because there's no route from EC2 to 10.11.52.96. -->
+            <div class="card" id="onprem-mirror-card" style="display:none;margin-top:14px">
+              <div class="card-head">
+                <div class="card-title"><i class="fa-solid fa-arrows-rotate"></i> Mirror to on-prem</div>
+                <div class="card-head-right" style="color:var(--muted);font-size:11.5px">Dev only</div>
+              </div>
+              <div class="card-body" style="padding:14px 18px">
+                <div style="color:var(--muted);font-size:12.5px;line-height:1.55;margin-bottom:12px">
+                  Pushes this project's MDA data from AWS RDS back to the on-prem Postgres at
+                  <code style="font-family:'SF Mono','Monaco',monospace;font-size:11.5px">10.11.52.96</code>.
+                  Watermark-based — only rows newer than the last mirror are sent.
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+                  <button class="btn btn-primary btn-sm" id="onprem-mirror-btn" onclick="runOnpremMirror()">
+                    <i class="fa-solid fa-arrows-rotate"></i> Run mirror
+                  </button>
+                  <span id="onprem-mirror-status" style="font-size:12px;color:var(--muted)">Idle</span>
+                </div>
+                <div style="font-size:11.5px;color:var(--muted);line-height:1.6">
+                  <div><strong style="color:var(--ink);font-weight:600">Last run:</strong> <span id="onprem-mirror-last-run">—</span></div>
+                  <div><strong style="color:var(--ink);font-weight:600">High-water mark:</strong> <span id="onprem-mirror-watermark">—</span></div>
+                  <div><strong style="color:var(--ink);font-weight:600">Last row count:</strong> <span id="onprem-mirror-rows">0</span></div>
+                </div>
+                <div id="onprem-mirror-err-wrap" style="display:none;background:var(--bad-bg);border:1px solid #FECACA;border-radius:6px;padding:8px 12px;margin-top:10px">
+                  <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Last error</div>
+                  <div id="onprem-mirror-err" style="color:var(--bad);font-size:12px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace">—</div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -1229,6 +1261,8 @@
     _updateProgressFromCfg(cfg);
     // If a sync is already running (e.g. user reloaded the page mid-run), start polling
     if (cfg.last_status === 'running') startProgressPolling();
+    // On-prem mirror card (auto-hides when ONPREM_BACKUP_DATABASE_URL is unset)
+    await loadOnpremMirrorState();
   }
 
   window.saveSyncConfig = async function() {
@@ -1343,6 +1377,109 @@
   window.clearLog = function() {
     const box = document.getElementById('sync-log');
     box.innerHTML = '<span class="log-entry info">[INFO]  Log cleared.</span>';
+  };
+
+  /* ── ON-PREM MIRROR ── (only renders when the backend reports available:true) */
+  let _onpremPollTimer = null;
+  let _onpremLastStatus = null;
+
+  function _fmtTs(iso) {
+    return iso ? new Date(iso).toLocaleString() : '—';
+  }
+
+  async function loadOnpremMirrorState() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) return;
+    const res = await api('/api/sync/onprem-mirror/state?project_id=' + pid);
+    const card = document.getElementById('onprem-mirror-card');
+    if (!card) return;
+    if (!res || !res.ok) { card.style.display = 'none'; return; }
+    const s = await res.json();
+    if (!s.available) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    const statusEl = document.getElementById('onprem-mirror-status');
+    const btn = document.getElementById('onprem-mirror-btn');
+    if (s.last_status === 'running') {
+      statusEl.innerHTML = '<span class="chip warn">Running…</span>';
+      btn.disabled = true;
+    } else if (s.last_status === 'ok') {
+      statusEl.innerHTML = '<span class="chip good">✓ Last run OK</span>';
+      btn.disabled = false;
+    } else if (s.last_status === 'error') {
+      statusEl.innerHTML = '<span class="chip bad">Error</span>';
+      btn.disabled = false;
+    } else {
+      statusEl.textContent = 'Idle';
+      btn.disabled = false;
+    }
+    document.getElementById('onprem-mirror-last-run').textContent  = _fmtTs(s.last_run_at);
+    document.getElementById('onprem-mirror-watermark').textContent = _fmtTs(s.last_mirror_at);
+    document.getElementById('onprem-mirror-rows').textContent      = (s.last_row_count || 0).toLocaleString();
+
+    const errWrap = document.getElementById('onprem-mirror-err-wrap');
+    const errEl   = document.getElementById('onprem-mirror-err');
+    if (s.last_status === 'error' && s.last_error) {
+      errEl.textContent = s.last_error;
+      errWrap.style.display = 'block';
+    } else {
+      errEl.textContent = '—';
+      errWrap.style.display = 'none';
+    }
+
+    // Detect transition out of 'running' and log it
+    if (s.last_status !== 'running' && _onpremLastStatus === 'running') {
+      if (s.last_status === 'ok') {
+        appendLog('sync-log', `Mirror complete — ${(s.last_row_count || 0).toLocaleString()} rows pushed to on-prem.`, 'ok');
+      } else if (s.last_status === 'error') {
+        appendLog('sync-log', 'Mirror FAILED: ' + (s.last_error || 'unknown error'), 'err');
+      }
+    }
+    _onpremLastStatus = s.last_status;
+
+    if (s.last_status === 'running') {
+      startOnpremMirrorPolling();
+    } else {
+      stopOnpremMirrorPolling();
+    }
+  }
+  window.loadOnpremMirrorState = loadOnpremMirrorState;
+
+  function startOnpremMirrorPolling() {
+    stopOnpremMirrorPolling();
+    _onpremPollTimer = setInterval(loadOnpremMirrorState, 2000);
+  }
+  function stopOnpremMirrorPolling() {
+    if (_onpremPollTimer) { clearInterval(_onpremPollTimer); _onpremPollTimer = null; }
+  }
+
+  window.runOnpremMirror = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { await alertDialog({ title: 'No project selected', message: 'Pick a project from the dropdown above first.' }); return; }
+    const ok = await confirmDialog({
+      title: 'Mirror to on-prem?',
+      message: 'Push this project\'s MDA data from AWS RDS to the on-prem Postgres at 10.11.52.96. Only rows newer than the last mirror are sent. Requires the VPN.',
+      confirmLabel: 'Mirror now',
+    });
+    if (!ok) return;
+    appendLog('sync-log', `Queuing on-prem mirror for project ${pid}…`, 'info');
+    const res = await api('/api/sync/run-onprem-mirror?project_id=' + pid, { method: 'POST' });
+    if (!res) { appendLog('sync-log', 'Network error', 'err'); return; }
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      appendLog('sync-log', 'A mirror is already in progress — watching that one instead.', 'info');
+      _onpremLastStatus = 'running';
+      startOnpremMirrorPolling();
+      return;
+    }
+    if (!res.ok) {
+      appendLog('sync-log', 'Mirror queue failed: ' + (data.detail || `HTTP ${res.status}`), 'err');
+      return;
+    }
+    appendLog('sync-log', `Mirror queued at ${new Date().toLocaleTimeString()} — pushing to on-prem in the background.`, 'ok');
+    _onpremLastStatus = 'running';
+    await loadOnpremMirrorState();   // immediately reflect 'running' in the card
+    startOnpremMirrorPolling();
   };
 
   /* ── PROJECTS ── */

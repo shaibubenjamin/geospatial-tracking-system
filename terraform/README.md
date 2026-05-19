@@ -100,13 +100,20 @@ GRANT USAGE, CREATE ON SCHEMA public TO app_prod;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_prod;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_prod;
 
--- Dev tunnel role (SELECT only — protects prod data from accidental writes)
+-- Dev tunnel role. Same read/write grants as app_prod — separate credential
+-- only so dev/prod sessions are distinguishable in audit logs. Data done
+-- from the dev laptop lands in the same RDS that prod reads from.
 CREATE ROLE app_dev LOGIN PASSWORD '<choose-something-strong>';
 GRANT CONNECT ON DATABASE geospatial_tracking_system TO app_dev;
-GRANT USAGE ON SCHEMA public TO app_dev;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_dev;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO app_dev;
+GRANT USAGE, CREATE ON SCHEMA public TO app_dev;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_dev;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_dev;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_dev;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_dev;
 ```
+
+If `app_dev` already exists with the older SELECT-only grants, upgrade in
+place with the SQL in [`scripts/grant-app-dev-write.sql`](../scripts/grant-app-dev-write.sql).
 
 Then update the `mda-dashboard/database-url-app` Secrets Manager entry with the
 real `app_prod` password (Terraform won't overwrite — see `lifecycle.ignore_changes`).
