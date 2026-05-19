@@ -91,6 +91,33 @@
       position: relative;
     }
 
+    .lp-round-strip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 13px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 99px;
+      color: rgba(255,255,255,.85);
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: .25px;
+      margin-bottom: 18px;
+      position: relative;
+    }
+    .lp-round-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4ADE80;
+      box-shadow: 0 0 0 0 rgba(74,222,128,.7);
+      animation: lp-pulse 1.6s infinite;
+    }
+    @keyframes lp-pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(74,222,128,.7); }
+      70%  { box-shadow: 0 0 0 8px rgba(74,222,128,0);   }
+      100% { box-shadow: 0 0 0 0   rgba(74,222,128,0);   }
+    }
+
     .stat-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -328,39 +355,51 @@
       all 23 Local Government Areas.
     </p>
 
+    <div class="lp-round-strip" id="lp-round-strip">
+      <span class="lp-round-dot"></span>
+      <span id="lp-round-label">Loading current campaign…</span>
+    </div>
+
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="val">23</div>
-        <div class="lbl">LGAs in Sokoto State</div>
+        <div class="val" id="lp-lgas">23</div>
+        <div class="lbl">LGAs in scope</div>
       </div>
       <div class="stat-card">
-        <div class="val">244</div>
-        <div class="lbl">Wards covered</div>
+        <div class="val" id="lp-wards">244</div>
+        <div class="lbl">Wards in scope</div>
       </div>
       <div class="stat-card">
-        <div class="val">1–59</div>
-        <div class="lbl">Months age target</div>
+        <div class="val" id="lp-treated">—</div>
+        <div class="lbl">Children treated this round</div>
       </div>
       <div class="stat-card">
-        <div class="val">80%</div>
-        <div class="lbl">WHO coverage target</div>
+        <div class="val" id="lp-coverage">—</div>
+        <div class="lbl">Coverage / 80% target</div>
       </div>
     </div>
 
     <div class="roles-title">Access Levels</div>
     <div class="roles">
       <div class="role-card">
+        <div class="role-dot" style="background:#006B2E"></div>
+        <div class="role-info">
+          <h3>Superadmin</h3>
+          <p>Data pipeline, user management &amp; full system control</p>
+        </div>
+      </div>
+      <div class="role-card">
         <div class="role-dot" style="background:#C8A000"></div>
         <div class="role-info">
           <h3>Administrator</h3>
-          <p>Full system access, data uploads &amp; user management</p>
+          <p>Data uploads, geospatial exports &amp; dashboard access</p>
         </div>
       </div>
       <div class="role-card">
         <div class="role-dot" style="background:#44B568"></div>
         <div class="role-info">
           <h3>Analyst</h3>
-          <p>Dashboard access, coverage &amp; quality analysis</p>
+          <p>Dashboard, coverage &amp; quality-checks views</p>
         </div>
       </div>
       <div class="role-card">
@@ -428,6 +467,48 @@
       const dest = localStorage.getItem('is_superadmin') === 'true' ? '/mda-admin' : '/dashboard';
       window.location.href = dest;
     }
+
+    // ── Live landing-page stats ────────────────────────────────────────────
+    // Pulls the current round + treated count from the public landing-stats
+    // endpoint and animates the children-treated counter from 0 to its value.
+    (async () => {
+      const fmt = n => Number(n || 0).toLocaleString();
+      const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      try {
+        const res = await fetch('/api/mda/landing-stats', { cache: 'no-store' });
+        if (!res.ok) throw new Error('stats fetch failed');
+        const d = await res.json();
+
+        setEl('lp-round-label', d.active_round_label
+            ? `${d.active_round_label} — live`
+            : 'Campaign monitoring');
+
+        // LGAs / Wards fall back to the static defaults if the boundary tables
+        // are empty for this round (e.g. brand-new project before import).
+        if (d.lgas_in_scope)  setEl('lp-lgas',  fmt(d.lgas_in_scope));
+        if (d.wards_in_scope) setEl('lp-wards', fmt(d.wards_in_scope));
+
+        // Animate treated count from 0 → value over ~1.2 s
+        const target = Number(d.total_treated || 0);
+        const dur = 1200;
+        const start = performance.now();
+        const tick = (t) => {
+          const p = Math.min(1, (t - start) / dur);
+          const eased = 1 - Math.pow(1 - p, 3);
+          setEl('lp-treated', fmt(Math.floor(target * eased)));
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+
+        const cov = Number(d.coverage_pct || 0);
+        setEl('lp-coverage', cov.toFixed(1) + '% / 80%');
+      } catch (err) {
+        // Graceful degrade — keep the static placeholders if the API is down.
+        setEl('lp-round-label', 'SARMAAN campaign monitoring');
+        setEl('lp-treated', '—');
+        setEl('lp-coverage', '80% target');
+      }
+    })();
 
     // Password toggle
     document.getElementById('pw-toggle').addEventListener('click', () => {

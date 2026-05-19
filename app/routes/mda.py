@@ -590,6 +590,120 @@ async def upload_mda(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/landing-stats  — public, drives the login page hero
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/landing-stats")
+async def landing_stats(db: AsyncSession = Depends(get_db)):
+    """Lightweight public snapshot for the login page.
+
+    No auth required. Returns the active round's high-level KPIs so the
+    landing-page tiles can show live progress instead of static placeholders.
+    """
+    # Pick the currently-active project; fall back to the most recent one.
+    proj = await db.execute(text("""
+        SELECT id, state_name, round_number
+        FROM geo_projects
+        ORDER BY is_active DESC, round_number DESC NULLS LAST, id DESC
+        LIMIT 1
+    """))
+    p = proj.fetchone()
+    if not p:
+        return {
+            "active_round_label": "—",
+            "total_treated": 0,
+            "baseline_total": 0,
+            "coverage_pct": 0,
+            "lgas_in_scope": 0,
+            "wards_in_scope": 0,
+            "days_active": 0,
+        }
+
+    pid = p[0]
+    label = (
+        f"{p[1]} Round {p[2]}" if p[1] and p[2] is not None else f"Project #{pid}"
+    )
+
+    # Boundary tables are typically loaded under a single project per state
+    # (R4 holds Sokoto's polygons; R5 reuses them) — count distinct codes
+    # across every project that shares this round's state so the tiles still
+    # reflect the real scope even when the active round didn't carry its own
+    # boundary import.
+    state_name = p[1]
+    res = await db.execute(text("""
+        SELECT
+          (SELECT COALESCE(SUM(number_of_treated), 0) FROM mda_households WHERE project_id = :pid) AS treated,
+          (SELECT COALESCE(SUM(total_treated),   0) FROM mda_baseline    WHERE project_id = :pid) AS baseline,
+          (SELECT COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
+                   FROM mda_households WHERE project_id = :pid)                                   AS days_active,
+          (SELECT COUNT(DISTINCT lgacode) FROM lgas
+            WHERE project_id IN (SELECT id FROM geo_projects WHERE state_name = :state OR :state IS NULL))  AS lgas_in_scope,
+          (SELECT COUNT(DISTINCT wardcode) FROM wards
+            WHERE project_id IN (SELECT id FROM geo_projects WHERE state_name = :state OR :state IS NULL)) AS wards_in_scope
+    """), {"pid": pid, "state": state_name})
+    row = res.fetchone()
+    treated  = int(row.treated or 0)
+    baseline = int(row.baseline or 0)
+    return {
+        "active_round_label": label,
+        "total_treated":   treated,
+        "baseline_total":  baseline,
+        "coverage_pct":    round(100.0 * treated / baseline, 1) if baseline > 0 else 0,
+        "lgas_in_scope":   int(row.lgas_in_scope or 0),
+        "wards_in_scope":  int(row.wards_in_scope or 0),
+        "days_active":     int(row.days_active or 0),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/system/counts — admin diagnostics for the System Status page
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/system/counts")
+async def system_counts(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Single round-trip for the System Status tiles.
+
+    Household / individual / baseline counts are scoped to the active round
+    (the same scope the dashboard renders). Boundary counts are state-wide
+    since polygons are loaded once per state and reused across rounds.
+    """
+    proj = await db.execute(text("""
+        SELECT id, state_name FROM geo_projects
+        ORDER BY is_active DESC, round_number DESC NULLS LAST, id DESC
+        LIMIT 1
+    """))
+    p = proj.fetchone()
+    pid = p[0] if p else None
+    state = p[1] if p else None
+
+    res = await db.execute(text("""
+        SELECT
+          (SELECT COUNT(*) FROM mda_households   WHERE project_id = :pid)                       AS households,
+          (SELECT COUNT(*) FROM mda_individuals  WHERE project_id = :pid)                       AS individuals,
+          (SELECT COUNT(*) FROM mda_baseline     WHERE project_id = :pid)                       AS baseline_records,
+          (SELECT COUNT(DISTINCT lgacode)  FROM lgas
+            WHERE project_id IN (SELECT id FROM geo_projects WHERE state_name = :state OR :state IS NULL))   AS lgas,
+          (SELECT COUNT(DISTINCT wardcode) FROM wards
+            WHERE project_id IN (SELECT id FROM geo_projects WHERE state_name = :state OR :state IS NULL))   AS wards,
+          (SELECT COUNT(*)                 FROM settlements
+            WHERE project_id IN (SELECT id FROM geo_projects WHERE state_name = :state OR :state IS NULL))   AS settlements
+    """), {"pid": pid, "state": state})
+    row = res.fetchone()
+    return {
+        "active_project_id": pid,
+        "households":        int(row.households or 0),
+        "individuals":       int(row.individuals or 0),
+        "baseline_records":  int(row.baseline_records or 0),
+        "lgas":              int(row.lgas or 0),
+        "wards":             int(row.wards or 0),
+        "settlements":       int(row.settlements or 0),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/qc/summary
 # ─────────────────────────────────────────────────────────────────────────────
 

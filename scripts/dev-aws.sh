@@ -1,6 +1,10 @@
 #!/bin/bash
 ###############################################################################
-# dev-aws.sh — point the local docker-compose at AWS RDS via an SSH tunnel.
+# dev-aws.sh — point the local docker-compose at AWS RDS via an SSM tunnel.
+#
+# Tunnel mechanism: AWS Systems Manager port-forwarding through the prod EC2
+# instance. No SSH, no bastion, no IP allow-list. Works from any network as
+# long as your AWS credentials can call `ssm:StartSession` on the instance.
 #
 # Connects as `app_dev`, which has the same read/write grants as `app_prod`
 # but a separate credential so dev/prod sessions can be told apart in the
@@ -15,12 +19,14 @@
 # Usage:
 #   ./scripts/dev-aws.sh up        # opens tunnel, writes .env, starts compose
 #   ./scripts/dev-aws.sh tunnel    # just opens the tunnel (foreground)
-#   ./scripts/dev-aws.sh down      # closes tunnel, stops compose, restores .env.local
+#   ./scripts/dev-aws.sh down      # closes tunnel, stops compose, restores .env
 #
 # Requires:
-#   - aws CLI configured (you already have us-east-1 / 387526361725)
-#   - ~/.ssh/mda-dashboard-prod private key
-#   - VPN not required — bastion is publicly reachable from your IP allowlist
+#   - aws CLI v2 (`aws --version`)
+#   - Session Manager Plugin (`session-manager-plugin --version`)
+#     install: `brew install --cask session-manager-plugin`
+#   - AWS credentials with ssm:StartSession on the prod EC2 instance
+#   - No VPN, no SSH key, no IP allow-list — IAM is the only access control
 ###############################################################################
 set -euo pipefail
 
@@ -29,32 +35,64 @@ cd "$PROJECT_ROOT"
 
 REGION=us-east-1
 PROJECT=mda-dashboard
-SSH_KEY="$HOME/.ssh/${PROJECT}-prod"
-BASTION_HOST="75.101.208.163"
-RDS_ENDPOINT="mda-dashboard-db.cixghyv30jr7.us-east-1.rds.amazonaws.com"
+EC2_INSTANCE_ID=i-0f57573ce98580bfc
+RDS_ENDPOINT=mda-dashboard-db.cixghyv30jr7.us-east-1.rds.amazonaws.com
 
-# Local port that the tunnel listens on (chosen to not collide with any local Postgres)
+# Local port the tunnel listens on (chosen not to collide with a local Postgres)
 LOCAL_PORT=25432
 
 CMD="${1:-up}"
 
 tunnel_pid_file="/tmp/${PROJECT}-tunnel.pid"
+tunnel_log_file="/tmp/${PROJECT}-tunnel.log"
 
+# ── Preflight checks ─────────────────────────────────────────────────────────
+require_bin() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "  ✗ Missing required binary: $1" >&2
+        echo "    $2" >&2
+        exit 1
+    fi
+}
+
+preflight() {
+    require_bin aws "Install AWS CLI v2: https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html"
+    require_bin session-manager-plugin "Install: brew install --cask session-manager-plugin"
+    if ! aws --region "$REGION" sts get-caller-identity >/dev/null 2>&1; then
+        echo "  ✗ AWS credentials not configured (or expired)." >&2
+        echo "    Try: aws sso login --profile <your-profile>" >&2
+        exit 1
+    fi
+}
+
+# ── Tunnel control ───────────────────────────────────────────────────────────
 open_tunnel() {
     if [[ -f "$tunnel_pid_file" ]] && kill -0 "$(cat "$tunnel_pid_file")" 2>/dev/null; then
         echo "  Tunnel already open (pid $(cat "$tunnel_pid_file"))"
         return
     fi
-    echo "  Opening SSH tunnel localhost:${LOCAL_PORT} → bastion → ${RDS_ENDPOINT}:5432..."
-    ssh -f -N \
-        -L "${LOCAL_PORT}:${RDS_ENDPOINT}:5432" \
-        -i "$SSH_KEY" \
-        -o ExitOnForwardFailure=yes \
-        -o ServerAliveInterval=60 \
-        -o StrictHostKeyChecking=accept-new \
-        "ec2-user@${BASTION_HOST}"
-    # Capture the pid of the newly-spawned ssh
-    pgrep -f "ssh.*${LOCAL_PORT}:${RDS_ENDPOINT}" | head -1 > "$tunnel_pid_file"
+    echo "  Opening SSM port-forward localhost:${LOCAL_PORT} → ${RDS_ENDPOINT}:5432 via ${EC2_INSTANCE_ID}..."
+    # Background SSM session — logs to /tmp so we can debug if it dies.
+    nohup aws ssm start-session \
+        --region "$REGION" \
+        --target "$EC2_INSTANCE_ID" \
+        --document-name AWS-StartPortForwardingSessionToRemoteHost \
+        --parameters "{\"host\":[\"${RDS_ENDPOINT}\"],\"portNumber\":[\"5432\"],\"localPortNumber\":[\"${LOCAL_PORT}\"]}" \
+        >"$tunnel_log_file" 2>&1 &
+    echo $! > "$tunnel_pid_file"
+
+    # Wait up to 15 s for the local port to become reachable
+    local i=0
+    while ! (echo > "/dev/tcp/127.0.0.1/${LOCAL_PORT}") 2>/dev/null; do
+        i=$((i+1))
+        if (( i > 30 )); then
+            echo "  ✗ Tunnel did not open within 15s. Last 10 lines of $tunnel_log_file:" >&2
+            tail -10 "$tunnel_log_file" >&2 || true
+            close_tunnel
+            exit 1
+        fi
+        sleep 0.5
+    done
     echo "  Tunnel open (pid $(cat "$tunnel_pid_file"))"
 }
 
@@ -62,14 +100,16 @@ close_tunnel() {
     if [[ -f "$tunnel_pid_file" ]]; then
         pid=$(cat "$tunnel_pid_file")
         if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid"
+            kill "$pid" 2>/dev/null || true
             echo "  Tunnel closed (pid $pid)"
         fi
         rm -f "$tunnel_pid_file"
     fi
-    pkill -f "ssh.*${LOCAL_PORT}:${RDS_ENDPOINT}" 2>/dev/null || true
+    # Belt-and-braces: kill any stray session-manager-plugin
+    pkill -f "session-manager-plugin.*${LOCAL_PORT}" 2>/dev/null || true
 }
 
+# ── .env generation ──────────────────────────────────────────────────────────
 write_env() {
     echo "  Fetching app_dev password from Secrets Manager..."
     local app_dev_password
@@ -77,6 +117,15 @@ write_env() {
         --region "$REGION" \
         --secret-id "${PROJECT}/app-dev-password" \
         --query SecretString --output text)
+
+    # On-prem mirror target — fetched so the "Mirror to on-prem" button is
+    # always available in the dev container without a manual export.
+    # If the secret doesn't exist yet, leave blank and the button stays hidden.
+    local onprem_url
+    onprem_url=$(aws secretsmanager get-secret-value \
+        --region "$REGION" \
+        --secret-id "${PROJECT}/onprem-database-url" \
+        --query SecretString --output text 2>/dev/null || echo "")
 
     # Back up an existing .env once
     if [[ -f .env && ! -f .env.local-onprem.bak ]]; then
@@ -88,9 +137,9 @@ write_env() {
 # Auto-generated by scripts/dev-aws.sh — DO NOT COMMIT
 # Last write: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 #
-# Local docker-compose connects to AWS RDS as the read-only app_dev role
-# via the SSH tunnel on localhost:${LOCAL_PORT}. host.docker.internal lets
-# the container reach the Mac's tunnel port.
+# Local docker-compose connects to AWS RDS as app_dev via the SSM tunnel
+# on localhost:${LOCAL_PORT}. host.docker.internal lets the container
+# reach the Mac's tunnel port.
 
 DATABASE_URL=postgresql+asyncpg://app_dev:${app_dev_password}@host.docker.internal:${LOCAL_PORT}/geospatial_tracking_system
 DATABASE_URL_SYNC=postgresql://app_dev:${app_dev_password}@host.docker.internal:${LOCAL_PORT}/geospatial_tracking_system
@@ -106,19 +155,21 @@ ENVIRONMENT=development
 # decrypt from the dev container. Same key prod uses.
 SYNC_ENCRYPTION_KEY=$(aws secretsmanager get-secret-value --region "$REGION" --secret-id "${PROJECT}/app-secrets" --query SecretString --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['SYNC_ENCRYPTION_KEY'])")
 
-# Optional reverse-mirror to on-prem. Leave blank to hide the button.
-# When set, the admin panel surfaces a "Sync to on-prem" card that pushes
-# RDS data back to the on-prem instance over the VPN. Example:
-#   ONPREM_BACKUP_DATABASE_URL=postgresql://server_admin:PASS@10.11.52.96:5434/mda_pipeline
-ONPREM_BACKUP_DATABASE_URL=${ONPREM_BACKUP_DATABASE_URL:-}
+# Reverse-mirror to on-prem. Fetched from AWS Secrets Manager so the button
+# is always available when running dev-aws.sh — no manual export needed.
+# When this is blank (Secrets Manager unreachable, etc.) the mirror card
+# stays hidden gracefully.
+ONPREM_BACKUP_DATABASE_URL=${onprem_url}
 ENVEOF
     chmod 600 .env
-    echo "  Wrote .env (RDS connection via app_dev / read-only)"
+    echo "  Wrote .env (RDS connection via app_dev / read-write)"
 }
 
+# ── Subcommands ──────────────────────────────────────────────────────────────
 case "$CMD" in
     up)
-        echo "▸ Dev-against-AWS-RDS mode"
+        echo "▸ Dev-against-AWS-RDS mode (SSM tunnel)"
+        preflight
         open_tunnel
         write_env
         echo "  Starting docker-compose (will read the new .env)..."
@@ -126,17 +177,18 @@ case "$CMD" in
         echo
         echo "✓ Local API at http://localhost:8090 — connected to AWS RDS as app_dev (read/write)"
         echo "  Heads up: writes from this container land in the SAME RDS prod reads from."
-        echo "  Tail logs:  docker compose logs -f api"
-        echo "  Stop mode:  ./scripts/dev-aws.sh down"
+        echo "  Tail logs:    docker compose logs -f api"
+        echo "  Tunnel log:   $tunnel_log_file"
+        echo "  Stop mode:    ./scripts/dev-aws.sh down"
         ;;
     tunnel)
-        echo "▸ Opening SSH tunnel only (foreground — Ctrl-C to close)"
-        ssh -N -v \
-            -L "${LOCAL_PORT}:${RDS_ENDPOINT}:5432" \
-            -i "$SSH_KEY" \
-            -o ExitOnForwardFailure=yes \
-            -o ServerAliveInterval=60 \
-            "ec2-user@${BASTION_HOST}"
+        echo "▸ Opening SSM port-forward only (foreground — Ctrl-C to close)"
+        preflight
+        aws ssm start-session \
+            --region "$REGION" \
+            --target "$EC2_INSTANCE_ID" \
+            --document-name AWS-StartPortForwardingSessionToRemoteHost \
+            --parameters "{\"host\":[\"${RDS_ENDPOINT}\"],\"portNumber\":[\"5432\"],\"localPortNumber\":[\"${LOCAL_PORT}\"]}"
         ;;
     down)
         echo "▸ Tearing down dev-AWS mode"
