@@ -358,3 +358,21 @@ class SyncFeedState(Base):
     last_received_on = Column(DateTime(timezone=True))
     last_synced_at = Column(DateTime(timezone=True))
     last_row_count = Column(Integer, default=0)
+
+
+class OnpremMirrorState(Base):
+    """Watermark + status for the AWS RDS → on-prem reverse mirror.
+
+    One row per project. ``last_mirror_at`` is the high-water mark of
+    ``uploaded_at`` from the last successful mirror run — the next run only
+    sends rows whose uploaded_at is strictly greater. Status fields are
+    surfaced in the admin panel.
+    """
+    __tablename__ = "onprem_mirror_state"
+
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), primary_key=True)
+    last_mirror_at = Column(DateTime(timezone=True))
+    last_run_at = Column(DateTime(timezone=True))
+    last_status = Column(Text)        # 'ok' / 'error' / 'running'
+    last_error = Column(Text)
+    last_row_count = Column(Integer, default=0)

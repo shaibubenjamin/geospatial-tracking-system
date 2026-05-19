@@ -25,5 +25,11 @@ SUPERADMIN_EMAIL = os.getenv("SUPERADMIN_EMAIL", "superadmin@geospatial.local")
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 SYNC_ENCRYPTION_KEY = os.getenv("SYNC_ENCRYPTION_KEY", "")
 
+# Optional reverse-mirror target: when set, the admin panel exposes a
+# "Sync to on-prem" button that copies MDA tables from this DB to the
+# on-prem Postgres. Intended for dev laptops connected to the VPN —
+# leave blank in production so the button is hidden.
+ONPREM_BACKUP_DATABASE_URL = os.getenv("ONPREM_BACKUP_DATABASE_URL", "")
+
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

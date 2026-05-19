@@ -1,0 +1,105 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # Manual trigger from the Actions tab for hotfix re-deploys
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (defaults to the merge commit SHA)"
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false   # don't kill a half-deploy; queue instead
+
+jobs:
+  build-push-deploy:
+    name: Build, push to ECR, restart EC2
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write   # required for OIDC into AWS
+
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPO: 387526361725.dkr.ecr.us-east-1.amazonaws.com/mda-dashboard
+      EC2_HOST: 10.50.10.229
+      BASTION_HOST: 75.101.208.163
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can tag the image with the commit SHA
+          fetch-depth: 1
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::387526361725:role/mda-dashboard-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "${ECR_REPO%/*}"
+
+      - name: Set image tag
+        id: tag
+        run: |
+          if [[ -n "${{ inputs.image_tag }}" ]]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.ECR_REPO }}:${{ steps.tag.outputs.tag }}
+            ${{ env.ECR_REPO }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Prepare SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          echo "${{ secrets.MDA_DASHBOARD_SSH_KEY }}" > ~/.ssh/deploy-key
+          chmod 600 ~/.ssh/deploy-key
+          ssh-keyscan -H "$BASTION_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Roll the container on EC2
+        run: |
+          ssh -i ~/.ssh/deploy-key \
+              -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -J "ec2-user@${BASTION_HOST}" \
+              "ec2-user@${EC2_HOST}" \
+              "set -e
+               cd /opt/mda-dashboard
+               sudo /home/ec2-user/ecr-login.sh
+               sudo docker compose pull
+               sudo docker compose up -d
+               sleep 8
+               sudo docker compose ps
+               # Smoke check
+               curl -fsS http://localhost:8080/api/health
+               echo
+               echo 'Deployment complete'"
+
+      - name: Tag GitHub release on main pushes
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "Image deployed: ${ECR_REPO}:${{ steps.tag.outputs.tag }}"
+          echo "Live at https://eha-mda-dashboard.ehealthnigeria.org"
