@@ -15,7 +15,7 @@ from app.database import create_all_tables, AsyncSessionLocal
 from app.routes.auth import hash_password
 from app.models import User, GeoProject
 from app.config import SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD, SUPERADMIN_EMAIL
-from app.routes import auth, projects, boundaries, ingestion, analytics, qc
+from app.routes import auth, projects, boundaries, ingestion, analytics, qc, sync
 from app.routes import mda as mda_route
 
 logging.basicConfig(level=logging.INFO)
@@ -54,6 +54,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_1_11_m INTEGER",
             "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_12_59_f INTEGER",
             "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_12_59_m INTEGER",
+            # Index supporting the per-household individual deletion during sync
+            "CREATE INDEX IF NOT EXISTS idx_mda_individuals_hh_formid_proj ON mda_individuals (project_id, hh_formid)",
         ]:
             try:
                 await db.execute(text(stmt))
@@ -201,6 +203,7 @@ app.include_router(ingestion.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(qc.router, prefix="/api")
 app.include_router(mda_route.router, prefix="/api")
+app.include_router(sync.router, prefix="/api")
 
 # Serve static files
 import os

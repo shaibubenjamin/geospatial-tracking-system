@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Boolean,
-    Float, DateTime, Date, ForeignKey, UniqueConstraint
+    Float, DateTime, Date, ForeignKey, UniqueConstraint, PrimaryKeyConstraint
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
 from app.database import Base
@@ -299,3 +299,46 @@ class MlosSettlement(Base):
     source = Column(Text)
     geom = Column(Geometry("POINT", srid=4326))
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+# ── CommCare sync configuration & state ──────────────────────────────────────
+
+class SyncConfig(Base):
+    """Per-project CommCare credentials + form IDs to pull from.
+
+    One row per geo_project. Owned by superadmins via the admin panel.
+    The password is encrypted at rest using app.services.crypto.
+    """
+    __tablename__ = "sync_config"
+
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), primary_key=True)
+    commcare_base_url = Column(Text, default="https://www.commcarehq.org")
+    commcare_app_slug = Column(Text)  # e.g. 'sarmaan'
+    commcare_username = Column(Text)
+    commcare_password_encrypted = Column(Text)
+    form_ids = Column(JSONB, default=list)  # [{"set_name": "SET 1", "form_id": "..."}, ...]
+    last_synced_at = Column(DateTime(timezone=True))
+    last_status = Column(Text)        # 'ok' / 'error' / 'running'
+    last_error = Column(Text)
+    last_row_count = Column(Integer, default=0)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SyncFeedState(Base):
+    """Per-feed watermark for incremental CommCare syncs.
+
+    Composite PK (project_id, form_id, record_type). After each successful
+    pull from a feed, ``last_received_on`` is advanced to the MAX(received_on)
+    of the freshly-ingested rows so the next sync only pulls newer records.
+    """
+    __tablename__ = "sync_feed_state"
+    __table_args__ = (
+        PrimaryKeyConstraint("project_id", "form_id", "record_type", name="pk_sync_feed_state"),
+    )
+
+    project_id = Column(Integer, ForeignKey("geo_projects.id"))
+    form_id = Column(Text)
+    record_type = Column(Text)  # 'household' | 'individual'
+    last_received_on = Column(DateTime(timezone=True))
+    last_synced_at = Column(DateTime(timezone=True))
+    last_row_count = Column(Integer, default=0)

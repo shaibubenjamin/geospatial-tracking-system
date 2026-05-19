@@ -20,5 +20,10 @@ SUPERADMIN_USERNAME = os.getenv("SUPERADMIN_USERNAME", "superadmin")
 SUPERADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "superadmin123")
 SUPERADMIN_EMAIL = os.getenv("SUPERADMIN_EMAIL", "superadmin@geospatial.local")
 
+# Symmetric-encryption key for secrets stored in the DB (CommCare password etc.).
+# Generate once with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+SYNC_ENCRYPTION_KEY = os.getenv("SYNC_ENCRYPTION_KEY", "")
+
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
