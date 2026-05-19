@@ -1,3 +1,23 @@
+###############################################################################
+# Local development docker-compose
+#
+# Reads all secrets from the project-root `.env` file. Two common modes:
+#
+#   1. Local on-prem (the original setup)
+#      .env points at 10.11.52.96:5434 — requires the company VPN.
+#
+#   2. AWS RDS (for building new features against live production data)
+#      Run `scripts/dev-aws.sh` first — it opens an SSH tunnel through the
+#      bastion and writes the right .env. Then `docker compose up`. The app
+#      connects as `app_dev`, which has the same read/write grants as
+#      `app_prod` but a separate credential for audit logs. Writes land in
+#      the same RDS prod reads from — that's intentional, so new CommCare
+#      syncs / data work done from the dev container are visible in prod
+#      immediately.
+#
+# Production deploys do NOT use this file. See deploy/docker-compose.prod.yml.
+###############################################################################
+
 services:
   api:
     build: .
@@ -5,13 +25,12 @@ services:
     restart: unless-stopped
     ports:
       - "8090:8080"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://server_admin:DB_PASSWORD@10.11.52.96:5434/geospatial_tracking_system
-      DATABASE_URL_SYNC: postgresql://server_admin:DB_PASSWORD@10.11.52.96:5434/geospatial_tracking_system
-      SECRET_KEY: change-this-in-production-use-a-long-random-string-at-least-32-chars
-      ACCESS_TOKEN_EXPIRE_MINUTES: 480
-      ALGORITHM: HS256
-      ENVIRONMENT: production
+    env_file:
+      - .env
+    extra_hosts:
+      # Allows the container to reach the SSH tunnel on the Mac when in
+      # AWS-RDS mode. The tunnel listens on the host's localhost:25432.
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
       - uploads:/app/uploads

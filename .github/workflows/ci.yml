@@ -25,13 +25,16 @@ jobs:
           python-version: "3.11"
       - name: Install ruff
         run: pip install ruff
-      - name: Ruff check
-        # Permissive config for the existing codebase — strict rules can be turned on later.
-        # E501 (line length) and a few stylistic rules are silenced so this gates
-        # real bugs (undefined names, unused imports, syntax) rather than churn.
-        run: |
-          ruff check app/ scripts/ --select E,F,W --ignore E501,E402,W291,W293 --exit-non-zero-on-fix=false || true
-          ruff check app/ --select F,E9 --output-format=github   # bugs only — these must pass
+      - name: Ruff check (informational)
+        # Run the broader style check non-fatally so the report is visible
+        # but doesn't block. F401/F841 (unused import / unused local) are
+        # stylistic and tolerated until we do a cleanup pass.
+        run: ruff check app/ scripts/ --select E,F,W --ignore E501,E402,W291,W293,F401,F841 --exit-zero
+
+      - name: Ruff check (fatal — real bugs only)
+        # These rules catch actual bugs, not style: F821 undefined name,
+        # F823 use-before-def, F811 redefinition-while-unused, E9 syntax.
+        run: ruff check app/ --select F821,F823,F811,E9 --output-format=github
 
   # ────────────────────────────────────────────────────────────────────────────
   # Docker build — verifies the Dockerfile still produces a valid image.

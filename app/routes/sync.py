@@ -17,6 +17,11 @@ from app.models import User, SyncConfig, GeoProject
 from app.routes.auth import require_superadmin
 from app.services.crypto import encrypt, CryptoNotConfigured
 from app.services.commcare_sync import run_sync, test_connection
+from app.services.onprem_mirror import (
+    run_mirror as run_onprem_mirror,
+    is_available as onprem_mirror_available,
+    get_state_for_ui as onprem_mirror_state,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -33,6 +38,19 @@ async def _run_sync_background(project_id: int) -> None:
         await run_sync(project_id)
     except Exception:
         logger.exception("Background CommCare sync failed for project %s", project_id)
+
+
+def _run_onprem_mirror_background(project_id: int) -> None:
+    """Background-task wrapper around run_onprem_mirror.
+
+    Runs sync (psycopg2) so we don't bother with an async wrapper; FastAPI's
+    BackgroundTasks will hand it to a threadpool. The mirror itself updates
+    onprem_mirror_state on success/failure, so we only need to log here.
+    """
+    try:
+        run_onprem_mirror(project_id)
+    except Exception:
+        logger.exception("Background on-prem mirror failed for project %s", project_id)
 
 
 class FormEntry(BaseModel):
@@ -223,6 +241,61 @@ async def trigger_sync(
         )
 
     background_tasks.add_task(_run_sync_background, project_id)
+    return {"queued": True, "project_id": project_id}
+
+
+@router.get("/onprem-mirror/state")
+async def onprem_mirror_state_endpoint(
+    project_id: int,
+    _super: User = Depends(require_superadmin),
+):
+    """Status of the AWS RDS → on-prem mirror for this project.
+
+    ``available`` is false when ``ONPREM_BACKUP_DATABASE_URL`` isn't set
+    (i.e. in production). The admin panel uses this to decide whether to
+    render the Sync-to-on-prem card at all.
+    """
+    return onprem_mirror_state(project_id)
+
+
+@router.post("/run-onprem-mirror")
+async def trigger_onprem_mirror(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_superadmin),
+):
+    """Queue an AWS RDS → on-prem mirror for this project. Returns immediately.
+
+    Only available when ``ONPREM_BACKUP_DATABASE_URL`` is set — i.e. on dev
+    laptops that are on the VPN. Production deployments don't expose this.
+    Returns 409 if a mirror run is already in progress for this project.
+    """
+    if not onprem_mirror_available():
+        raise HTTPException(
+            400,
+            "On-prem mirror is not configured on this deployment "
+            "(ONPREM_BACKUP_DATABASE_URL is unset).",
+        )
+
+    # Verify the project exists and check the running-state lock.
+    proj_res = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
+    if not proj_res.scalar_one_or_none():
+        raise HTTPException(404, "Project not found")
+
+    res = await db.execute(
+        text("SELECT last_status FROM onprem_mirror_state WHERE project_id = :pid"),
+        {"pid": project_id},
+    )
+    row = res.fetchone()
+    if row and row[0] == "running":
+        raise HTTPException(
+            409,
+            "An on-prem mirror is already running for this project. "
+            "Wait for it to finish.",
+        )
+
+    background_tasks.add_task(_run_onprem_mirror_background, project_id)
     return {"queued": True, "project_id": project_id}
 
 
