@@ -264,7 +264,7 @@
 
     <div class="nav-section super-only" style="display:none">Data Management</div>
     <div class="nav-item super-only" data-view="uploads" style="display:none"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
-    <div class="nav-item super-only" data-view="sync" style="display:none"><i class="fa-solid fa-rotate"></i> API Sync</div>
+    <div class="nav-item super-only" data-view="sync" style="display:none"><i class="fa-solid fa-rotate"></i> Data Sources</div>
 
     <div class="nav-section">Configuration</div>
     <div class="nav-item super-only" data-view="projects" style="display:none"><i class="fa-solid fa-folder-open"></i> Projects</div>
@@ -385,15 +385,18 @@
         </div>
       </section>
 
-      <!-- ═══════════ API SYNC ═══════════ -->
+      <!-- ═══════════ DATA SOURCES (CommCare sync) ═══════════ -->
       <section class="view" id="view-sync">
         <div class="page-head">
           <div>
-            <div class="page-title">API Sync</div>
-            <div class="page-sub">Configure automatic data synchronisation from the Comcare platform</div>
+            <div class="page-title">Data Sources</div>
+            <div class="page-sub">CommCare HQ pull — incremental, scoped to one project (state + round)</div>
           </div>
           <div class="actions">
-            <button class="btn btn-primary" onclick="triggerSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
+            <select id="sync-project-selector" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;background:#fff;cursor:pointer">
+              <option value="">Loading projects…</option>
+            </select>
+            <button class="btn btn-primary" onclick="runSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
           </div>
         </div>
 
@@ -401,30 +404,28 @@
           <div>
             <div class="card">
               <div class="card-head">
-                <div class="card-title"><i class="fa-solid fa-plug"></i> Sync Configuration</div>
+                <div class="card-title"><i class="fa-solid fa-plug"></i> CommCare Connection</div>
               </div>
               <div class="card-body">
-                <div class="form-group">
-                  <label>API Endpoint URL</label>
-                  <input type="url" id="sync-url" placeholder="https://kf.kobotoolbox.org/api/v2/assets/…/data/" value="">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Base URL</label>
+                    <input type="url" id="cc-base-url" value="https://www.commcarehq.org">
+                  </div>
+                  <div class="form-group">
+                    <label>App slug</label>
+                    <input type="text" id="cc-app-slug" placeholder="e.g. sarmaan">
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label>API Key / Token</label>
-                  <input type="password" id="sync-key" placeholder="Token xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
-                </div>
-                <div class="form-group">
-                  <label>Sync Frequency</label>
-                  <select id="sync-freq">
-                    <option value="manual">Manual only</option>
-                    <option value="1h">Every 1 hour</option>
-                    <option value="6h">Every 6 hours</option>
-                    <option value="daily" selected>Daily at 06:00</option>
-                    <option value="realtime">Real-time (webhook)</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label>Data Form / Asset ID</label>
-                  <input type="text" id="sync-form-id" placeholder="e.g. aBcDeF12345">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="cc-username" autocomplete="username">
+                  </div>
+                  <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="cc-password" placeholder="leave blank to keep existing" autocomplete="new-password">
+                  </div>
                 </div>
                 <div style="display:flex;gap:10px;margin-top:4px">
                   <button class="btn btn-primary" style="flex:1" onclick="saveSyncConfig()">
@@ -440,8 +441,28 @@
 
             <div class="card">
               <div class="card-head">
-                <div class="card-title"><i class="fa-solid fa-circle-info"></i> Sync Status</div>
+                <div class="card-title"><i class="fa-solid fa-list"></i> Form IDs</div>
+                <div class="card-head-right">
+                  <button class="btn btn-ghost btn-sm" onclick="addFormRow()"><i class="fa-solid fa-plus"></i> Add</button>
+                </div>
               </div>
+              <div class="card-body">
+                <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+                  One row per CommCare form. Each form contributes both Household (<code>/feed</code>) and Individual (<code>/1/feed</code>) records.
+                </p>
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                  <thead><tr style="background:var(--pale);color:var(--deep);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px">
+                    <th style="padding:8px;text-align:left">Set name</th>
+                    <th style="padding:8px;text-align:left">Form ID</th>
+                    <th style="padding:8px;width:30px"></th>
+                  </tr></thead>
+                  <tbody id="form-ids-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><div class="card-title"><i class="fa-solid fa-circle-info"></i> Sync Status</div></div>
               <div class="card-body">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                   <div style="font-size:12.5px">
@@ -449,16 +470,16 @@
                     <div style="font-weight:600;color:var(--ink)" id="sync-last">—</div>
                   </div>
                   <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Next Sync</div>
-                    <div style="font-weight:600;color:var(--ink)" id="sync-next">—</div>
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Last Result</div>
+                    <div id="sync-status-badge"><span class="chip info">Not configured</span></div>
                   </div>
                   <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Records Synced</div>
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Rows fetched (last run)</div>
                     <div style="font-weight:600;color:var(--ink)" id="sync-count">—</div>
                   </div>
                   <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Status</div>
-                    <div id="sync-status-badge"><span class="chip info">Not configured</span></div>
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Last error</div>
+                    <div style="color:var(--bad);font-size:12px" id="sync-last-err">—</div>
                   </div>
                 </div>
               </div>
@@ -474,8 +495,7 @@
             </div>
             <div class="card-body" style="padding:14px">
               <div class="log-box" id="sync-log">
-<span class="log-entry info">[INFO]  Sync log initialised.</span>
-<span class="log-entry info">[INFO]  Configure API endpoint above and click "Sync Now" to begin.</span>
+<span class="log-entry info">[INFO]  Select a project and configure CommCare credentials to begin.</span>
               </div>
             </div>
           </div>
@@ -803,7 +823,7 @@
 
   /* ── NAVIGATION ── */
   const crumbs = {
-    uploads: 'Data Uploads', sync: 'API Sync', projects: 'Projects',
+    uploads: 'Data Uploads', sync: 'Data Sources', projects: 'Projects',
     users: 'Users', qc: 'QC Re-run', system: 'System Status'
   };
   document.querySelectorAll('.nav-item[data-view]').forEach(el => {
@@ -823,6 +843,7 @@
     if (v === 'projects') { loadProjects(); }
     if (v === 'users')    { loadUsers(); }
     if (v === 'system')   { loadSystemStatus(); }
+    if (v === 'sync')     { loadSyncProjects(); }
   }
 
   /* ── FEEDBACK HELPERS ── */
@@ -924,45 +945,149 @@
   }
   window.loadUploadHistory = loadUploadHistory;
 
-  /* ── SYNC ── */
-  window.saveSyncConfig = function() {
-    const url = document.getElementById('sync-url').value.trim();
-    const key = document.getElementById('sync-key').value.trim();
-    if (!url) { setFeedback('sync-config-feedback', 'API endpoint URL is required.', 'err'); return; }
-    localStorage.setItem('sync_url', url);
-    localStorage.setItem('sync_freq', document.getElementById('sync-freq').value);
-    setFeedback('sync-config-feedback', '✓ Configuration saved locally.', 'ok');
-  };
+  /* ── SYNC (CommCare) ── */
+  let SYNC_PROJECT_ID = null;
 
-  window.testSyncConnection = async function() {
-    const url = document.getElementById('sync-url').value.trim();
-    const key = document.getElementById('sync-key').value.trim();
-    if (!url) { setFeedback('sync-config-feedback', 'Enter an API URL first.', 'err'); return; }
-    setFeedback('sync-config-feedback', 'Testing connection…', 'info');
-    try {
-      const res = await fetch(url, { headers: key ? { Authorization: 'Token ' + key } : {} });
-      if (res.ok) {
-        setFeedback('sync-config-feedback', '✓ Connection successful (HTTP ' + res.status + ')', 'ok');
-        appendLog('sync-log', 'Connection test successful: ' + url, 'ok');
-      } else {
-        setFeedback('sync-config-feedback', 'Server returned HTTP ' + res.status, 'err');
-        appendLog('sync-log', 'Connection test failed: HTTP ' + res.status, 'err');
-      }
-    } catch(e) {
-      setFeedback('sync-config-feedback', 'Connection failed: ' + e.message, 'err');
-      appendLog('sync-log', 'Connection error: ' + e.message, 'err');
+  function syncProjectId() {
+    const sel = document.getElementById('sync-project-selector');
+    return sel ? parseInt(sel.value, 10) : null;
+  }
+
+  function renderFormIdRows(formIds) {
+    const tb = document.getElementById('form-ids-body');
+    if (!tb) return;
+    tb.innerHTML = '';
+    (formIds || []).forEach(entry => addFormRowWith(entry.set_name, entry.form_id));
+    if (!(formIds || []).length) addFormRowWith('', '');
+  }
+
+  function addFormRowWith(setName, formId) {
+    const tb = document.getElementById('form-ids-body');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="padding:6px 8px"><input class="cc-set-name" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px" placeholder="SET 1" value="${(setName||'').replace(/"/g,'&quot;')}"></td>
+      <td style="padding:6px 8px"><input class="cc-form-id" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:11.5px" placeholder="32-char CommCare form ID" value="${(formId||'').replace(/"/g,'&quot;')}"></td>
+      <td style="padding:6px 8px;text-align:center"><button class="btn btn-ghost btn-sm" style="padding:4px 8px" onclick="this.closest('tr').remove()" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>
+    `;
+    tb.appendChild(tr);
+  }
+  window.addFormRow = () => addFormRowWith('', '');
+
+  function collectFormIds() {
+    const rows = Array.from(document.querySelectorAll('#form-ids-body tr'));
+    const out = [];
+    for (const tr of rows) {
+      const setName = tr.querySelector('.cc-set-name')?.value?.trim() || '';
+      const formId  = tr.querySelector('.cc-form-id')?.value?.trim() || '';
+      if (formId) out.push({ set_name: setName || ('SET ' + (out.length + 1)), form_id: formId });
+    }
+    return out;
+  }
+
+  async function loadSyncProjects() {
+    const sel = document.getElementById('sync-project-selector');
+    if (!sel) return;
+    const res = await api('/api/projects');
+    if (!res || !res.ok) { sel.innerHTML = '<option value="">Failed to load</option>'; return; }
+    const projects = await res.json();
+    projects.sort((a,b) => (a.state_name||'').localeCompare(b.state_name||'') || (a.round_number||0) - (b.round_number||0));
+    // Default: active project
+    const active = projects.find(p => p.is_active) || projects[0];
+    SYNC_PROJECT_ID = SYNC_PROJECT_ID || (active && active.id) || null;
+    sel.innerHTML = projects.map(p => {
+      const lbl = p.state_name && p.round_number != null
+        ? `${p.state_name} Round ${p.round_number}${p.is_active ? ' (live)' : ''}`
+        : p.name;
+      return `<option value="${p.id}"${p.id === SYNC_PROJECT_ID ? ' selected' : ''}>${lbl}</option>`;
+    }).join('');
+    sel.onchange = () => { SYNC_PROJECT_ID = parseInt(sel.value, 10); loadSyncConfig(); };
+    await loadSyncConfig();
+  }
+
+  async function loadSyncConfig() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) return;
+    const res = await api('/api/sync/config?project_id=' + pid);
+    if (!res || !res.ok) return;
+    const cfg = await res.json();
+    document.getElementById('cc-base-url').value = cfg.commcare_base_url || 'https://www.commcarehq.org';
+    document.getElementById('cc-app-slug').value = cfg.commcare_app_slug || '';
+    document.getElementById('cc-username').value = cfg.commcare_username || '';
+    const pw = document.getElementById('cc-password');
+    pw.value = ''; pw.placeholder = cfg.has_password ? '•••••••• (saved — leave blank to keep)' : 'CommCare password';
+    renderFormIdRows(cfg.form_ids || []);
+    // Status panel
+    document.getElementById('sync-last').textContent = cfg.last_synced_at ? new Date(cfg.last_synced_at).toLocaleString() : '—';
+    document.getElementById('sync-count').textContent = (cfg.last_row_count != null) ? cfg.last_row_count.toLocaleString() : '—';
+    document.getElementById('sync-last-err').textContent = cfg.last_error || '—';
+    const badge = document.getElementById('sync-status-badge');
+    if (cfg.last_status === 'ok')      badge.innerHTML = '<span class="chip good">✓ OK</span>';
+    else if (cfg.last_status === 'running') badge.innerHTML = '<span class="chip warn">Running…</span>';
+    else if (cfg.last_status === 'error')   badge.innerHTML = '<span class="chip bad">Error</span>';
+    else                                    badge.innerHTML = '<span class="chip info">Not run yet</span>';
+  }
+
+  window.saveSyncConfig = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { setFeedback('sync-config-feedback', 'Pick a project first.', 'err'); return; }
+    const body = {
+      commcare_base_url: document.getElementById('cc-base-url').value.trim(),
+      commcare_app_slug: document.getElementById('cc-app-slug').value.trim(),
+      commcare_username: document.getElementById('cc-username').value.trim(),
+      form_ids: collectFormIds(),
+    };
+    const pw = document.getElementById('cc-password').value;
+    if (pw) body.commcare_password = pw;  // null = keep existing
+    setFeedback('sync-config-feedback', 'Saving…', 'info');
+    const res = await api('/api/sync/config?project_id=' + pid, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+    if (res && res.ok) {
+      setFeedback('sync-config-feedback', '✓ Configuration saved.', 'ok');
+      appendLog('sync-log', 'Config saved for project ' + pid, 'ok');
+      await loadSyncConfig();
+    } else {
+      const detail = res ? (await res.json().catch(() => ({})))?.detail : 'Network error';
+      setFeedback('sync-config-feedback', 'Save failed: ' + detail, 'err');
+      appendLog('sync-log', 'Config save failed: ' + detail, 'err');
     }
   };
 
-  window.triggerSync = async function() {
-    appendLog('sync-log', 'Manual sync triggered at ' + new Date().toLocaleTimeString(), 'info');
-    document.getElementById('sync-status-badge').innerHTML = '<span class="chip warn">Syncing…</span>';
-    document.getElementById('sync-last').textContent = 'In progress…';
-    // Simulate sync (real implementation would call backend)
-    await new Promise(r => setTimeout(r, 1200));
-    appendLog('sync-log', 'Sync complete. Use upload endpoint for real data ingestion.', 'info');
-    document.getElementById('sync-status-badge').innerHTML = '<span class="chip info">Manual</span>';
-    document.getElementById('sync-last').textContent = new Date().toLocaleString();
+  window.testSyncConnection = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { setFeedback('sync-config-feedback', 'Pick a project first.', 'err'); return; }
+    setFeedback('sync-config-feedback', 'Testing connection (hitting one CommCare feed)…', 'info');
+    appendLog('sync-log', 'Connection test starting…', 'info');
+    const res = await api('/api/sync/test?project_id=' + pid, { method: 'POST' });
+    if (!res) { setFeedback('sync-config-feedback', 'Network error.', 'err'); return; }
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      setFeedback('sync-config-feedback', `✓ Connected (HTTP ${data.status}). Sample fetched: ${data.sample_rows}`, 'ok');
+      appendLog('sync-log', `Test OK — HTTP ${data.status}, sample_rows=${data.sample_rows}`, 'ok');
+    } else {
+      const msg = data.detail || data.status || 'Unknown error';
+      setFeedback('sync-config-feedback', 'Connection failed: ' + msg, 'err');
+      appendLog('sync-log', 'Test FAILED: ' + msg, 'err');
+    }
+  };
+
+  window.runSync = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { alert('Pick a project first.'); return; }
+    if (!confirm('Pull from CommCare into the selected project now? Incremental — only new records since last sync are fetched.')) return;
+    document.getElementById('sync-status-badge').innerHTML = '<span class="chip warn">Running…</span>';
+    appendLog('sync-log', `Sync started for project ${pid} at ${new Date().toLocaleTimeString()}`, 'info');
+    const res = await api('/api/sync/run?project_id=' + pid, { method: 'POST' });
+    if (!res) { appendLog('sync-log', 'Network error', 'err'); await loadSyncConfig(); return; }
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      appendLog('sync-log', `Sync OK — households=${data.households_fetched}, individuals=${data.individuals_fetched}`, 'ok');
+      (data.per_feed || []).forEach(f => appendLog('sync-log', `  ${f.set_name} ${f.record_type}: ${f.fetched} rows`, 'info'));
+    } else {
+      appendLog('sync-log', 'Sync FAILED: ' + (data.detail || 'unknown'), 'err');
+    }
+    await loadSyncConfig();
   };
 
   window.clearLog = function() {
