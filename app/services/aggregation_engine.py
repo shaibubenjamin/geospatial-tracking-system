@@ -1,17 +1,28 @@
 """
 aggregation_engine.py
 Settlement → Ward → LGA metric rollups.
+
+LGAs / wards / settlements are state-scoped (boundary project). Their
+analytics (settlement_analytics rows: total_grids, visited_grids,
+completeness_pct, is_visited, point_count) are round-scoped (the user's
+chosen project). Each function below resolves boundary_pid for the
+geometry tables and uses ``project_id`` for the analytics join, so a
+round whose data has not been synced yet returns the full LGA list
+with zero metrics rather than the previous round's numbers.
 """
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+
+from app.services.spatial_engine import _resolve_boundary_pid
 
 
 async def get_lga_metrics(
     project_id: int,
     db: AsyncSession,
 ) -> List[Dict[str, Any]]:
-    """Roll up settlement analytics to LGA level."""
+    """Roll up settlement analytics to LGA level for the given round."""
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
     result = await db.execute(
         text("""
             SELECT
@@ -32,12 +43,13 @@ async def get_lga_metrics(
                 COALESCE(SUM(sa.point_count), 0) AS point_count
             FROM lgas l
             LEFT JOIN settlements s ON s.lgacode = l.lgacode AND s.project_id = l.project_id
-            LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id
-            WHERE l.project_id = :project_id
+            LEFT JOIN settlement_analytics sa
+                   ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
+            WHERE l.project_id = :boundary_pid
             GROUP BY l.lgacode, l.lga_name
             ORDER BY l.lga_name
         """),
-        {"project_id": project_id},
+        {"boundary_pid": boundary_pid, "mda_pid": project_id},
     )
     return [dict(row._mapping) for row in result.fetchall()]
 
@@ -47,8 +59,9 @@ async def get_ward_metrics(
     db: AsyncSession,
     lgacode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Roll up settlement analytics to ward level."""
-    params: Dict[str, Any] = {"project_id": project_id}
+    """Roll up settlement analytics to ward level for the given round."""
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
     filter_extra = ""
     if lgacode:
         filter_extra = "AND w.lgacode = :lgacode"
@@ -76,8 +89,9 @@ async def get_ward_metrics(
                 COALESCE(SUM(sa.point_count), 0) AS point_count
             FROM wards w
             LEFT JOIN settlements s ON s.wardcode = w.wardcode AND s.project_id = w.project_id
-            LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id
-            WHERE w.project_id = :project_id {filter_extra}
+            LEFT JOIN settlement_analytics sa
+                   ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
+            WHERE w.project_id = :boundary_pid {filter_extra}
             GROUP BY w.wardcode, w.ward_name, w.lgacode, w.lga_name
             ORDER BY w.ward_name
         """),
@@ -92,35 +106,43 @@ async def get_settlement_metrics(
     wardcode: Optional[str] = None,
     lgacode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Return settlement-level metrics with analytics."""
-    params: Dict[str, Any] = {"project_id": project_id}
+    """Return settlement-level metrics, joined per round.
+
+    Pulls the full settlement list from the state's boundary project and
+    LEFT JOINs analytics from the requested round so unsynced rounds show
+    every settlement with null/zero coverage rather than nothing at all.
+    """
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
     filters = []
     if wardcode:
-        filters.append("sa.wardcode = :wardcode")
+        filters.append("s.wardcode = :wardcode")
         params["wardcode"] = wardcode
     if lgacode:
-        filters.append("sa.lgacode = :lgacode")
+        filters.append("s.lgacode = :lgacode")
         params["lgacode"] = lgacode
     where_extra = ("AND " + " AND ".join(filters)) if filters else ""
 
     result = await db.execute(
         text(f"""
             SELECT
-                sa.unique_cod,
-                sa.lgacode,
-                sa.wardcode,
-                sa.settlement_name,
-                sa.lga_name,
-                sa.ward_name,
-                sa.total_grids,
-                sa.visited_grids,
-                sa.completeness_pct,
-                sa.is_visited,
-                sa.point_count,
+                s.unique_cod,
+                s.lgacode,
+                s.wardcode,
+                s.settlement_name,
+                s.lga_name,
+                s.ward_name,
+                COALESCE(sa.total_grids, 0)       AS total_grids,
+                COALESCE(sa.visited_grids, 0)     AS visited_grids,
+                COALESCE(sa.completeness_pct, 0)  AS completeness_pct,
+                COALESCE(sa.is_visited, FALSE)    AS is_visited,
+                COALESCE(sa.point_count, 0)       AS point_count,
                 sa.last_computed
-            FROM settlement_analytics sa
-            WHERE sa.project_id = :project_id {where_extra}
-            ORDER BY sa.settlement_name
+            FROM settlements s
+            LEFT JOIN settlement_analytics sa
+                   ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
+            WHERE s.project_id = :boundary_pid {where_extra}
+            ORDER BY s.settlement_name
         """),
         params,
     )

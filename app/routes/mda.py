@@ -1094,32 +1094,60 @@ async def mda_coverage_lga(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    filters: list = []
-    params: dict = {}
-    if lga:       filters.append("h.lga = :lga");           params["lga"]  = lga
-    if ward:      filters.append("h.ward_name = :ward");    params["ward"] = ward
-    if date_from: filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
-    if date_to:   filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = _scoped_where(pid, filters, params, alias="h")
+    """Coverage per LGA — driven by baseline, so every LGA in the round's
+    target appears even if no field forms have come in yet (coverage_pct=0,
+    forms=0, treated=0). This makes "LGAs below 60% → mop-up" and "LGAs on
+    target ≥80%" KPIs reflect the full campaign universe, not just whichever
+    LGAs happened to submit so far.
+    """
+    # Filters that apply on the household side of the join (date/ward).
+    hh_extra_filters: list = ["h.project_id = :pid"]
+    params: dict = {"pid": pid}
+    if ward:
+        hh_extra_filters.append("h.ward_name = :ward")
+        params["ward"] = ward
+    if date_from:
+        hh_extra_filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
+        params["date_from"] = date_from
+    if date_to:
+        hh_extra_filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
+        params["date_to"] = date_to
+    hh_on_clause = "h.project_id = :pid AND UPPER(TRIM(h.lga)) = b.lga_key" + "".join(
+        " AND " + f for f in hh_extra_filters if f != "h.project_id = :pid"
+    )
+
+    # Optional LGA-name filter applies on the baseline (drives which LGAs appear).
+    baseline_filter = ""
+    if lga:
+        baseline_filter = "AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga))"
+        params["lga"] = lga
+
     result = await db.execute(text(f"""
+        WITH baseline AS (
+          SELECT
+            -- Display the baseline-supplied LGA name (title-cased to match boundary names)
+            INITCAP(LOWER(TRIM(lga))) AS lga,
+            UPPER(TRIM(lga))          AS lga_key,
+            SUM(total_treated)        AS baseline_total
+          FROM mda_baseline
+          WHERE project_id = :pid {baseline_filter}
+          GROUP BY INITCAP(LOWER(TRIM(lga))), UPPER(TRIM(lga))
+        )
         SELECT
-          h.lga,
-          COUNT(*) AS forms,
-          COALESCE(SUM(h.number_of_treated), 0) AS actual_treated,
-          COALESCE(b.baseline_total, 0) AS baseline_total,
-          CASE WHEN COALESCE(b.baseline_total, 0) > 0
+          b.lga,
+          COUNT(h.id)                                AS forms,
+          COALESCE(SUM(h.number_of_treated), 0)      AS actual_treated,
+          b.baseline_total,
+          CASE WHEN b.baseline_total > 0
                THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
-               ELSE 0 END AS coverage_pct,
-          COUNT(DISTINCT h.hq_user) AS teams,
-          COUNT(DISTINCT h.check_treatment_date) AS days_reported
-        FROM mda_households h
-        LEFT JOIN (
-          SELECT UPPER(TRIM(lga)) AS lga, SUM(total_treated) AS baseline_total
-          FROM mda_baseline WHERE project_id = :pid GROUP BY UPPER(TRIM(lga))
-        ) b ON UPPER(TRIM(h.lga)) = b.lga
-        {where}
-        GROUP BY h.lga, b.baseline_total
-        ORDER BY coverage_pct DESC
+               ELSE 0 END                            AS coverage_pct,
+          COUNT(DISTINCT h.hq_user)                  AS teams,
+          COUNT(DISTINCT h.check_treatment_date)     AS days_reported
+        FROM baseline b
+        LEFT JOIN mda_households h
+          ON {hh_on_clause}
+        GROUP BY b.lga, b.baseline_total
+        ORDER BY coverage_pct DESC, b.lga
     """), params)
     rows = result.fetchall()
     keys = ["lga","forms","actual_treated","baseline_total","coverage_pct","teams","days_reported"]
@@ -1377,13 +1405,12 @@ async def geo_completeness(
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """
-    Returns average grid completeness % across all settlements and
-    count of settlements where completeness >= 60% (considered 'complete').
+    Returns average grid completeness % across all settlements of the selected
+    round and count of settlements where completeness >= 60% (considered 'complete').
     Completeness = visited_grids / total_grids * 100 per settlement.
 
-    settlement_analytics is keyed by the canonical boundary project for the state.
-    The active project's state_name is looked up and the analytics for that
-    state's boundary-owning project are returned.
+    Scoped to the user's selected project — a round with no analytics yet
+    returns zero completeness (not the previous round's numbers).
     """
     result = await db.execute(text("""
         SELECT
@@ -1392,11 +1419,7 @@ async def geo_completeness(
           COUNT(*) FILTER (WHERE completeness_pct >= 70)  AS completed_70,
           COUNT(*) AS total_settlements
         FROM settlement_analytics sa
-        WHERE sa.project_id = (
-          SELECT MIN(p2.id) FROM geo_projects p1
-          JOIN geo_projects p2 ON p2.state_name = p1.state_name
-          WHERE p1.id = :pid
-        )
+        WHERE sa.project_id = :pid
     """), {"pid": pid})
     row = result.fetchone()
     if not row:
@@ -1419,7 +1442,8 @@ async def download_settlement_status(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Download Excel file: LGA, Ward, Settlement, Visited (Yes/No), Completeness %."""
+    """Download Excel file for the selected round: LGA, Ward, Settlement,
+    Visited (Yes/No), Completeness %."""
     result = await db.execute(text("""
         SELECT
             sa.lga_name,
@@ -1431,11 +1455,7 @@ async def download_settlement_status(
             sa.total_grids,
             sa.point_count
         FROM settlement_analytics sa
-        WHERE sa.project_id = (
-          SELECT MIN(p2.id) FROM geo_projects p1
-          JOIN geo_projects p2 ON p2.state_name = p1.state_name
-          WHERE p1.id = :pid
-        )
+        WHERE sa.project_id = :pid
         ORDER BY sa.lga_name, sa.ward_name, sa.settlement_name
     """), {"pid": pid})
     rows = result.fetchall()

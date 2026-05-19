@@ -107,7 +107,13 @@ def _i(v) -> Optional[int]:
 
 
 def _dt(v) -> Optional[datetime]:
-    """Parse an ISO8601 timestamp. Returns naive UTC datetime or None."""
+    """Parse an ISO8601 timestamp. Returns timezone-aware UTC datetime or None.
+
+    We keep tzinfo throughout the sync because Postgres TIMESTAMPTZ columns
+    return aware datetimes on read; mixing aware and naive (e.g. comparing a
+    DB-read watermark to a freshly parsed received_on) raises
+    "can't compare offset-naive and offset-aware datetimes".
+    """
     if v is None:
         return None
     s = str(v).strip()
@@ -118,7 +124,7 @@ def _dt(v) -> Optional[datetime]:
         if s.endswith("Z"):
             s = s[:-1] + "+00:00"
         dt = datetime.fromisoformat(s)
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.astimezone(timezone.utc)
     except ValueError:
         return None
 
@@ -394,7 +400,7 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                             all_households.append({"_set": set_name, "_form": form_id, **_map_household(r, set_name)})
                     else:
                         # Individuals don't carry received_on; we'll bump the watermark using "now"
-                        max_received = max_received or datetime.utcnow()
+                        max_received = max_received or datetime.now(timezone.utc)
                         for r in rows:
                             mapped = _map_individual(r)
                             if not mapped["hh_formid"]:
@@ -434,7 +440,7 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                 "uploaded_at",
             ]
             values = []
-            now_iso = datetime.utcnow().isoformat()
+            now_iso = datetime.now(timezone.utc).isoformat()
             for h in all_households:
                 values.append((
                     project_id,
@@ -558,6 +564,82 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                   AND ST_Within(h.geom, w.geom)
                   AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
             """, (project_id, boundary_pid))
+
+        # 5c-bis. Recompute settlement_analytics for this project so the geo view's
+        # grid-cell colouring and per-settlement completeness reflect the freshly-synced
+        # households. Settlements/grids come from the state's boundary project;
+        # household EXISTS checks are scoped to the round being synced. Inside the
+        # same transaction so analytics + data either both commit or both roll back.
+        if all_households:
+            ph_cur.execute(
+                """
+                INSERT INTO settlement_analytics
+                  (project_id, settlement_id, unique_cod, lgacode, wardcode,
+                   settlement_name, lga_name, ward_name,
+                   total_grids, visited_grids, completeness_pct,
+                   is_visited, point_count, last_computed)
+                SELECT
+                    %(mda_pid)s          AS project_id,
+                    s.id                 AS settlement_id,
+                    s.unique_cod, s.lgacode, s.wardcode,
+                    s.settlement_name, s.lga_name, s.ward_name,
+                    COUNT(DISTINCT g.id) AS total_grids,
+                    COUNT(DISTINCT CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM mda_households h
+                            WHERE h.project_id = %(mda_pid)s
+                              AND h.geom IS NOT NULL
+                              AND ST_Within(h.geom, g.geom)
+                        ) THEN g.id END
+                    ) AS visited_grids,
+                    CASE WHEN COUNT(DISTINCT g.id) > 0
+                         THEN ROUND(100.0 * COUNT(DISTINCT CASE
+                              WHEN EXISTS (
+                                  SELECT 1 FROM mda_households h
+                                  WHERE h.project_id = %(mda_pid)s
+                                    AND h.geom IS NOT NULL
+                                    AND ST_Within(h.geom, g.geom)
+                              ) THEN g.id END
+                         ) / NULLIF(COUNT(DISTINCT g.id), 0), 2)
+                         ELSE 0 END AS completeness_pct,
+                    CASE
+                        WHEN COUNT(DISTINCT g.id) > 0
+                        THEN (
+                            COUNT(DISTINCT CASE WHEN EXISTS (
+                                SELECT 1 FROM mda_households h
+                                WHERE h.project_id = %(mda_pid)s
+                                  AND h.geom IS NOT NULL AND ST_Within(h.geom, g.geom)
+                            ) THEN g.id END) * 100.0
+                            / NULLIF(COUNT(DISTINCT g.id), 0)
+                        ) >= %(visit_threshold)s
+                        ELSE EXISTS (
+                            SELECT 1 FROM mda_households h2
+                            WHERE h2.project_id = %(mda_pid)s
+                              AND h2.geom IS NOT NULL AND ST_Within(h2.geom, s.geom)
+                        )
+                    END AS is_visited,
+                    (SELECT COUNT(*) FROM mda_households h3
+                     WHERE h3.project_id = %(mda_pid)s
+                       AND h3.geom IS NOT NULL AND ST_Within(h3.geom, s.geom)
+                    ) AS point_count,
+                    NOW() AS last_computed
+                FROM settlements s
+                LEFT JOIN grids g
+                       ON g.unique_cod  = s.unique_cod
+                      AND g.project_id  = s.project_id
+                WHERE s.project_id = %(boundary_pid)s
+                GROUP BY s.id, s.unique_cod, s.lgacode, s.wardcode,
+                         s.settlement_name, s.lga_name, s.ward_name
+                ON CONFLICT (project_id, settlement_id) DO UPDATE SET
+                    total_grids      = EXCLUDED.total_grids,
+                    visited_grids    = EXCLUDED.visited_grids,
+                    completeness_pct = EXCLUDED.completeness_pct,
+                    is_visited       = EXCLUDED.is_visited,
+                    point_count      = EXCLUDED.point_count,
+                    last_computed    = EXCLUDED.last_computed
+                """,
+                {"mda_pid": project_id, "boundary_pid": boundary_pid, "visit_threshold": 70},
+            )
 
         # 5d. Advance watermarks
         for feed in per_feed:

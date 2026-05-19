@@ -464,7 +464,7 @@
             <div class="card">
               <div class="card-head"><div class="card-title"><i class="fa-solid fa-circle-info"></i> Sync Status</div></div>
               <div class="card-body">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:12px">
                   <div style="font-size:12.5px">
                     <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Last Sync</div>
                     <div style="font-weight:600;color:var(--ink)" id="sync-last">—</div>
@@ -474,13 +474,13 @@
                     <div id="sync-status-badge"><span class="chip info">Not configured</span></div>
                   </div>
                   <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Rows fetched (last run)</div>
+                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Rows fetched</div>
                     <div style="font-weight:600;color:var(--ink)" id="sync-count">—</div>
                   </div>
-                  <div style="font-size:12.5px">
-                    <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Last error</div>
-                    <div style="color:var(--bad);font-size:12px" id="sync-last-err">—</div>
-                  </div>
+                </div>
+                <div id="sync-last-err-wrap" style="display:none;background:var(--bad-bg);border:1px solid #FECACA;border-radius:8px;padding:10px 12px">
+                  <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Last error</div>
+                  <div style="color:var(--bad);font-size:12.5px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace" id="sync-last-err">—</div>
                 </div>
               </div>
             </div>
@@ -766,6 +766,25 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
+<!-- ─── Custom confirm / alert modal ──────────────────────────────────── -->
+<div id="app-modal" style="display:none;position:fixed;inset:0;background:rgba(0,26,8,.55);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px);font-family:'Inter',system-ui,sans-serif">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.32);max-width:460px;width:92vw;overflow:hidden">
+    <div style="padding:22px 26px 6px;display:flex;align-items:flex-start;gap:14px">
+      <div id="app-modal-icon" style="width:42px;height:42px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex-shrink:0;background:var(--mist);color:var(--blue)">
+        <i class="fa-solid fa-circle-question"></i>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div id="app-modal-title" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px;letter-spacing:-.2px">Confirm action</div>
+        <div id="app-modal-message" style="font-size:13.5px;color:var(--muted);line-height:1.55;word-break:break-word"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:18px 22px 22px 22px;background:var(--pale);border-top:1px solid var(--line);margin-top:18px">
+      <button id="app-modal-cancel" type="button" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i> Cancel</button>
+      <button id="app-modal-confirm" type="button" class="btn btn-primary"><i class="fa-solid fa-check"></i> Confirm</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   'use strict';
@@ -807,6 +826,70 @@
 
   function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
   window.handleLogout = handleLogout;
+
+  /* ── Custom confirm / alert modal ── */
+  let _modalCleanup = null;
+  function _openModal({ title, message, confirmLabel, cancelLabel, danger, alertOnly }) {
+    return new Promise(resolve => {
+      const el = document.getElementById('app-modal');
+      const titleEl = document.getElementById('app-modal-title');
+      const msgEl   = document.getElementById('app-modal-message');
+      const confirmBtn = document.getElementById('app-modal-confirm');
+      const cancelBtn  = document.getElementById('app-modal-cancel');
+      const iconEl  = document.getElementById('app-modal-icon');
+
+      titleEl.textContent = title || (alertOnly ? 'Notice' : 'Confirm action');
+      msgEl.textContent   = message || '';
+
+      // Icon + colour: danger → red, alert → amber, default → blue
+      if (danger) {
+        iconEl.style.background = 'var(--bad-bg)'; iconEl.style.color = 'var(--bad)';
+        iconEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+      } else if (alertOnly) {
+        iconEl.style.background = 'var(--warn-bg)'; iconEl.style.color = 'var(--warn)';
+        iconEl.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+      } else {
+        iconEl.style.background = 'var(--mist)'; iconEl.style.color = 'var(--blue)';
+        iconEl.innerHTML = '<i class="fa-solid fa-circle-question"></i>';
+      }
+
+      confirmBtn.innerHTML = (danger ? '<i class="fa-solid fa-trash"></i> ' : '<i class="fa-solid fa-check"></i> ') + (confirmLabel || (alertOnly ? 'OK' : 'Confirm'));
+      confirmBtn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+      cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ' + (cancelLabel || 'Cancel');
+      cancelBtn.style.display = alertOnly ? 'none' : '';
+
+      const close = (result) => {
+        el.style.display = 'none';
+        confirmBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        el.removeEventListener('click', onBackdrop);
+        document.removeEventListener('keydown', onKey);
+        _modalCleanup = null;
+        resolve(result);
+      };
+      const onOk      = () => close(true);
+      const onCancel  = () => close(false);
+      const onBackdrop= (e) => { if (e.target === el) close(false); };
+      const onKey     = (e) => {
+        if (e.key === 'Escape') close(false);
+        if (e.key === 'Enter')  close(true);
+      };
+
+      // If a previous modal is mid-flight, force-close it first
+      if (_modalCleanup) _modalCleanup();
+      _modalCleanup = () => close(false);
+
+      confirmBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      el.addEventListener('click', onBackdrop);
+      document.addEventListener('keydown', onKey);
+
+      el.style.display = 'flex';
+      setTimeout(() => confirmBtn.focus(), 30);
+    });
+  }
+  window.confirmDialog = (opts) => _openModal({ alertOnly: false, ...opts });
+  window.alertDialog   = (opts) => _openModal({ alertOnly: true,  ...opts });
 
   /* ── API HELPER ── */
   async function api(path, opts = {}) {
@@ -1019,7 +1102,10 @@
     // Status panel
     document.getElementById('sync-last').textContent = cfg.last_synced_at ? new Date(cfg.last_synced_at).toLocaleString() : '—';
     document.getElementById('sync-count').textContent = (cfg.last_row_count != null) ? cfg.last_row_count.toLocaleString() : '—';
-    document.getElementById('sync-last-err').textContent = cfg.last_error || '—';
+    const errWrap = document.getElementById('sync-last-err-wrap');
+    const errEl   = document.getElementById('sync-last-err');
+    if (cfg.last_error) { errEl.textContent = cfg.last_error; errWrap.style.display = 'block'; }
+    else                { errEl.textContent = '—'; errWrap.style.display = 'none'; }
     const badge = document.getElementById('sync-status-badge');
     if (cfg.last_status === 'ok')      badge.innerHTML = '<span class="chip good">✓ OK</span>';
     else if (cfg.last_status === 'running') badge.innerHTML = '<span class="chip warn">Running…</span>';
@@ -1105,8 +1191,13 @@
 
   window.runSync = async function() {
     const pid = SYNC_PROJECT_ID || syncProjectId();
-    if (!pid) { alert('Pick a project first.'); return; }
-    if (!confirm('Pull from CommCare into the selected project now? Incremental — only new records since last sync are fetched.')) return;
+    if (!pid) { await alertDialog({ title: 'No project selected', message: 'Pick a project from the dropdown above before running a sync.' }); return; }
+    const ok = await confirmDialog({
+      title: 'Sync from CommCare?',
+      message: 'Pull the latest submissions for this project from CommCare HQ. Only new or edited records since the last successful sync are fetched, and the existing data stays intact.',
+      confirmLabel: 'Sync now',
+    });
+    if (!ok) return;
     document.getElementById('sync-status-badge').innerHTML = '<span class="chip warn">Running…</span>';
     appendLog('sync-log', `Sync started for project ${pid} at ${new Date().toLocaleTimeString()}`, 'info');
     const res = await api('/api/sync/run?project_id=' + pid, { method: 'POST' });
@@ -1301,39 +1392,55 @@
   };
 
   window.promoteUser = async function(id) {
-    if (!confirm('Promote this user to Superadmin? They will gain full data-pipeline and user-management control.')) return;
+    const ok = await confirmDialog({
+      title: 'Promote to Superadmin?',
+      message: 'This user will gain full control over the data pipeline, user management, and project configuration. They can then create or demote other superadmins.',
+      confirmLabel: 'Promote',
+    });
+    if (!ok) return;
     try {
       const res = await api('/api/auth/users/' + id + '/promote', { method: 'POST' });
       if (res && res.ok) { loadUsers(); }
       else {
         const d = res ? await res.json() : {};
-        alert('Promote failed: ' + (d.detail || 'Unknown error'));
+        await alertDialog({ title: 'Promote failed', message: d.detail || 'Unknown error' });
       }
-    } catch(e) { alert('Network error'); }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); }
   };
 
   window.demoteUser = async function(id) {
-    if (!confirm('Demote this user from Superadmin to Admin?')) return;
+    const ok = await confirmDialog({
+      title: 'Demote from Superadmin?',
+      message: 'This user will keep their Administrator privileges but lose access to data sync, user management of admins, and project configuration.',
+      confirmLabel: 'Demote',
+    });
+    if (!ok) return;
     try {
       const res = await api('/api/auth/users/' + id + '/demote', { method: 'POST' });
       if (res && res.ok) { loadUsers(); }
       else {
         const d = res ? await res.json() : {};
-        alert('Demote failed: ' + (d.detail || 'Unknown error'));
+        await alertDialog({ title: 'Demote failed', message: d.detail || 'Unknown error' });
       }
-    } catch(e) { alert('Network error'); }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); }
   };
 
   window.deleteUser = async function(id, uname) {
-    if (!confirm('Delete user "' + uname + '"? This cannot be undone.')) return;
+    const ok = await confirmDialog({
+      title: `Delete user "${uname}"?`,
+      message: 'This permanently removes the account. They will be signed out immediately and cannot recover access. This cannot be undone.',
+      confirmLabel: 'Delete user',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const res = await api('/api/auth/users/' + id, { method: 'DELETE' });
       if (res && res.ok) { loadUsers(); }
       else {
         const d = res ? await res.json() : {};
-        alert('Delete failed: ' + (d.detail || 'Unknown error'));
+        await alertDialog({ title: 'Delete failed', message: d.detail || 'Unknown error' });
       }
-    } catch(e) { alert('Network error'); }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); }
   };
 
   /* ── QC RE-RUN ── */

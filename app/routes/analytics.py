@@ -39,12 +39,11 @@ async def lga_metrics(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    # The LGA list belongs to the state — use the boundary-owning project so
-    # the dashboard always shows all LGAs of the state, even for a round whose
-    # analytics haven't been computed yet. (Coverage metrics will be 0 until
-    # the round runs its own compute.)
-    pid = await _resolve_boundary_pid(project_id, db)
-    return await get_lga_metrics(pid, db)
+    # Pass the user-selected project through. The aggregation engine resolves the
+    # state's boundary project for the LGA list and joins analytics scoped to
+    # this project — so R5 returns all 23 Sokoto LGAs with zero metrics until
+    # its CommCare sync recomputes settlement_analytics.
+    return await get_lga_metrics(project_id, db)
 
 
 @router.get("/wards")
@@ -54,8 +53,7 @@ async def ward_metrics(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    pid = await _resolve_boundary_pid(project_id, db)
-    return await get_ward_metrics(pid, db, lgacode=lgacode)
+    return await get_ward_metrics(project_id, db, lgacode=lgacode)
 
 
 @router.get("/settlements")
@@ -66,8 +64,7 @@ async def settlement_metrics(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    pid = await _resolve_boundary_pid(project_id, db)
-    return await get_settlement_metrics(pid, db, wardcode=wardcode, lgacode=lgacode)
+    return await get_settlement_metrics(project_id, db, wardcode=wardcode, lgacode=lgacode)
 
 
 @router.get("/timeline")
