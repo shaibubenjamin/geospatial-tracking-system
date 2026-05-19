@@ -8,8 +8,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 
+async def _resolve_boundary_pid(project_id: int, db: AsyncSession) -> int:
+    """Resolve a project_id to the canonical boundary-owning project for its state.
+
+    Boundaries (LGAs/wards/settlements/grids) are state-level; we store them once,
+    typically under the first project created for that state. When the user is
+    viewing Sokoto R5 but boundaries live under Sokoto R4, this helper returns R4.
+    """
+    res = await db.execute(text("""
+        SELECT MIN(p2.id)
+        FROM geo_projects p1
+        JOIN geo_projects p2 ON p2.state_name = p1.state_name
+        WHERE p1.id = :pid
+          AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id)
+    """), {"pid": project_id})
+    row = res.fetchone()
+    return (row[0] if row and row[0] else project_id)
+
+
 async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
-    """Return GeoJSON FeatureCollection for all LGAs in a project."""
+    """Return GeoJSON FeatureCollection for all LGAs in a project (state-fallback)."""
+    pid = await _resolve_boundary_pid(project_id, db)
     result = await db.execute(
         text("""
             SELECT
@@ -31,7 +50,7 @@ async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
             GROUP BY l.id, l.lgacode, l.lga_name, l.geom
             ORDER BY l.lga_name
         """),
-        {"project_id": project_id},
+        {"project_id": pid},
     )
     rows = result.fetchall()
     features = []
@@ -57,7 +76,8 @@ async def get_ward_geojson(
     db: AsyncSession,
     lgacode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Return GeoJSON FeatureCollection for wards, optionally filtered by LGA."""
+    """Return GeoJSON FeatureCollection for wards, optionally filtered by LGA (state-fallback)."""
+    project_id = await _resolve_boundary_pid(project_id, db)
     params: Dict[str, Any] = {"project_id": project_id}
     where_extra = ""
     if lgacode:
@@ -116,7 +136,8 @@ async def get_settlement_geojson(
     lgacode: Optional[str] = None,
     wardcode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Return GeoJSON for settlements with analytics, filtered by LGA or ward."""
+    """Return GeoJSON for settlements with analytics, filtered by LGA or ward (state-fallback)."""
+    project_id = await _resolve_boundary_pid(project_id, db)
     params: Dict[str, Any] = {"project_id": project_id}
     filters = []
     if lgacode:
@@ -182,8 +203,13 @@ async def get_grid_geojson(
     unique_cod: str,
 ) -> Dict[str, Any]:
     """Return GeoJSON for grid cells of a specific settlement.
-    has_point = TRUE when ≥1 mda_household GPS point falls within the grid polygon.
+
+    has_point = TRUE when ≥1 mda_household GPS point from the selected project
+    (e.g. Sokoto R5) falls inside the grid polygon. Grids are state-scoped
+    (boundary project); household check is round-scoped (the project the user
+    is viewing).
     """
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
     result = await db.execute(
         text("""
             SELECT
@@ -195,15 +221,16 @@ async def get_grid_geojson(
                 ST_AsGeoJSON(g.geom)::json AS geometry,
                 CASE WHEN EXISTS (
                     SELECT 1 FROM mda_households h
-                    WHERE h.geom IS NOT NULL
+                    WHERE h.project_id = :mda_pid
+                      AND h.geom IS NOT NULL
                       AND ST_Within(h.geom, g.geom)
                 ) THEN TRUE ELSE FALSE END AS has_point
             FROM grids g
-            WHERE g.project_id = :project_id
+            WHERE g.project_id = :boundary_pid
               AND g.unique_cod = :unique_cod
             ORDER BY g.id
         """),
-        {"project_id": project_id, "unique_cod": unique_cod},
+        {"boundary_pid": boundary_pid, "mda_pid": project_id, "unique_cod": unique_cod},
     )
     rows = result.fetchall()
     features = []
@@ -232,20 +259,26 @@ async def get_points_geojson(
     limit: int = 5000,
 ) -> Dict[str, Any]:
     """
-    Return GeoJSON for MDA household GPS points, coloured by grid intersection.
-    Each feature has in_grid=true (green) if the point falls inside any grid cell,
-    or in_grid=false (red) if it does not intersect any grid.
-    All layers are in EPSG:4326 — no reprojection needed.
+    Return GeoJSON for MDA household GPS points for the selected project (round),
+    coloured by grid intersection. Each feature has in_grid=true (green) if the
+    point falls inside any grid cell, or in_grid=false (red) if it does not.
+    Boundary lookups (settlements/wards/lgas) resolve to the state's canonical
+    boundary project; household points come from the user-selected project.
     """
-    params: Dict[str, Any] = {"project_id": project_id, "limit": limit}
+    boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params: Dict[str, Any] = {
+        "project_id": project_id,
+        "boundary_pid": boundary_pid,
+        "limit": limit,
+    }
     extra_join = ""
-    extra_filter = "h.geom IS NOT NULL"
+    extra_filter = "h.project_id = :project_id AND h.geom IS NOT NULL"
 
     if unique_cod:
         # Spatially filter to points within the named settlement polygon
         extra_join = """
             JOIN settlements s
-              ON s.project_id = :project_id
+              ON s.project_id = :boundary_pid
              AND s.unique_cod  = :unique_cod
              AND ST_Within(h.geom, s.geom)
         """
@@ -253,7 +286,7 @@ async def get_points_geojson(
     elif wardcode:
         extra_join = """
             JOIN wards w
-              ON w.project_id = :project_id
+              ON w.project_id = :boundary_pid
              AND w.wardcode    = :wardcode
              AND ST_Within(h.geom, w.geom)
         """
@@ -261,7 +294,7 @@ async def get_points_geojson(
     elif lgacode:
         extra_join = """
             JOIN lgas l
-              ON l.project_id = :project_id
+              ON l.project_id = :boundary_pid
              AND l.lgacode     = :lgacode
              AND ST_Within(h.geom, l.geom)
         """

@@ -18,6 +18,8 @@ class GeoProject(Base):
     slug = Column(Text, unique=True, nullable=False)
     description = Column(Text, default="")
     is_active = Column(Boolean, default=False)
+    state_name = Column(Text)
+    round_number = Column(Integer)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     lgas = relationship("LGA", back_populates="project", cascade="all, delete-orphan")
@@ -181,6 +183,7 @@ class MdaHousehold(Base):
     __tablename__ = "mda_households"
 
     id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     formid = Column(Text, unique=True, nullable=False, index=True)
     username = Column(Text)
     teamcode = Column(Text)
@@ -239,11 +242,17 @@ class MdaHousehold(Base):
 class MdaBaseline(Base):
     __tablename__ = "mda_baseline"
     id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     state = Column(Text)
     lga = Column(Text, index=True)
     ward = Column(Text, index=True)
     settlement = Column(Text)
     total_treated = Column(Integer)
+    # Age/sex breakdown — populated by R5+ uploads. Nullable for R4 historical rows.
+    target_1_11_f = Column(Integer)
+    target_1_11_m = Column(Integer)
+    target_12_59_f = Column(Integer)
+    target_12_59_m = Column(Integer)
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
@@ -251,6 +260,7 @@ class MdaIndividual(Base):
     __tablename__ = "mda_individuals"
 
     id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     hh_formid = Column(Text, index=True)
     mother_name = Column(Text)
     child_name = Column(Text)
@@ -278,6 +288,7 @@ class MlosSettlement(Base):
     __tablename__ = "mlos_settlements"
 
     id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     state_name = Column(Text)
     lga_name = Column(Text, index=True)
     ward_name_raw = Column(Text)        # ward_name as written in MLOS file

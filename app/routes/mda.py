@@ -117,6 +117,35 @@ def _get_sync_conn():
     return psycopg2.connect(DATABASE_URL_SYNC)
 
 
+async def resolve_pid(project_id: Optional[int] = None, db: AsyncSession = Depends(get_db)) -> int:
+    """Resolve which project's data to query.
+
+    - Explicit ?project_id=N in the request → that project (lets users view any historical round).
+    - Otherwise → the project flagged is_active = TRUE (default behaviour).
+    - As a last resort → the lowest-id project (so a fresh DB without an active project still works).
+    """
+    if project_id is not None:
+        return project_id
+    res = await db.execute(text("SELECT id FROM geo_projects WHERE is_active = TRUE ORDER BY id LIMIT 1"))
+    row = res.fetchone()
+    if row:
+        return row[0]
+    res = await db.execute(text("SELECT id FROM geo_projects ORDER BY id LIMIT 1"))
+    row = res.fetchone()
+    return row[0] if row else 1
+
+
+def _scoped_where(pid: int, filters: list, params: dict, alias: str = "") -> str:
+    """Build a WHERE clause that always pins the query to a single project.
+
+    Pass an alias when the table is aliased in the FROM/JOIN (e.g. ``"h"`` for ``mda_households h``).
+    """
+    col = f"{alias}.project_id" if alias else "project_id"
+    filters.insert(0, f"{col} = :pid")
+    params["pid"] = pid
+    return "WHERE " + " AND ".join(filters)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/mda/upload
 # ─────────────────────────────────────────────────────────────────────────────
@@ -124,11 +153,13 @@ def _get_sync_conn():
 @router.post("/upload")
 async def upload_mda(
     file: UploadFile = File(...),
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _super: User = Depends(require_superadmin),
 ):
     """
-    Replace all MDA data with the uploaded Excel workbook.
+    Replace MDA data for the active project with the uploaded Excel workbook.
+    Other projects (other rounds / other states) are untouched.
     Parses Forms sheet (households) and Repeat-group_indv sheet (individuals).
     Returns QC flag summary counts.
     """
@@ -344,13 +375,23 @@ async def upload_mda(
     try:
         cur = conn.cursor()
 
-        # Delete existing data
-        cur.execute("DELETE FROM mda_individuals")
-        cur.execute("DELETE FROM mda_households")
+        # Resolve the boundary-owning project for the same state (lowest-id project
+        # in the same state). For Sokoto that's R4 (id=1) — boundaries are state-level.
+        cur.execute("""
+            SELECT MIN(p2.id) FROM geo_projects p1
+            JOIN geo_projects p2 ON p2.state_name = p1.state_name
+            WHERE p1.id = %s
+        """, (pid,))
+        boundary_pid = (cur.fetchone() or [pid])[0] or pid
+
+        # Delete existing data — scoped to the active project only
+        cur.execute("DELETE FROM mda_individuals WHERE project_id = %s", (pid,))
+        cur.execute("DELETE FROM mda_households  WHERE project_id = %s", (pid,))
 
         # Insert households
         if households:
             hh_cols = [
+                "project_id",
                 "formid", "username", "teamcode", "data_type",
                 "data_entry_persons", "data_entry_persons_norm",
                 "phone_number_data", "ra_key", "lga",
@@ -374,6 +415,7 @@ async def upload_mda(
             for h in households:
                 geom_val = h["geom_wkt"]  # WKT string or None
                 hh_values.append((
+                    pid,
                     h["formid"], h["username"], h["teamcode"], h["data_type"],
                     h["data_entry_persons"], h["data_entry_persons_norm"],
                     h["phone_number_data"], h["ra_key"], h["lga"],
@@ -414,6 +456,7 @@ async def upload_mda(
         # Insert individuals
         if individuals:
             indv_cols = [
+                "project_id",
                 "hh_formid", "mother_name", "child_name", "dob", "dob_checknote",
                 "sex", "height_cm", "age_in_months", "treatment_status",
                 "not_treated", "vomit_spill_azt", "child_id_r2",
@@ -422,6 +465,7 @@ async def upload_mda(
             now_str = datetime.utcnow().isoformat()
             indv_values = [
                 (
+                    pid,
                     i["hh_formid"], i["mother_name"], i["child_name"],
                     i["dob"], i["dob_checknote"], i["sex"], i["height_cm"],
                     i["age_in_months"], i["treatment_status"], i["not_treated"],
@@ -438,76 +482,84 @@ async def upload_mda(
                 page_size=1000,
             )
 
-        # GPS outside stated LGA polygon
+        # GPS outside stated LGA polygon (scoped to this project's households +
+        # the state's canonical boundary project)
         cur.execute("""
             UPDATE mda_households h
             SET flag_gps_outside_lga = TRUE
-            WHERE h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+            WHERE h.project_id = %s
+              AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
               AND NOT EXISTS (
                   SELECT 1 FROM lgas l
-                  WHERE l.project_id = 1
+                  WHERE l.project_id = %s
                     AND UPPER(TRIM(l.lga_name)) = UPPER(TRIM(h.lga))
                     AND ST_Within(h.geom, l.geom)
               )
-        """)
+        """, (pid, boundary_pid))
 
-        # GPS outside Sokoto State (not within any LGA polygon at all)
+        # GPS outside any state LGA polygon
         cur.execute("""
             UPDATE mda_households h
             SET flag_gps_outside_state = TRUE
-            WHERE h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+            WHERE h.project_id = %s
+              AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
               AND NOT EXISTS (
                   SELECT 1 FROM lgas l
-                  WHERE l.project_id = 1
+                  WHERE l.project_id = %s
                     AND ST_Within(h.geom, l.geom)
               )
-        """)
+        """, (pid, boundary_pid))
 
         # GPS outside any ward polygon
         cur.execute("""
             UPDATE mda_households h
             SET flag_gps_outside_ward = TRUE
-            WHERE h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+            WHERE h.project_id = %s
+              AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
               AND NOT EXISTS (
                   SELECT 1 FROM wards w
-                  WHERE w.project_id = 1
+                  WHERE w.project_id = %s
                     AND ST_Within(h.geom, w.geom)
               )
-        """)
+        """, (pid, boundary_pid))
 
-        # Duplicate GPS coordinates (same lat/lon in more than one record)
+        # Duplicate GPS coordinates within this project
         cur.execute("""
             UPDATE mda_households h
             SET flag_duplicate_gps = TRUE
-            WHERE h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+            WHERE h.project_id = %s
+              AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
               AND h.flag_gps_zero = FALSE
               AND EXISTS (
                   SELECT 1 FROM mda_households h2
-                  WHERE h2.id != h.id
+                  WHERE h2.project_id = %s
+                    AND h2.id != h.id
                     AND h2.latitude = h.latitude
                     AND h2.longitude = h.longitude
               )
-        """)
+        """, (pid, pid))
 
         # Spatially join each household GPS point to the ward boundary → populate ward_name
         cur.execute("""
             UPDATE mda_households h
             SET ward_name = w.ward_name
             FROM wards w
-            WHERE w.project_id = 1
+            WHERE h.project_id = %s
+              AND w.project_id = %s
               AND ST_Within(h.geom, w.geom)
               AND h.geom IS NOT NULL
               AND h.flag_gps_zero = FALSE
-        """)
+        """, (pid, boundary_pid))
 
         # Normalise lga names to match shapefile Title Case (e.g. TAMBUWAL → Tambuwal)
         cur.execute("""
             UPDATE mda_households h
             SET lga = w.lga_name
-            FROM (SELECT DISTINCT lga_name FROM wards WHERE project_id = 1) w
-            WHERE UPPER(TRIM(h.lga)) = UPPER(TRIM(w.lga_name))
+            FROM (SELECT DISTINCT lga_name FROM wards WHERE project_id = %s) w
+            WHERE h.project_id = %s
+              AND UPPER(TRIM(h.lga)) = UPPER(TRIM(w.lga_name))
               AND h.lga <> w.lga_name
-        """)
+        """, (boundary_pid, pid))
 
         conn.commit()
     except Exception as exc:
@@ -547,6 +599,7 @@ async def qc_summary(
     ward:      Optional[str] = None,
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -560,7 +613,7 @@ async def qc_summary(
         params["ward"] = ward
     if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           COUNT(*) AS total_forms,
@@ -580,8 +633,8 @@ async def qc_summary(
           COUNT(DISTINCT date_trt) AS days_active,
           COUNT(DISTINCT lga) AS lgas_covered,
           COUNT(DISTINCT ra_key) AS ra_count,
-          (SELECT COUNT(*) FROM mda_individuals) AS total_individuals,
-          (SELECT MIN(uploaded_at) FROM mda_households) AS data_as_of
+          (SELECT COUNT(*) FROM mda_individuals WHERE project_id = :pid) AS total_individuals,
+          (SELECT MIN(uploaded_at) FROM mda_households WHERE project_id = :pid) AS data_as_of
         FROM mda_households {where}
     """), params)
     row = result.fetchone()
@@ -618,6 +671,7 @@ async def qc_summary(
 
 @router.get("/qc/ra-performance")
 async def qc_ra_performance(
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -632,10 +686,10 @@ async def qc_ra_performance(
           SUM(CASE WHEN flag_refusal THEN 1 ELSE 0 END) AS refusals,
           ROUND(AVG(form_duration_min)::numeric, 1) AS avg_duration_min
         FROM mda_households
-        WHERE ra_key IS NOT NULL
+        WHERE project_id = :pid AND ra_key IS NOT NULL
         GROUP BY data_entry_persons, phone_number_data, lga, date_trt, ra_key
         ORDER BY lga, date_trt, data_entry_persons
-    """))
+    """), {"pid": pid})
     rows = result.fetchall()
     keys = [
         "data_entry_persons", "phone_number_data", "lga", "date_trt",
@@ -660,6 +714,7 @@ async def qc_ra_performance(
 async def qc_refusals_by_lga(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -667,7 +722,7 @@ async def qc_refusals_by_lga(
     filters: list = []
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           lga,
@@ -701,6 +756,7 @@ async def qc_refusals_by_lga(
 async def qc_duration_by_lga(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -708,7 +764,7 @@ async def qc_duration_by_lga(
     filters: list = ["form_duration_min IS NOT NULL"]
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = "WHERE " + " AND ".join(filters)
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           lga,
@@ -745,6 +801,7 @@ async def qc_duration_by_lga(
 async def submissions_by_ward(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -753,7 +810,7 @@ async def submissions_by_ward(
     params: dict = {}
     if lga:  filters.append("lga = :lga");       params["lga"]  = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = "WHERE " + " AND ".join(filters)
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           ward_name,
@@ -780,6 +837,7 @@ async def qc_teams_summary(
     ward:      Optional[str] = None,
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -790,7 +848,7 @@ async def qc_teams_summary(
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
     if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = "WHERE " + " AND ".join(filters)
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           hq_user,
@@ -833,7 +891,7 @@ async def qc_teams_summary(
 # GET /api/mda/qc/gps/geojson
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _gps_geojson(db: AsyncSession, where_clause: str, limit: int = 20000):
+async def _gps_geojson(db: AsyncSession, pid: int, where_clause: str, limit: int = 20000):
     """Shared helper for filtered GPS GeoJSON endpoints."""
     result = await db.execute(text(f"""
         SELECT
@@ -844,9 +902,9 @@ async def _gps_geojson(db: AsyncSession, where_clause: str, limit: int = 20000):
           latitude, longitude,
           ST_AsGeoJSON(geom)::json AS geometry
         FROM mda_households
-        WHERE geom IS NOT NULL AND {where_clause}
+        WHERE project_id = :pid AND geom IS NOT NULL AND {where_clause}
         LIMIT {limit}
-    """))
+    """), {"pid": pid})
     rows = result.fetchall()
     features = []
     for row in rows:
@@ -870,23 +928,23 @@ async def _gps_geojson(db: AsyncSession, where_clause: str, limit: int = 20000):
 
 
 @router.get("/qc/gps/outside-lga")
-async def gps_outside_lga(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, "flag_gps_outside_lga = TRUE")
+async def gps_outside_lga(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
+    return await _gps_geojson(db, pid, "flag_gps_outside_lga = TRUE")
 
 
 @router.get("/qc/gps/outside-ward")
-async def gps_outside_ward(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, "flag_gps_outside_ward = TRUE")
+async def gps_outside_ward(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
+    return await _gps_geojson(db, pid, "flag_gps_outside_ward = TRUE")
 
 
 @router.get("/qc/gps/outside-state")
-async def gps_outside_state(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, "flag_gps_outside_state = TRUE")
+async def gps_outside_state(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
+    return await _gps_geojson(db, pid, "flag_gps_outside_state = TRUE")
 
 
 @router.get("/qc/gps/duplicate")
-async def gps_duplicate(db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, "flag_duplicate_gps = TRUE")
+async def gps_duplicate(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
+    return await _gps_geojson(db, pid, "flag_duplicate_gps = TRUE")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -899,6 +957,7 @@ async def mda_overview(
     ward:      Optional[str] = None,
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -907,7 +966,7 @@ async def mda_overview(
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
     if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           COUNT(*) AS total_forms,
@@ -920,7 +979,7 @@ async def mda_overview(
           SUM(CASE WHEN flag_after_hours THEN 1 ELSE 0 END) AS after_hours,
           SUM(CASE WHEN flag_gps_outside_lga THEN 1 ELSE 0 END) AS gps_outside_lga,
           SUM(CASE WHEN flag_duplicate_gps THEN 1 ELSE 0 END) AS duplicate_gps,
-          (SELECT COALESCE(SUM(total_treated),0) FROM mda_baseline) AS baseline_total,
+          (SELECT COALESCE(SUM(total_treated),0) FROM mda_baseline WHERE project_id = :pid) AS baseline_total,
           MIN(check_treatment_date)::text AS campaign_start,
           MAX(check_treatment_date)::text AS campaign_end
         FROM mda_households {where}
@@ -953,6 +1012,7 @@ async def mda_trends_daily(
     ward:      Optional[str] = None,
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -962,7 +1022,7 @@ async def mda_trends_daily(
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
     if date_from: filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = "WHERE " + " AND ".join(filters)
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           check_treatment_date::text AS date,
@@ -984,6 +1044,7 @@ async def mda_trends_daily(
 async def mda_teams(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -991,7 +1052,7 @@ async def mda_teams(
     params: dict = {}
     if lga:  filters.append("lga = :lga");       params["lga"]  = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = "WHERE " + " AND ".join(filters)
+    where = _scoped_where(pid, filters, params)
     result = await db.execute(text(f"""
         SELECT
           hq_user,
@@ -1029,6 +1090,7 @@ async def mda_coverage_lga(
     ward:      Optional[str] = None,
     date_from: Optional[str] = None,
     date_to:   Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -1038,7 +1100,7 @@ async def mda_coverage_lga(
     if ward:      filters.append("h.ward_name = :ward");    params["ward"] = ward
     if date_from: filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(h.completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    where = _scoped_where(pid, filters, params, alias="h")
     result = await db.execute(text(f"""
         SELECT
           h.lga,
@@ -1053,7 +1115,7 @@ async def mda_coverage_lga(
         FROM mda_households h
         LEFT JOIN (
           SELECT UPPER(TRIM(lga)) AS lga, SUM(total_treated) AS baseline_total
-          FROM mda_baseline GROUP BY UPPER(TRIM(lga))
+          FROM mda_baseline WHERE project_id = :pid GROUP BY UPPER(TRIM(lga))
         ) b ON UPPER(TRIM(h.lga)) = b.lga
         {where}
         GROUP BY h.lga, b.baseline_total
@@ -1071,15 +1133,17 @@ async def mda_coverage_lga(
 @router.get("/coverage/ward")
 async def mda_coverage_ward(
     lga: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Ward-level coverage vs baseline, optionally filtered by LGA."""
+    filters: list = []
     params: dict = {}
-    where = ""
     if lga:
-        where = "WHERE UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))"
+        filters.append("UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))")
         params["lga"] = lga
+    where = _scoped_where(pid, filters, params, alias="h")
     result = await db.execute(text(f"""
         SELECT
           h.ward_name,
@@ -1095,7 +1159,7 @@ async def mda_coverage_ward(
         FROM mda_households h
         LEFT JOIN (
           SELECT UPPER(TRIM(lga)) AS lga, UPPER(TRIM(ward)) AS ward, SUM(total_treated) AS baseline_total
-          FROM mda_baseline GROUP BY UPPER(TRIM(lga)), UPPER(TRIM(ward))
+          FROM mda_baseline WHERE project_id = :pid GROUP BY UPPER(TRIM(lga)), UPPER(TRIM(ward))
         ) b ON UPPER(TRIM(h.lga)) = b.lga AND UPPER(TRIM(h.ward_name)) = b.ward
         {where}
         GROUP BY h.ward_name, h.lga, b.baseline_total
@@ -1114,12 +1178,13 @@ async def mda_coverage_ward(
 async def individuals_age_summary(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Age-band breakdown from mda_individuals, filterable by LGA and ward."""
-    hh_filters = ["h.lga IS NOT NULL"]
-    params: dict = {}
+    hh_filters = ["h.project_id = :pid", "i.project_id = :pid", "h.lga IS NOT NULL"]
+    params: dict = {"pid": pid}
     if lga:
         hh_filters.append("h.lga = :lga")
         params["lga"] = lga
@@ -1142,16 +1207,35 @@ async def individuals_age_summary(
           AND {hh_where}
     """), params)
     row = result.fetchone()
-    bl = await db.execute(text("SELECT COALESCE(SUM(total_treated),0) AS total FROM mda_baseline"))
+    # Baselines: grand total + age-band breakdown (R5+ populates the breakdown columns).
+    bl = await db.execute(text("""
+        SELECT
+          COALESCE(SUM(total_treated), 0)                                          AS total,
+          COALESCE(SUM(COALESCE(target_1_11_f, 0) + COALESCE(target_1_11_m, 0)), 0)   AS baseline_1_11,
+          COALESCE(SUM(COALESCE(target_12_59_f, 0) + COALESCE(target_12_59_m, 0)), 0) AS baseline_12_59
+        FROM mda_baseline
+        WHERE project_id = :pid
+    """), {"pid": pid})
     bl_row = bl.fetchone()
+
+    treated_1_11   = int(row.treated_1_11 or 0)
+    treated_12_59  = int(row.treated_12_59 or 0)
+    baseline_1_11  = int(bl_row.baseline_1_11) if bl_row else 0
+    baseline_12_59 = int(bl_row.baseline_12_59) if bl_row else 0
+
     return {
         "total_1_11":    int(row.total_1_11 or 0),
-        "treated_1_11":  int(row.treated_1_11 or 0),
+        "treated_1_11":  treated_1_11,
         "total_12_59":   int(row.total_12_59 or 0),
-        "treated_12_59": int(row.treated_12_59 or 0),
+        "treated_12_59": treated_12_59,
         "total_treated": int(row.total_treated or 0),
         "grand_total":   int(row.grand_total or 0),
         "baseline_total": int(bl_row.total) if bl_row else 0,
+        # Age-band coverage (populated only if the round's baseline carries per-band targets)
+        "baseline_1_11":      baseline_1_11,
+        "baseline_12_59":     baseline_12_59,
+        "coverage_1_11_pct":  round(100.0 * treated_1_11  / baseline_1_11,  1) if baseline_1_11  > 0 else None,
+        "coverage_12_59_pct": round(100.0 * treated_12_59 / baseline_12_59, 1) if baseline_12_59 > 0 else None,
     }
 
 
@@ -1162,6 +1246,7 @@ async def individuals_age_summary(
 @router.get("/qc/heatmap-geojson")
 async def qc_heatmap_geojson(
     flag: str = "all",
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -1180,12 +1265,13 @@ async def qc_heatmap_geojson(
                     WHEN flag_gps_outside_ward   THEN 'outside_ward'
                     ELSE 'other' END AS flag_type
         FROM mda_households
-        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        WHERE project_id = :pid
+          AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude  BETWEEN 10 AND 16
           AND longitude BETWEEN  3 AND  8
           AND {where}
         LIMIT 15000
-    """))
+    """), {"pid": pid})
     rows = result.fetchall()
     features = [
         {
@@ -1206,12 +1292,14 @@ async def qc_heatmap_geojson(
 async def teams_movement_geojson(
     hq_user: Optional[str] = None,
     date: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Timestamped GPS points for team movement visualisation."""
-    params: dict = {}
+    params: dict = {"pid": pid}
     filters = [
+        "project_id = :pid",
         "latitude IS NOT NULL", "longitude IS NOT NULL",
         "latitude BETWEEN 10 AND 16", "longitude BETWEEN 3 AND 8",
         "started_time IS NOT NULL",
@@ -1254,6 +1342,7 @@ async def teams_movement_geojson(
 
 @router.get("/campaign-dates")
 async def campaign_dates(
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -1265,8 +1354,8 @@ async def campaign_dates(
           array_agg(DISTINCT (completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                     ORDER BY (completed_time AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS dates
         FROM mda_households
-        WHERE completed_time IS NOT NULL
-    """))
+        WHERE project_id = :pid AND completed_time IS NOT NULL
+    """), {"pid": pid})
     row = result.fetchone()
     if not row or not row[0]:
         return {"min_date": None, "max_date": None, "dates": []}
@@ -1283,6 +1372,7 @@ async def campaign_dates(
 
 @router.get("/geo/completeness")
 async def geo_completeness(
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -1290,6 +1380,10 @@ async def geo_completeness(
     Returns average grid completeness % across all settlements and
     count of settlements where completeness >= 60% (considered 'complete').
     Completeness = visited_grids / total_grids * 100 per settlement.
+
+    settlement_analytics is keyed by the canonical boundary project for the state.
+    The active project's state_name is looked up and the analytics for that
+    state's boundary-owning project are returned.
     """
     result = await db.execute(text("""
         SELECT
@@ -1297,9 +1391,13 @@ async def geo_completeness(
           COUNT(*) FILTER (WHERE completeness_pct >= 60)  AS completed_60,
           COUNT(*) FILTER (WHERE completeness_pct >= 70)  AS completed_70,
           COUNT(*) AS total_settlements
-        FROM settlement_analytics
-        WHERE project_id = 1
-    """))
+        FROM settlement_analytics sa
+        WHERE sa.project_id = (
+          SELECT MIN(p2.id) FROM geo_projects p1
+          JOIN geo_projects p2 ON p2.state_name = p1.state_name
+          WHERE p1.id = :pid
+        )
+    """), {"pid": pid})
     row = result.fetchone()
     if not row:
         return {"overall_completeness": 0.0, "completed_60": 0, "completed_70": 0, "total_settlements": 0}
@@ -1317,6 +1415,7 @@ async def geo_completeness(
 
 @router.get("/settlement-status/download")
 async def download_settlement_status(
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -1332,9 +1431,13 @@ async def download_settlement_status(
             sa.total_grids,
             sa.point_count
         FROM settlement_analytics sa
-        WHERE sa.project_id = 1
+        WHERE sa.project_id = (
+          SELECT MIN(p2.id) FROM geo_projects p1
+          JOIN geo_projects p2 ON p2.state_name = p1.state_name
+          WHERE p1.id = :pid
+        )
         ORDER BY sa.lga_name, sa.ward_name, sa.settlement_name
-    """))
+    """), {"pid": pid})
     rows = result.fetchall()
 
     wb = openpyxl.Workbook()
@@ -1383,6 +1486,7 @@ async def download_settlement_status(
 @router.get("/wards")
 async def get_ward_list(
     lga: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -1396,19 +1500,20 @@ async def get_ward_list(
         result = await db.execute(text("""
             SELECT DISTINCT ward_name
             FROM mda_households
-            WHERE ward_name IS NOT NULL
+            WHERE project_id = :pid
+              AND ward_name IS NOT NULL
               AND lga = :lga
             ORDER BY ward_name
-        """), {"lga": lga})
+        """), {"pid": pid, "lga": lga})
         return [r[0] for r in result.fetchall()]
     else:
         result = await db.execute(text("""
             SELECT lga, ward_name
             FROM mda_households
-            WHERE ward_name IS NOT NULL AND lga IS NOT NULL
+            WHERE project_id = :pid AND ward_name IS NOT NULL AND lga IS NOT NULL
             GROUP BY lga, ward_name
             ORDER BY lga, ward_name
-        """))
+        """), {"pid": pid})
         grouped: Dict[str, list] = {}
         for row in result.fetchall():
             lga_key, ward = row[0], row[1]
@@ -1425,6 +1530,7 @@ async def get_ward_list(
 @router.post("/upload-mlos")
 async def upload_mlos(
     file: UploadFile = File(...),
+    pid: int = Depends(resolve_pid),
     _super: User = Depends(require_superadmin),
 ):
     """
@@ -1432,7 +1538,7 @@ async def upload_mlos(
     settlement_name, latitude, longitude, source).
     Each record's lat/lon is spatially joined to the wards boundary table to
     confirm/enrich ward_name from the authoritative polygon geometry.
-    Replaces all existing mlos_settlements records.
+    Replaces mlos_settlements rows for the active project only.
     """
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "File must be .xlsx")
@@ -1466,20 +1572,28 @@ async def upload_mlos(
     conn = _get_sync_conn()
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM mlos_settlements")
+        # Find the state's canonical boundary project (lowest-id project for the same state)
+        cur.execute("""
+            SELECT MIN(p2.id) FROM geo_projects p1
+            JOIN geo_projects p2 ON p2.state_name = p1.state_name
+            WHERE p1.id = %s
+        """, (pid,))
+        boundary_pid = (cur.fetchone() or [pid])[0] or pid
+
+        cur.execute("DELETE FROM mlos_settlements WHERE project_id = %s", (pid,))
         if records:
             now_str = datetime.utcnow().isoformat()
             psycopg2.extras.execute_values(
                 cur,
                 """INSERT INTO mlos_settlements
-                   (state_name, lga_name, ward_name_raw, settlement_name,
+                   (project_id, state_name, lga_name, ward_name_raw, settlement_name,
                     latitude, longitude, source, geom, uploaded_at)
                    VALUES %s""",
                 [
-                    (s, l, wr, se, la, lo, src, geom, now_str)
+                    (pid, s, l, wr, se, la, lo, src, geom, now_str)
                     for s, l, wr, se, la, lo, src, geom in records
                 ],
-                template="(%s,%s,%s,%s,%s,%s,%s,ST_GeomFromEWKT(%s),%s)",
+                template="(%s,%s,%s,%s,%s,%s,%s,%s,ST_GeomFromEWKT(%s),%s)",
                 page_size=500,
             )
             # Spatial join: set ward_name from the intersecting ward boundary polygon
@@ -1487,16 +1601,18 @@ async def upload_mlos(
                 UPDATE mlos_settlements m
                 SET ward_name = w.ward_name
                 FROM wards w
-                WHERE w.project_id = 1
+                WHERE m.project_id = %s
+                  AND w.project_id = %s
                   AND m.geom IS NOT NULL
                   AND ST_Within(m.geom, w.geom)
-            """)
+            """, (pid, boundary_pid))
             # For records outside any boundary, fall back to ward_name_raw
             cur.execute("""
                 UPDATE mlos_settlements
                 SET ward_name = ward_name_raw
-                WHERE ward_name IS NULL AND ward_name_raw IS NOT NULL
-            """)
+                WHERE project_id = %s
+                  AND ward_name IS NULL AND ward_name_raw IS NOT NULL
+            """, (pid,))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -1514,9 +1630,23 @@ async def upload_mlos(
 @router.post("/upload-baseline")
 async def upload_baseline(
     file: UploadFile = File(...),
+    pid: int = Depends(resolve_pid),
     _super: User = Depends(require_superadmin),
 ):
-    """Upload settlement_total_treated_pivot.xlsx (replaces existing baseline)."""
+    """Upload a baseline xlsx — replaces baseline rows for the active project only.
+
+    Auto-detects two formats:
+
+    1. **Legacy (R4 settlement pivot)** — first sheet has columns:
+       ``state, lga, ward, settlement, total_treated``
+
+    2. **R5 ward-level target** — workbook contains a 'Raw Data' sheet with columns:
+       ``lga, wardname, T_1_11_Months_Female, T_1_11_Months_Male,
+       T_12_59_Months_Female, T_12_59_Months_Male``
+       (with two trailing unnamed totals columns we ignore). The age/sex columns
+       are persisted; ``total_treated`` is computed as their sum so the existing
+       coverage queries continue to work unchanged.
+    """
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "File must be .xlsx")
     raw = await file.read()
@@ -1524,34 +1654,83 @@ async def upload_baseline(
         wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
     except Exception as e:
         raise HTTPException(400, f"Cannot open workbook: {e}")
-    ws = wb[wb.sheetnames[0]]
-    rows_raw = list(ws.iter_rows(min_row=2, values_only=True))
-    wb.close()
 
     def strip_q(v):
         if v is None: return None
         s = str(v).strip().strip("'").strip()
         return s if s else None
 
-    records = []
-    for row in rows_raw:
-        state = strip_q(row[0]); lga = strip_q(row[1])
-        ward = strip_q(row[2]); sett = strip_q(row[3])
-        total = None
-        try: total = int(float(str(row[4])))
-        except: pass
-        if lga and total is not None:
-            records.append((state, lga, ward, sett, total))
+    def to_int(v):
+        if v is None: return None
+        try: return int(float(str(v)))
+        except Exception: return None
+
+    # Detect the R5 'Raw Data' sheet
+    raw_sheet = next((s for s in wb.sheetnames if s.strip().lower() == "raw data"), None)
+    records: list = []  # tuples of (state, lga, ward, settlement, total, t1_11_f, t1_11_m, t12_59_f, t12_59_m)
+
+    if raw_sheet:
+        # ── R5 format: ward-level with age/sex breakdown ───────────────────
+        ws = wb[raw_sheet]
+        rows = list(ws.iter_rows(values_only=True))
+        header = [str(c or "").strip().lower() for c in (rows[0] if rows else [])]
+
+        def col(name: str) -> int | None:
+            try: return header.index(name)
+            except ValueError: return None
+
+        i_lga, i_ward = col("lga"), col("wardname")
+        i_1_11_f  = col("t_1_11_months_female")
+        i_1_11_m  = col("t_1_11_months_male")
+        i_12_59_f = col("t_12_59_months_female")
+        i_12_59_m = col("t_12_59_months_male")
+
+        if i_lga is None or i_ward is None or None in (i_1_11_f, i_1_11_m, i_12_59_f, i_12_59_m):
+            raise HTTPException(400, f"'Raw Data' sheet is missing expected columns. Found: {header}")
+
+        for row in rows[1:]:
+            lga = strip_q(row[i_lga]) if i_lga < len(row) else None
+            ward = strip_q(row[i_ward]) if i_ward < len(row) else None
+            if not lga:
+                continue
+            t_1_11_f  = to_int(row[i_1_11_f])  or 0
+            t_1_11_m  = to_int(row[i_1_11_m])  or 0
+            t_12_59_f = to_int(row[i_12_59_f]) or 0
+            t_12_59_m = to_int(row[i_12_59_m]) or 0
+            total = t_1_11_f + t_1_11_m + t_12_59_f + t_12_59_m
+            # Normalise LGA/ward names to title case to align with boundary tables
+            lga_norm  = lga.title()
+            ward_norm = ward.title() if ward else None
+            records.append(("Sokoto", lga_norm, ward_norm, None, total,
+                            t_1_11_f, t_1_11_m, t_12_59_f, t_12_59_m))
+    else:
+        # ── Legacy format: settlement pivot ────────────────────────────────
+        ws = wb[wb.sheetnames[0]]
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+        for row in rows:
+            state = strip_q(row[0]) if len(row) > 0 else None
+            lga = strip_q(row[1]) if len(row) > 1 else None
+            ward = strip_q(row[2]) if len(row) > 2 else None
+            sett = strip_q(row[3]) if len(row) > 3 else None
+            total = to_int(row[4]) if len(row) > 4 else None
+            if lga and total is not None:
+                records.append((state, lga, ward, sett, total, None, None, None, None))
+
+    wb.close()
 
     conn = _get_sync_conn()
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM mda_baseline")
+        cur.execute("DELETE FROM mda_baseline WHERE project_id = %s", (pid,))
         if records:
             psycopg2.extras.execute_values(
                 cur,
-                "INSERT INTO mda_baseline(state, lga, ward, settlement, total_treated) VALUES %s",
-                records, page_size=500,
+                """INSERT INTO mda_baseline
+                   (project_id, state, lga, ward, settlement, total_treated,
+                    target_1_11_f, target_1_11_m, target_12_59_f, target_12_59_m)
+                   VALUES %s""",
+                [(pid, s, l, w, se, t, t1f, t1m, t2f, t2m) for s, l, w, se, t, t1f, t1m, t2f, t2m in records],
+                page_size=500,
             )
         conn.commit()
     except Exception as e:
@@ -1559,4 +1738,7 @@ async def upload_baseline(
     finally:
         conn.close()
 
-    return {"rows_inserted": len(records)}
+    return {
+        "rows_inserted": len(records),
+        "format": "r5_ward_target" if raw_sheet else "legacy_settlement_pivot",
+    }
