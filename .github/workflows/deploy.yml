@@ -27,8 +27,7 @@ jobs:
     env:
       AWS_REGION: us-east-1
       ECR_REPO: 387526361725.dkr.ecr.us-east-1.amazonaws.com/mda-dashboard
-      EC2_HOST: 10.50.10.229
-      BASTION_HOST: 75.101.208.163
+      EC2_INSTANCE_ID: i-0f57573ce98580bfc
 
     steps:
       - name: Checkout
@@ -72,31 +71,64 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Prepare SSH key
+      - name: Roll the container on EC2 (via SSM)
+        # Uses AWS Systems Manager Run Command — no SSH, no bastion, no key.
+        # The EC2 instance role + SSM agent execute the script as root.
+        # Polls until the command finishes, then prints stdout/stderr and
+        # exits non-zero if the command failed (so the workflow surfaces
+        # rollout failures).
         run: |
-          install -d -m 700 ~/.ssh
-          echo "${{ secrets.MDA_DASHBOARD_SSH_KEY }}" > ~/.ssh/deploy-key
-          chmod 600 ~/.ssh/deploy-key
-          ssh-keyscan -H "$BASTION_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          set -euo pipefail
+          CMD_ID=$(aws ssm send-command \
+              --region "$AWS_REGION" \
+              --instance-ids "$EC2_INSTANCE_ID" \
+              --document-name AWS-RunShellScript \
+              --comment "Deploy $(echo "${GITHUB_SHA}" | cut -c1-7)" \
+              --cloud-watch-output-config '{"CloudWatchLogGroupName":"/mda-dashboard/ec2-system","CloudWatchOutputEnabled":true}' \
+              --parameters '{"commands":[
+                "set -e",
+                "cd /opt/mda-dashboard",
+                "sudo /home/ec2-user/ecr-login.sh",
+                "sudo docker compose pull",
+                "sudo docker compose up -d",
+                "sleep 8",
+                "sudo docker compose ps",
+                "curl -fsS http://localhost:8080/api/health",
+                "echo Deployment complete"
+              ],"executionTimeout":["600"]}' \
+              --query "Command.CommandId" --output text)
+          echo "SSM Command ID: $CMD_ID"
 
-      - name: Roll the container on EC2
-        run: |
-          ssh -i ~/.ssh/deploy-key \
-              -o StrictHostKeyChecking=accept-new \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -J "ec2-user@${BASTION_HOST}" \
-              "ec2-user@${EC2_HOST}" \
-              "set -e
-               cd /opt/mda-dashboard
-               sudo /home/ec2-user/ecr-login.sh
-               sudo docker compose pull
-               sudo docker compose up -d
-               sleep 8
-               sudo docker compose ps
-               # Smoke check
-               curl -fsS http://localhost:8080/api/health
-               echo
-               echo 'Deployment complete'"
+          # Poll until terminal state
+          while true; do
+            STATUS=$(aws ssm get-command-invocation \
+                --region "$AWS_REGION" \
+                --command-id "$CMD_ID" \
+                --instance-id "$EC2_INSTANCE_ID" \
+                --query Status --output text 2>/dev/null || echo "Pending")
+            case "$STATUS" in
+              Success|Failed|TimedOut|Cancelled|Cancelling)
+                break ;;
+            esac
+            sleep 4
+          done
+
+          echo
+          echo "── Final status: $STATUS ──"
+          echo "── stdout ──"
+          aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$CMD_ID" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query StandardOutputContent --output text || true
+          echo "── stderr ──"
+          aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$CMD_ID" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query StandardErrorContent --output text || true
+
+          [[ "$STATUS" == "Success" ]] || exit 1
 
       - name: Tag GitHub release on main pushes
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
