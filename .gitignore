@@ -27,3 +27,15 @@ pgdata/
 *.xlsx
 *.xls
 *.csv
+
+# Terraform — state is in S3, secrets in tfvars
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+terraform/terraform.tfvars
+terraform/*.tfvars
+!terraform/terraform.tfvars.example
+crash.log
+crash.*.log
