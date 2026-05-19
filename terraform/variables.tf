@@ -36,21 +36,21 @@ variable "ec2_instance_type" {
 }
 
 variable "rds_instance_class" {
-  description = "RDS class. t3.large is recommended for the settlement_analytics recompute workload on Sokoto-scale data."
+  description = "RDS class. db.t4g.medium (Graviton) is the cost-optimised default for the Sokoto-scale settlement_analytics recompute. Bump to db.t3.large or db.t4g.large if recompute starts taking >2 minutes."
   type        = string
-  default     = "db.t3.large"
+  default     = "db.t4g.medium"
 }
 
 variable "rds_allocated_storage_gb" {
   description = "Initial RDS storage in GB. Autoscaling enabled up to 200 GB."
   type        = number
-  default     = 50
+  default     = 30
 }
 
 variable "rds_engine_version" {
-  description = "PostgreSQL major.minor version on RDS. Must support PostGIS via the rds.force_ssl parameter group."
+  description = "PostgreSQL version on RDS. Must support PostGIS via the rds.force_ssl parameter group."
   type        = string
-  default     = "16.4"
+  default     = "16.14" # latest 16.x available in us-east-1 as of provisioning; PostGIS 3.4+ ships with it
 }
 
 variable "rds_multi_az" {

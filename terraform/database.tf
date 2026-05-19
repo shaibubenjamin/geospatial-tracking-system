@@ -67,8 +67,9 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   parameter_group_name   = aws_db_parameter_group.postgis.name
 
-  # Backup & maintenance — daily backups retained 14 days
-  backup_retention_period = 14
+  # Backup & maintenance — daily backups retained 7 days (cost-conscious; bump
+  # to 14 or 30 if compliance demands a longer recovery window)
+  backup_retention_period = 7
   backup_window           = "02:00-03:00" # UTC = 03:00-04:00 WAT
   maintenance_window      = "Sun:04:00-Sun:05:00"
   copy_tags_to_snapshot   = true

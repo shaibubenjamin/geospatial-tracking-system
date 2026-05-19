@@ -1,14 +1,17 @@
 ###############################################################################
-# Network — VPC, subnets across 2 AZs, IGW for public, single NAT for private
+# Network — VPC, subnets across 2 AZs, IGW (no NAT — cost-optimised)
 #
 # Layout:
-#   us-east-1a    public 10.50.10.0/24   (ALB + bastion + NAT)
-#                 private 10.50.11.0/24  (EC2 + RDS-a)
+#   us-east-1a    public 10.50.10.0/24   (ALB + bastion + app EC2)
+#                 private 10.50.11.0/24  (RDS-a only)
 #   us-east-1b    public 10.50.20.0/24   (ALB)
-#                 private 10.50.21.0/24  (RDS-b)
+#                 private 10.50.21.0/24  (RDS-b only)
 #
-# Two AZs is required even on single-AZ RDS because RDS demands a subnet group
-# spanning multiple AZs.
+# RDS still lives in private subnets (only the EC2 SG and bastion SG can
+# reach 5432). The app EC2 is in a public subnet but with a strict security
+# group: ingress only on 8080 from the ALB SG and 22 from the bastion SG —
+# the wider internet can't reach it. This trades NAT defense-in-depth for
+# ~$32/mo and is acceptable for the platform's threat model.
 ###############################################################################
 
 resource "aws_vpc" "main" {
@@ -56,21 +59,6 @@ resource "aws_subnet" "private_b" {
   tags              = { Name = "${var.project_name}-private-b" }
 }
 
-# ── NAT (single — kept cheap; upgrade to per-AZ for production high availability) ──
-
-resource "aws_eip" "nat" {
-  domain = "vpc"
-  tags   = { Name = "${var.project_name}-nat-eip" }
-}
-
-resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public_a.id
-  tags          = { Name = "${var.project_name}-nat" }
-
-  depends_on = [aws_internet_gateway.main]
-}
-
 # ── Route tables ─────────────────────────────────────────────────────────────
 
 resource "aws_route_table" "public" {
@@ -84,13 +72,9 @@ resource "aws_route_table" "public" {
   tags = { Name = "${var.project_name}-public-rt" }
 }
 
+# Private route table — no internet egress. RDS lives here.
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
-  }
 
   tags = { Name = "${var.project_name}-private-rt" }
 }

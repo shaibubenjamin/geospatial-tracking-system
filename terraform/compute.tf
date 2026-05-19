@@ -46,6 +46,12 @@ resource "aws_iam_role_policy_attachment" "ecr_read" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+# Lets the CloudWatch agent on the EC2 ship docker container logs.
+resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 data "aws_iam_policy_document" "secrets_read" {
   statement {
     actions = [
@@ -117,12 +123,13 @@ locals {
 }
 
 resource "aws_instance" "app" {
-  ami                    = data.aws_ami.al2023.id
-  instance_type          = var.ec2_instance_type
-  subnet_id              = aws_subnet.private_a.id
-  vpc_security_group_ids = [aws_security_group.ec2.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2.name
-  key_name               = aws_key_pair.operator.key_name
+  ami                         = data.aws_ami.al2023.id
+  instance_type               = var.ec2_instance_type
+  subnet_id                   = aws_subnet.public_a.id
+  vpc_security_group_ids      = [aws_security_group.ec2.id]
+  iam_instance_profile        = aws_iam_instance_profile.ec2.name
+  key_name                    = aws_key_pair.operator.key_name
+  associate_public_ip_address = true
 
   user_data                   = local.user_data
   user_data_replace_on_change = false
@@ -138,5 +145,9 @@ resource "aws_instance" "app" {
     http_endpoint = "enabled"
   }
 
+  # Sits in a public subnet for outbound internet egress (CommCare HQ, OS
+  # updates) without a NAT gateway. Inbound is gated entirely by the security
+  # group: only 8080 from the ALB SG and 22 from the bastion SG. No port is
+  # open to 0.0.0.0/0.
   tags = { Name = "${var.project_name}-app" }
 }

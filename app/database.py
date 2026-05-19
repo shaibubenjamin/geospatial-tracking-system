@@ -35,14 +35,27 @@ async def get_db():
 
 
 async def create_all_tables():
-    """Create all tables in the database."""
+    """Create all tables in the database.
+
+    Extension creation is best-effort and runs in its own short-lived
+    connection so a permission error doesn't abort the whole startup
+    transaction. On managed Postgres (e.g. AWS RDS) the app's role doesn't
+    have CREATE-EXTENSION privilege; extensions are pre-installed by the
+    DBA at provisioning time, so the IF NOT EXISTS path is harmless when
+    a superuser runs it and tolerable to skip otherwise.
+    """
+    import logging
+    from sqlalchemy import text
+    log = logging.getLogger(__name__)
+
+    for ext in ("postgis", '"uuid-ossp"'):
+        try:
+            async with engine.begin() as ext_conn:
+                await ext_conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {ext}"))
+        except Exception as e:
+            log.info("Skipping CREATE EXTENSION %s (likely pre-installed by DBA): %s",
+                     ext, str(e).splitlines()[0][:120])
+
     async with engine.begin() as conn:
-        # Enable PostGIS extension first
-        await conn.execute(
-            __import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS postgis")
-        )
-        await conn.execute(
-            __import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
-        )
         from app import models  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)

@@ -1,0 +1,19 @@
+# Add this to ~/.ssh/config for one-command access to the app server.
+# Update the Hostname lines with the actual IPs after `terraform apply`.
+
+Host mda-bastion
+    Hostname 75.101.208.163
+    User ec2-user
+    IdentityFile ~/.ssh/mda-dashboard-prod
+    StrictHostKeyChecking accept-new
+
+Host mda-app
+    Hostname 10.50.10.229
+    User ec2-user
+    IdentityFile ~/.ssh/mda-dashboard-prod
+    ProxyJump mda-bastion
+    StrictHostKeyChecking accept-new
+
+# Usage:
+#   ssh mda-app                              # one-hop SSH via the bastion
+#   ssh -L 5432:RDS_ENDPOINT:5432 mda-bastion   # tunnel for psql against RDS
