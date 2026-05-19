@@ -318,7 +318,7 @@ async def get_points_geojson(
                 h.id,
                 h.latitude,
                 h.longitude,
-                h.date_trt          AS collection_date,
+                (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS collection_date,
                 h.started_time      AS timestamp,
                 h.hq_user           AS research_assistant,
                 h.lga               AS lga_name,

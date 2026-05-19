@@ -92,6 +92,9 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
 /* Chart download button */
 .chart-dl{background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:4px 6px;border-radius:6px;transition:all .15s}
 .chart-dl:hover{color:var(--blue);background:var(--mist)}
+.geo-dl-btn{display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer;color:var(--deep);font-size:11px;font-weight:600;line-height:1.25;transition:border-color .15s, transform .1s;white-space:nowrap;text-align:center;min-width:96px}
+.geo-dl-btn:hover{transform:translateY(-1px)}
+.geo-dl-btn:active{transform:translateY(0)}
 
 /* Filters */
 .filters{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
@@ -493,19 +496,25 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
-        <div class="grid-2">
-          <div class="card" style="margin-bottom:0">
-            <div class="card-head">
-              <div>
-                <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted per LGA</div>
-                <div class="card-sub">How many household forms have been submitted from each Local Government Area. Click a bar to filter the entire dashboard to that LGA.</div>
-              </div>
-              <div class="card-head-right">
-                <button class="chart-dl" onclick="dlChart('c_lgaBar','submissions_by_lga')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-              </div>
+        <!-- Forms per LGA — full-width row so every LGA fits at full bar
+             thickness without forcing a scroll. The chart-wrap height is set
+             dynamically in buildLGABarChart(). -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted per LGA</div>
+              <div class="card-sub">How many household forms have been submitted from each Local Government Area. Click a bar to filter the entire dashboard to that LGA.</div>
             </div>
-            <div class="chart-wrap"><canvas id="c_lgaBar"></canvas></div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlChart('c_lgaBar','submissions_by_lga')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+            </div>
           </div>
+          <div class="chart-wrap"><canvas id="c_lgaBar"></canvas></div>
+        </div>
+
+        <!-- Three balanced cards: daily trend (line), 1–59 baseline-vs-treated
+             (bar), and progress vs baseline (donut). -->
+        <div class="grid-3">
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
@@ -518,20 +527,17 @@ tbody tr:hover{background:var(--pale)}
             </div>
             <div class="chart-wrap"><canvas id="c_dailyLine"></canvas></div>
           </div>
-        </div>
-
-        <div class="grid-2">
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
-                <div class="card-title"><i class="fa-solid fa-children"></i> Children Enumerated vs Treated by Age Group</div>
-                <div class="card-sub">Compares the number of children counted (enumerated) with those who actually received Azithromycin, split by age band (1–11 months vs 12–59 months).</div>
+                <div class="card-title"><i class="fa-solid fa-children"></i> Children 1&ndash;59: Baseline vs Treated</div>
+                <div class="card-sub">Compares the baseline target for children 1&ndash;59 months in this round against the number actually treated so far.</div>
               </div>
               <div class="card-head-right">
                 <button class="chart-dl" onclick="dlChart('c_ageBar','age_band')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
               </div>
             </div>
-            <div class="chart-wrap short"><canvas id="c_ageBar"></canvas></div>
+            <div class="chart-wrap"><canvas id="c_ageBar"></canvas></div>
           </div>
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
@@ -543,7 +549,7 @@ tbody tr:hover{background:var(--pale)}
                 <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
               </div>
             </div>
-            <div class="chart-wrap short"><canvas id="c_donut"></canvas></div>
+            <div class="chart-wrap"><canvas id="c_donut"></canvas></div>
           </div>
         </div>
 
@@ -603,27 +609,28 @@ tbody tr:hover{background:var(--pale)}
           <div class="kpi bad"><div class="lbl">LGAs Below 60%</div><div class="val" id="cov-kpi-below">&mdash;</div><div class="sub">Requiring mop-up</div></div>
         </div>
 
-        <div class="grid-2">
-          <div class="card" style="margin-bottom:0">
-            <div class="card-head">
-              <div>
-                <div class="card-title"><i class="fa-solid fa-chart-bar"></i> Treatment Coverage by LGA (%)</div>
-                <div class="card-sub">Each bar shows how much of the baseline target has been reached in that LGA. Green bars (≥80%) meet the WHO target; shorter bars need follow-up.</div>
-              </div>
-              <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_covLgaBar','coverage_by_lga')" title="Download"><i class="fa-solid fa-download"></i></button></div>
+        <!-- Treatment Coverage by LGA — full-width so every LGA fits at
+             full bar thickness, matching the Overview "Forms per LGA" card. -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-chart-bar"></i> Treatment Coverage by LGA (%)</div>
+              <div class="card-sub">Each bar shows how much of the baseline target has been reached in that LGA. Green bars (≥80%) meet the WHO target; shorter bars need follow-up.</div>
             </div>
-            <div class="chart-wrap tall"><canvas id="c_covLgaBar"></canvas></div>
+            <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_covLgaBar','coverage_by_lga')" title="Download"><i class="fa-solid fa-download"></i></button></div>
           </div>
-          <div class="card" style="margin-bottom:0">
-            <div class="card-head">
-              <div>
-                <div class="card-title"><i class="fa-solid fa-chart-area"></i> Cumulative Coverage Over Campaign Days</div>
-                <div class="card-sub">Shows how total coverage (%) has built up day by day. A steep rise means high daily throughput; a flat line means few forms submitted on those days.</div>
-              </div>
-              <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_covProgress','coverage_progression')" title="Download"><i class="fa-solid fa-download"></i></button></div>
+          <div class="chart-wrap tall"><canvas id="c_covLgaBar"></canvas></div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-chart-area"></i> Cumulative Coverage Over Campaign Days</div>
+              <div class="card-sub">Shows how total coverage (%) has built up day by day. A steep rise means high daily throughput; a flat line means few forms submitted on those days.</div>
             </div>
-            <div class="chart-wrap tall"><canvas id="c_covProgress"></canvas></div>
+            <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_covProgress','coverage_progression')" title="Download"><i class="fa-solid fa-download"></i></button></div>
           </div>
+          <div class="chart-wrap tall"><canvas id="c_covProgress"></canvas></div>
         </div>
 
         <div class="card">
@@ -701,7 +708,7 @@ tbody tr:hover{background:var(--pale)}
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-file-circle-check"></i></div><div class="qc-val" id="qc-total-forms">&mdash;</div><div class="qc-lbl">Total Forms Analysed</div><div class="qc-desc">All household MDA forms checked for data quality issues</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-clone"></i></div><div class="qc-val" id="qc-duplicates">&mdash;</div><div class="qc-lbl">Duplicate Form IDs</div><div class="qc-desc">Forms sharing an identical submission ID — possible double-counting of households</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-location-crosshairs"></i></div><div class="qc-val" id="qc-outside-lga">&mdash;</div><div class="qc-lbl">GPS Outside Stated LGA</div><div class="qc-desc">GPS coordinates fall outside the boundary of the LGA the team reported being in</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">&mdash;</div><div class="qc-lbl">Poor GPS Accuracy (&gt;20 m)</div><div class="qc-desc">GPS signal accuracy was too low — location may not be reliable for spatial analysis</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">&mdash;</div><div class="qc-lbl">Poor GPS Accuracy (&gt;10 m)</div><div class="qc-desc">GPS signal accuracy was too low — location may not be reliable for spatial analysis</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-moon"></i></div><div class="qc-val" id="qc-after-hours">&mdash;</div><div class="qc-lbl">After-Hours Submissions</div><div class="qc-desc">Forms started outside 6:00 am – 7:00 pm local time — possible data back-entry or device clock error</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-bolt"></i></div><div class="qc-val" id="qc-fast-forms">&mdash;</div><div class="qc-lbl">Very Fast Forms (&lt;5 min)</div><div class="qc-desc">Completed in under 5 minutes — a full household visit typically takes longer; may indicate skipping questions</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-hourglass-half"></i></div><div class="qc-val" id="qc-slow-forms">&mdash;</div><div class="qc-lbl">Very Slow Forms (&gt;60 min)</div><div class="qc-desc">Took over 1 hour — may indicate poor connectivity, form abandonment, or the device being left idle</div></div>
@@ -804,13 +811,31 @@ tbody tr:hover{background:var(--pale)}
           <!-- hidden but still set by JS for back-compat -->
           <span id="geo-ward-active-count" style="display:none"></span>
           <span id="geo-ward-total-count" style="display:none"></span>
-          <!-- Download settlement status -->
-          <div id="download-settlement-btn" style="display:flex;align-items:center">
-            <button onclick="downloadSettlementStatus()" title="Download settlement visit status as Excel"
-              style="display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px;cursor:pointer;color:var(--deep);font-size:11.5px;font-weight:600;transition:all .15s;white-space:nowrap"
+          <!-- Bulk downloads (admin / superadmin only — hidden in public view) -->
+          <div id="geo-downloads" style="display:none;flex-wrap:wrap;gap:8px;align-items:center">
+            <button onclick="downloadGeoExport('lgas','LGAs')" title="Download per-LGA coverage as Excel"
+              class="geo-dl-btn"
               onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
-              <i class="fa-solid fa-file-excel" style="font-size:20px;color:#16A34A"></i>
-              Download<br>Settlement Status
+              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
+              Download<br>LGAs
+            </button>
+            <button onclick="downloadGeoExport('wards','Wards')" title="Download per-Ward coverage as Excel"
+              class="geo-dl-btn"
+              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
+              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
+              Download<br>Wards
+            </button>
+            <button onclick="downloadGeoExport('settlements','Settlements')" title="Download settlement detail as Excel"
+              class="geo-dl-btn"
+              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
+              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
+              Download<br>Settlements
+            </button>
+            <button onclick="downloadSettlementStatus()" title="Download settlement visit status as Excel"
+              class="geo-dl-btn"
+              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
+              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
+              Download<br>Visitation Status
             </button>
           </div>
         </div>
@@ -1131,6 +1156,15 @@ tbody tr:hover{background:var(--pale)}
     // Show admin nav link if user is admin
     const adminLink = document.getElementById('admin-nav-link');
     if (adminLink) adminLink.style.display = 'block';
+  }
+
+  // Geospatial bulk-download buttons are gated to admin/superadmin only —
+  // viewers/analysts and the public dashboard don't see them.
+  if (!PUBLIC_MODE && (isAdmin || isSuperadmin)) {
+    document.addEventListener('DOMContentLoaded', () => {
+      const dl = document.getElementById('geo-downloads');
+      if (dl) dl.style.display = 'flex';
+    });
   }
 
   function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
@@ -1565,11 +1599,23 @@ tbody tr:hover{background:var(--pale)}
     destroyChart('c_covLgaBar');
     if (filtered.length) {
       const sorted = [...filtered].sort((a,b)=>b.coverage_pct-a.coverage_pct);
-      new Chart(document.getElementById('c_covLgaBar'), {
+      // Recompute card height from current LGA count so drill-down shrinks
+      // back down (filtering to 1 LGA = compact card; full list = tall card).
+      const covEl = document.getElementById('c_covLgaBar');
+      const covWrap = covEl?.parentElement;
+      if (covWrap) {
+        covWrap.style.height = Math.max(280, sorted.length * 32 + 32) + 'px';
+      }
+      new Chart(covEl, {
         type: 'bar',
         data: { labels: sorted.map(l=>l.lga),
           datasets: [{ label: 'Coverage %', data: sorted.map(l=>parseFloat(l.coverage_pct)||0),
-            backgroundColor: C_BLUE1, borderRadius: 5, maxBarThickness: 14 }]
+            // Match the main render path: solid vivid green per coverage tier.
+            backgroundColor: sorted.map(l => {
+              const v = parseFloat(l.coverage_pct)||0;
+              return v >= 80 ? '#006B2E' : v >= 60 ? '#16A34A' : '#4CAF50';
+            }),
+            borderRadius: 5, maxBarThickness: 28 }]
         },
         options: {
           indexAxis: 'y',
@@ -1583,9 +1629,11 @@ tbody tr:hover{background:var(--pale)}
           },
           plugins: {
             legend: { display: false },
+            // White label always: the bar background is a vibrant green at
+            // every tier, so dark text would never read well against it.
             datalabels: { display: true, anchor: 'center', align: 'center',
-              color: ctx => ctx.dataset.data[ctx.dataIndex] > 20 ? '#fff' : '#334155',
-              font: { size: 10, weight: '700', family: "'Inter','Segoe UI',sans-serif" },
+              color: '#fff',
+              font: { size: 11, weight: '700', family: "'Inter','Segoe UI',sans-serif" },
               formatter: v => v.toFixed(1) + '%' },
             tooltip: { callbacks: { label: ctx => ' Coverage: ' + ctx.raw.toFixed(1) + '%' } }
           },
@@ -2188,24 +2236,41 @@ tbody tr:hover{background:var(--pale)}
     const el = document.getElementById('c_lgaBar');
     if (!el) return;
     const key = sortBy === 'treated' ? 'actual_treated' : 'forms';
-    const top12 = [...data].sort((a,b) => (b[key]||0) - (a[key]||0)).slice(0, 14);
-    const maxVal = Math.max(...top12.map(l => l[key] || 0), 1);
+    // Show every LGA in the round (R5 has ~20). Rather than scrolling, grow
+    // the chart-wrap itself so each LGA gets a full-thickness bar (~28 px)
+    // — the neighbouring card in the grid-2 row simply lets the row get
+    // taller. Bars and y-axis ticks stay aligned because Chart.js sizes
+    // the canvas to fill the chart-wrap.
+    const sorted = [...data].sort((a,b) => (b[key]||0) - (a[key]||0));
+    const wrap = el.parentElement;
+    const rowHeight = 32;       // px per LGA row
+    const minHeight = 280;
+    const desiredHeight = Math.max(minHeight, sorted.length * rowHeight + 32);
+    if (wrap) {
+      wrap.style.overflowY = '';
+      wrap.style.height = desiredHeight + 'px';
+    }
+    el.style.height = '';
     new Chart(el, {
       type: 'bar',
       data: {
-        labels: top12.map(l => l.lga),
-        datasets: [{ label: 'Forms Submitted', data: top12.map(l => l[key]||0),
-          backgroundColor: top12.map(l => {
+        labels: sorted.map(l => l.lga),
+        datasets: [{ label: 'Forms Submitted', data: sorted.map(l => l[key]||0),
+          // Solid shades of green per coverage tier — opacity-based fading
+          // washed the bars out at <60% coverage where most R5 LGAs sit today.
+          backgroundColor: sorted.map(l => {
             const cov = parseFloat(l.coverage_pct) || 0;
-            return cov >= 80 ? 'rgba(0,107,46,.95)' : cov >= 60 ? 'rgba(0,107,46,.7)' : 'rgba(0,107,46,.45)';
+            return cov >= 80 ? '#006B2E'   // deep green
+                 : cov >= 60 ? '#16A34A'   // mid green
+                 :             '#4CAF50';  // light green — still vibrant, not washed
           }),
-          borderRadius: 5, maxBarThickness: 24 }]
+          borderRadius: 5, maxBarThickness: 26 }]
       },
       options: {
         indexAxis: 'y',
         onClick: (evt, elems) => {
           if (!elems.length) return;
-          const lga = top12[elems[0].index]?.lga;
+          const lga = sorted[elems[0].index]?.lga;
           if (!lga) return;
           const isReset = (typeof CHART_FILTER !== 'undefined' && CHART_FILTER.lga === lga);
           if (isReset) {
@@ -2238,7 +2303,7 @@ tbody tr:hover{background:var(--pale)}
             callbacks: {
               title: ctx => ctx[0].label + ' LGA',
               label: ctx => {
-                const r = top12[ctx.dataIndex] || {};
+                const r = sorted[ctx.dataIndex] || {};
                 return [
                   ' Forms: ' + Number(r.forms||0).toLocaleString(),
                   ' Coverage: ' + (parseFloat(r.coverage_pct)||0).toFixed(1) + '%',
@@ -2251,7 +2316,7 @@ tbody tr:hover{background:var(--pale)}
           datalabels: {
             display: true,
             anchor: 'center', align: 'center',
-            color: ctx => (ctx.dataset.data[ctx.dataIndex] / maxVal) > 0.18 ? '#ffffff' : '#334155',
+            color: '#fff',
             font: { size: 10, weight: '700', family: "'Inter','Segoe UI',sans-serif" },
             formatter: v => v.toLocaleString()
           }
@@ -2274,7 +2339,9 @@ tbody tr:hover{background:var(--pale)}
       type: 'doughnut',
       data: {
         labels: ['Treated', 'Remaining (gap to target)'],
-        datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, '#E9F7EE'], borderWidth: 0, hoverOffset: 8 }]
+        // Treated = deep green, remaining gap = light vivid green (C_BLUE3)
+        // — previously '#E9F7EE' was so pale the gap was barely visible.
+        datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, C_BLUE3], borderWidth: 0, hoverOffset: 8 }]
       },
       options: {
         cutout: '68%',
@@ -2304,16 +2371,18 @@ tbody tr:hover{background:var(--pale)}
     const el = document.getElementById('c_ageBar');
     if (!el) return;
     const existing = Chart.getChart(el); if (existing) existing.destroy();
-    const enumerated = [d.total_1_11 || 0, d.total_12_59 || 0];
-    const treated    = [d.treated_1_11 || 0, d.treated_12_59 || 0];
-    const labels     = ['1–11 months', '12–59 months'];
+    // Single comparison: total baseline target for 1–59 months vs total treated 1–59.
+    const baseline = Number(d.baseline_total || 0);
+    const treated  = Number(d.total_treated  || 0);
+    const labels   = ['Children 1–59 months'];
     new Chart(el, {
       type: 'bar',
       data: {
         labels,
         datasets: [
-          { label: 'Enumerated (baseline)', data: enumerated, backgroundColor: '#C8E6C9', borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: '#A5D6A7' },
-          { label: 'Treated', data: treated, backgroundColor: C_BLUE1, borderRadius: 6, maxBarThickness: 48, hoverBackgroundColor: C_BLUE2 },
+          // Same vivid two-tone green palette as the LGA bar chart.
+          { label: 'Baseline target', data: [baseline], backgroundColor: C_BLUE3, borderRadius: 6, maxBarThickness: 80, hoverBackgroundColor: C_BLUE2 },
+          { label: 'Treated',         data: [treated],  backgroundColor: C_BLUE1, borderRadius: 6, maxBarThickness: 80, hoverBackgroundColor: C_BLUE2 },
         ]
       },
       options: {
@@ -2416,14 +2485,25 @@ tbody tr:hover{background:var(--pale)}
       if (lgaCovData.length) {
         const sorted = [...lgaCovData].sort((a,b)=>b.coverage_pct-a.coverage_pct);
         const maxCov = Math.max(...sorted.map(l => parseFloat(l.coverage_pct)||0), 1);
-        new Chart(document.getElementById('c_covLgaBar'), {
+        // Grow chart-wrap to fit every LGA at full bar thickness (mirror of
+        // the Overview Forms-per-LGA card). No scroll.
+        const covEl = document.getElementById('c_covLgaBar');
+        const covWrap = covEl?.parentElement;
+        if (covWrap) {
+          covWrap.style.overflowY = '';
+          covWrap.style.height = Math.max(280, sorted.length * 32 + 32) + 'px';
+        }
+        new Chart(covEl, {
           type: 'bar',
           data: { labels: sorted.map(l=>l.lga),
             datasets: [{ label: 'Coverage %', data: sorted.map(l=>parseFloat(l.coverage_pct)||0),
+              // Solid vivid greens by coverage tier — no opacity fading.
               backgroundColor: sorted.map(l => {
                 const v = parseFloat(l.coverage_pct)||0;
-                return v >= 80 ? 'rgba(0,107,46,.95)' : v >= 60 ? 'rgba(0,107,46,.7)' : 'rgba(0,107,46,.45)';
-              }), borderRadius: 5, maxBarThickness: 16 }]
+                return v >= 80 ? '#006B2E'   // deep green
+                     : v >= 60 ? '#16A34A'   // mid green
+                     :           '#4CAF50';  // light green — still vibrant
+              }), borderRadius: 5, maxBarThickness: 28 }]
           },
           options: {
             indexAxis: 'y',
@@ -2440,9 +2520,11 @@ tbody tr:hover{background:var(--pale)}
             onHover: (evt, elems) => { document.getElementById('c_covLgaBar').style.cursor = elems.length ? 'pointer' : 'default'; },
             plugins: {
               legend: { display: false },
+              // White label always — every bar uses a vivid solid green now,
+              // so dark text would read poorly even on the lightest tier.
               datalabels: { display: true, anchor: 'center', align: 'center',
-                color: ctx => (ctx.dataset.data[ctx.dataIndex] / maxCov) > 0.18 ? '#fff' : '#334155',
-                font: { size: 10, weight: '700', family: "'Inter','Segoe UI',sans-serif" },
+                color: '#fff',
+                font: { size: 11, weight: '700', family: "'Inter','Segoe UI',sans-serif" },
                 formatter: v => v.toFixed(1) + '%' },
               tooltip: { callbacks: { label: ctx => {
                 const r = sorted[ctx.dataIndex] || {};
@@ -3468,20 +3550,39 @@ tbody tr:hover{background:var(--pale)}
   window.geoFilterTeam       = geoFilterTeam;
   window.geoFilterMovement   = geoFilterMovement;
 
-  /* ── Settlement status Excel download ── */
-  async function downloadSettlementStatus() {
+  /* ── Geospatial bulk downloads (admin/superadmin only) ── */
+  async function _downloadXlsx(url, suggestedName) {
     const token = localStorage.getItem('token') || '';
-    const res = await fetch('/api/mda/settlement-status/download', {
+    const res = await fetch(url, {
       headers: token ? { 'Authorization': 'Bearer ' + token } : {}
     });
-    if (!res.ok) { showToast('Download failed — no data available'); return; }
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        showToast('Admin login required to download this export.');
+      } else {
+        showToast('Download failed — no data available');
+      }
+      return;
+    }
     const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href     = url;
-    a.download = 'settlement_status.xlsx';
+    a.href     = URL.createObjectURL(blob);
+    a.download = suggestedName;
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function downloadGeoExport(kind, label) {
+    const qs  = (typeof SELECTED_PID !== 'undefined' && SELECTED_PID != null)
+                  ? '?project_id=' + SELECTED_PID : '';
+    const fname = kind + '_' + (new Date().toISOString().slice(0,10)) + '.xlsx';
+    await _downloadXlsx('/api/mda/geo/download/' + kind + qs, fname);
+  }
+  window.downloadGeoExport = downloadGeoExport;
+
+  async function downloadSettlementStatus() {
+    await _downloadXlsx('/api/mda/settlement-status/download',
+                        'settlement_visitation_status.xlsx');
   }
   window.downloadSettlementStatus = downloadSettlementStatus;
 
