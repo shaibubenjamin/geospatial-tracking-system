@@ -59,6 +59,10 @@ async def lifespan(app: FastAPI):
             # Sync progress + history
             "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS last_progress_step INTEGER",
             "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS last_progress_total INTEGER",
+            # Onprem mirror progress (added later than the original table)
+            "ALTER TABLE onprem_mirror_state ADD COLUMN IF NOT EXISTS last_progress_step INTEGER",
+            "ALTER TABLE onprem_mirror_state ADD COLUMN IF NOT EXISTS last_progress_total INTEGER",
+            "ALTER TABLE onprem_mirror_state ADD COLUMN IF NOT EXISTS last_progress_label TEXT",
             """CREATE TABLE IF NOT EXISTS sync_history (
                 id SERIAL PRIMARY KEY,
                 project_id INTEGER REFERENCES geo_projects(id),
@@ -237,7 +241,10 @@ async def lifespan(app: FastAPI):
                 res3 = await db.execute(text("""
                     UPDATE onprem_mirror_state SET
                       last_status = 'error',
-                      last_error = 'Mirror was interrupted by app restart'
+                      last_error = 'Mirror was interrupted by app restart',
+                      last_progress_step = NULL,
+                      last_progress_total = NULL,
+                      last_progress_label = NULL
                     WHERE last_status = 'running'
                 """))
             except Exception:

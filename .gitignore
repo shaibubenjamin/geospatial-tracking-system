@@ -39,3 +39,4 @@ terraform/*.tfvars
 !terraform/terraform.tfvars.example
 crash.log
 crash.*.log
+docs/

@@ -53,15 +53,16 @@ resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
 }
 
 data "aws_iam_policy_document" "secrets_read" {
+  # Read any secret under the mda-dashboard/* namespace. Wildcard keeps the
+  # policy in sync with secrets that get added out-of-band (e.g. via aws CLI
+  # rather than terraform — onprem-database-url was created that way).
   statement {
     actions = [
       "secretsmanager:GetSecretValue",
       "secretsmanager:DescribeSecret",
     ]
     resources = [
-      aws_secretsmanager_secret.db_url_app.arn,
-      aws_secretsmanager_secret.app_secrets.arn,
-      aws_secretsmanager_secret.commcare.arn,
+      "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}/*",
     ]
   }
 }

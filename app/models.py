@@ -376,3 +376,7 @@ class OnpremMirrorState(Base):
     last_status = Column(Text)        # 'ok' / 'error' / 'running'
     last_error = Column(Text)
     last_row_count = Column(Integer, default=0)
+    # Live progress for the currently-running mirror (polled by the admin panel).
+    last_progress_step  = Column(Integer)
+    last_progress_total = Column(Integer)
+    last_progress_label = Column(Text)

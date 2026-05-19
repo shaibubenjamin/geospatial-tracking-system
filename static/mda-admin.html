@@ -263,16 +263,18 @@
     </div>
 
     <div class="nav-section super-only" style="display:none">Data Management</div>
-    <div class="nav-item super-only" data-view="uploads" style="display:none"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
     <div class="nav-item super-only" data-view="sync" style="display:none"><i class="fa-solid fa-rotate"></i> Data Sources</div>
+    <div class="nav-item super-only" data-view="uploads" style="display:none"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
 
     <div class="nav-section">Configuration</div>
     <div class="nav-item super-only" data-view="projects" style="display:none"><i class="fa-solid fa-folder-open"></i> Projects</div>
-    <div class="nav-item active" data-view="users"><i class="fa-solid fa-users"></i> Users</div>
+    <div class="nav-item" data-view="users"><i class="fa-solid fa-users"></i> Users</div>
 
-    <div class="nav-section super-only" style="display:none">Tools</div>
-    <div class="nav-item super-only" data-view="qc" style="display:none"><i class="fa-solid fa-shield-halved"></i> QC Re-run</div>
+    <div class="nav-section">Tools</div>
     <div class="nav-item" data-view="system"><i class="fa-solid fa-server"></i> System Status</div>
+
+    <div class="nav-section">Account</div>
+    <div class="nav-item" data-view="account"><i class="fa-solid fa-user-gear"></i> Change Password</div>
 
     <div class="sidebar-footer">
       <a href="/home"><i class="fa-solid fa-arrow-left"></i> Back to Home</a>
@@ -306,7 +308,7 @@
     <div class="page">
 
       <!-- ═══════════ DATA UPLOADS ═══════════ -->
-      <section class="view active" id="view-uploads">
+      <section class="view" id="view-uploads">
         <div class="page-head">
           <div>
             <div class="page-title">Data Uploads</div>
@@ -400,6 +402,52 @@
           </div>
         </div>
 
+        <!-- On-prem mirror banner. Sits directly under the page head so it's
+             visible without scrolling. Hidden by default; loadOnpremMirrorState()
+             reveals it when the backend reports the env var is set. -->
+        <div id="onprem-mirror-card" style="display:none;margin-bottom:16px;background:linear-gradient(135deg,#FFF7E6 0%,#FFF1CC 100%);border:1.5px solid #F5C76B;border-radius:12px;padding:14px 18px;box-shadow:0 1px 0 rgba(0,0,0,.03)">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="width:42px;height:42px;border-radius:10px;background:#FCD34D;color:#92400E;display:grid;place-items:center;flex-shrink:0">
+              <i class="fa-solid fa-arrows-rotate" style="font-size:18px"></i>
+            </div>
+            <div style="flex:1;min-width:240px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-weight:700;color:var(--ink);font-size:14px">Mirror RDS &rarr; On-prem Postgres</span>
+                <span style="background:#FDE68A;color:#78350F;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.4px">Superadmin</span>
+                <span id="onprem-mirror-status" style="font-size:12px;color:var(--muted)">Idle</span>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.55">
+                Pushes this project's MDA data to <code style="font-family:'SF Mono','Monaco',monospace;font-size:11px">10.11.52.96</code>. Watermark-based &mdash; only new rows are sent.
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11.5px;color:var(--muted);margin-top:6px">
+                <span><strong style="color:var(--ink);font-weight:600">Last run:</strong> <span id="onprem-mirror-last-run">&mdash;</span></span>
+                <span><strong style="color:var(--ink);font-weight:600">High-water mark:</strong> <span id="onprem-mirror-watermark">&mdash;</span></span>
+                <span><strong style="color:var(--ink);font-weight:600">Rows last:</strong> <span id="onprem-mirror-rows">0</span></span>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="onprem-mirror-btn" onclick="runOnpremMirror()" style="flex-shrink:0">
+              <i class="fa-solid fa-arrows-rotate"></i> Run mirror
+            </button>
+          </div>
+          <!-- Progress bar — only visible while a mirror run is in flight.
+               Step label + N of N counter + animated fill. Mirrors the
+               CommCare-sync progress UX so they feel consistent. -->
+          <div id="onprem-mirror-progress" style="display:none;margin-top:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+              <span id="onprem-mirror-progress-label" style="font-size:12.5px;color:var(--ink);font-weight:600">Starting&hellip;</span>
+              <span id="onprem-mirror-progress-counter" style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums">0 of 0</span>
+            </div>
+            <div style="height:8px;background:rgba(217,119,6,.18);border-radius:99px;overflow:hidden">
+              <div id="onprem-mirror-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#D97706,#92400E);border-radius:99px;transition:width .35s cubic-bezier(.4,0,.2,1)"></div>
+            </div>
+          </div>
+
+          <div id="onprem-mirror-err-wrap" style="display:none;background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;margin-top:10px">
+            <div style="color:#7F1D1D;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;font-weight:600">Last error</div>
+            <div id="onprem-mirror-err" style="color:#B91C1C;font-size:12px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace">&mdash;</div>
+          </div>
+        </div>
+
         <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:18px">
           <div>
             <div class="card">
@@ -487,37 +535,6 @@
               </div>
             </div>
 
-            <!-- On-prem mirror card — only visible when ONPREM_BACKUP_DATABASE_URL is set
-                 (i.e. on dev laptops connected to the VPN). Hidden on the production
-                 deployment because there's no route from EC2 to 10.11.52.96. -->
-            <div class="card" id="onprem-mirror-card" style="display:none;margin-top:14px">
-              <div class="card-head">
-                <div class="card-title"><i class="fa-solid fa-arrows-rotate"></i> Mirror to on-prem</div>
-                <div class="card-head-right" style="color:var(--muted);font-size:11.5px">Dev only</div>
-              </div>
-              <div class="card-body" style="padding:14px 18px">
-                <div style="color:var(--muted);font-size:12.5px;line-height:1.55;margin-bottom:12px">
-                  Pushes this project's MDA data from AWS RDS back to the on-prem Postgres at
-                  <code style="font-family:'SF Mono','Monaco',monospace;font-size:11.5px">10.11.52.96</code>.
-                  Watermark-based — only rows newer than the last mirror are sent.
-                </div>
-                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-                  <button class="btn btn-primary btn-sm" id="onprem-mirror-btn" onclick="runOnpremMirror()">
-                    <i class="fa-solid fa-arrows-rotate"></i> Run mirror
-                  </button>
-                  <span id="onprem-mirror-status" style="font-size:12px;color:var(--muted)">Idle</span>
-                </div>
-                <div style="font-size:11.5px;color:var(--muted);line-height:1.6">
-                  <div><strong style="color:var(--ink);font-weight:600">Last run:</strong> <span id="onprem-mirror-last-run">—</span></div>
-                  <div><strong style="color:var(--ink);font-weight:600">High-water mark:</strong> <span id="onprem-mirror-watermark">—</span></div>
-                  <div><strong style="color:var(--ink);font-weight:600">Last row count:</strong> <span id="onprem-mirror-rows">0</span></div>
-                </div>
-                <div id="onprem-mirror-err-wrap" style="display:none;background:var(--bad-bg);border:1px solid #FECACA;border-radius:6px;padding:8px 12px;margin-top:10px">
-                  <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Last error</div>
-                  <div id="onprem-mirror-err" style="color:var(--bad);font-size:12px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace">—</div>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div>
@@ -660,78 +677,6 @@
         </div>
       </section>
 
-      <!-- ═══════════ QC RE-RUN ═══════════ -->
-      <section class="view" id="view-qc">
-        <div class="page-head">
-          <div>
-            <div class="page-title">QC Re-run</div>
-            <div class="page-sub">Trigger spatial and data-quality re-computation on existing MDA records</div>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-          <div class="card">
-            <div class="card-head">
-              <div class="card-title"><i class="fa-solid fa-shield-halved"></i> Quality Check Operations</div>
-            </div>
-            <div class="card-body">
-              <div class="alert alert-info" style="margin-bottom:16px">
-                <i class="fa-solid fa-circle-info"></i>
-                <div>QC flags are automatically computed during upload. Use this panel to re-run checks if boundary data has been updated.</div>
-              </div>
-
-              <div style="display:flex;flex-direction:column;gap:12px">
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)">
-                  <div>
-                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Spatial QC Re-compute</div>
-                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Re-check GPS coordinates against LGA / Ward / State boundaries</div>
-                  </div>
-                  <button class="btn btn-primary" onclick="runQC('spatial')"><i class="fa-solid fa-location-crosshairs"></i> Run</button>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)">
-                  <div>
-                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Duplicate GPS Check</div>
-                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Identify records sharing identical GPS coordinates</div>
-                  </div>
-                  <button class="btn btn-primary" onclick="runQC('duplicates')"><i class="fa-solid fa-copy"></i> Run</button>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)">
-                  <div>
-                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Form Duration Flags</div>
-                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Re-evaluate fast (&lt;5 min) and slow (&gt;60 min) form submissions</div>
-                  </div>
-                  <button class="btn btn-primary" onclick="runQC('duration')"><i class="fa-solid fa-stopwatch"></i> Run</button>
-                </div>
-
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0">
-                  <div>
-                    <div style="font-weight:600;font-size:13.5px;color:var(--navy)">Full QC Re-run</div>
-                    <div style="font-size:12px;color:var(--muted);margin-top:2px">Run all QC checks sequentially on all records</div>
-                  </div>
-                  <button class="btn btn-danger" onclick="runQC('all')"><i class="fa-solid fa-bolt"></i> Run All</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head">
-              <div class="card-title"><i class="fa-solid fa-terminal"></i> QC Log</div>
-            </div>
-            <div class="card-body" style="padding:14px">
-              <div class="log-box" id="qc-log" style="height:300px">
-<span class="log-entry info">[INFO]  Ready. Select a QC operation to begin.</span>
-              </div>
-              <div class="progress" style="margin-top:10px">
-                <div class="progress-fill" id="qc-progress" style="width:0%"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- ═══════════ SYSTEM STATUS ═══════════ -->
       <section class="view" id="view-system">
         <div class="page-head">
@@ -809,6 +754,46 @@
               <tr><td colspan="3" style="text-align:center;padding:20px;color:var(--muted)">Loading…</td></tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- ═══════════ ACCOUNT — CHANGE PASSWORD ═══════════ -->
+      <section class="view" id="view-account">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Change Password</div>
+            <div class="page-sub">Update the password for <span id="account-username" style="font-weight:600;color:var(--ink)">your account</span>. You'll be signed out after a successful change.</div>
+          </div>
+        </div>
+
+        <div class="card" style="max-width:540px">
+          <div class="card-body" style="padding:22px 26px">
+            <form id="account-pw-form" autocomplete="off" onsubmit="return false">
+              <div style="margin-bottom:14px">
+                <label style="display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;margin-bottom:6px">Current password</label>
+                <input type="password" id="account-pw-current" autocomplete="current-password"
+                  style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;outline:none;color:var(--ink);background:#fff"
+                  required>
+              </div>
+              <div style="margin-bottom:14px">
+                <label style="display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;margin-bottom:6px">New password</label>
+                <input type="password" id="account-pw-new" autocomplete="new-password" minlength="8"
+                  style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;outline:none;color:var(--ink);background:#fff"
+                  required>
+                <div style="margin-top:6px;font-size:11.5px;color:var(--muted)">At least 8 characters.</div>
+              </div>
+              <div style="margin-bottom:18px">
+                <label style="display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;margin-bottom:6px">Confirm new password</label>
+                <input type="password" id="account-pw-confirm" autocomplete="new-password" minlength="8"
+                  style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;outline:none;color:var(--ink);background:#fff"
+                  required>
+              </div>
+              <div id="account-pw-feedback" style="display:none;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:14px"></div>
+              <button class="btn btn-primary" onclick="submitPasswordChange()">
+                <i class="fa-solid fa-key"></i> Update Password
+              </button>
+            </form>
+          </div>
         </div>
       </section>
 
@@ -977,7 +962,66 @@
     if (v === 'users')    { loadUsers(); }
     if (v === 'system')   { loadSystemStatus(); }
     if (v === 'sync')     { loadSyncProjects(); }
+    if (v === 'account')  { resetPasswordForm(); }
   }
+
+  /* ── ACCOUNT: change-password form ── */
+  function resetPasswordForm() {
+    ['account-pw-current','account-pw-new','account-pw-confirm']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const fb = document.getElementById('account-pw-feedback');
+    if (fb) { fb.style.display = 'none'; fb.textContent = ''; }
+    // Show the logged-in username so the user is certain whose password
+    // they're about to change.
+    const lbl = document.getElementById('account-username');
+    if (lbl) lbl.textContent = (localStorage.getItem('username') || 'your account');
+  }
+
+  function _setPwFeedback(msg, type) {
+    const fb = document.getElementById('account-pw-feedback');
+    if (!fb) return;
+    fb.style.display = 'block';
+    fb.textContent = msg;
+    const colors = {
+      ok:  'background:#DCFCE7;color:#15803D;border:1px solid #BBF7D0',
+      err: 'background:#FEE2E2;color:#B91C1C;border:1px solid #FECACA',
+      info:'background:#E0F2FE;color:#075985;border:1px solid #BAE6FD',
+    };
+    fb.style.cssText = 'padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:14px;display:block;' + (colors[type] || colors.info);
+  }
+
+  window.submitPasswordChange = async function() {
+    const cur     = document.getElementById('account-pw-current').value;
+    const nw      = document.getElementById('account-pw-new').value;
+    const confirm = document.getElementById('account-pw-confirm').value;
+
+    if (!cur || !nw || !confirm) {
+      _setPwFeedback('Please fill in all three fields.', 'err'); return;
+    }
+    if (nw.length < 8) {
+      _setPwFeedback('New password must be at least 8 characters.', 'err'); return;
+    }
+    if (nw !== confirm) {
+      _setPwFeedback('New password and confirmation do not match.', 'err'); return;
+    }
+    if (nw === cur) {
+      _setPwFeedback('New password must differ from the current one.', 'err'); return;
+    }
+
+    _setPwFeedback('Updating…', 'info');
+    const res = await api('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: cur, new_password: nw }),
+    });
+    if (!res) { _setPwFeedback('Network error.', 'err'); return; }
+    if (res.status === 204 || res.ok) {
+      _setPwFeedback('Password updated. You will be signed out in 3 seconds…', 'ok');
+      setTimeout(() => { localStorage.clear(); window.location.href = '/login'; }, 3000);
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    _setPwFeedback(data.detail || `Update failed (HTTP ${res.status}).`, 'err');
+  };
 
   /* ── FEEDBACK HELPERS ── */
   function setFeedback(id, msg, type) {
@@ -1417,6 +1461,31 @@
     document.getElementById('onprem-mirror-watermark').textContent = _fmtTs(s.last_mirror_at);
     document.getElementById('onprem-mirror-rows').textContent      = (s.last_row_count || 0).toLocaleString();
 
+    // Live progress bar — visible only while a run is in flight. Mirrors the
+    // CommCare-sync progress UX: step label + N/N counter + animated fill.
+    const prog    = document.getElementById('onprem-mirror-progress');
+    const progBar = document.getElementById('onprem-mirror-progress-bar');
+    const progLbl = document.getElementById('onprem-mirror-progress-label');
+    const progCtr = document.getElementById('onprem-mirror-progress-counter');
+    const isMirrorRunning = s.last_status === 'running'
+                            && Number(s.last_progress_total || 0) > 0;
+    if (isMirrorRunning) {
+      const step  = Number(s.last_progress_step  || 0);
+      const total = Number(s.last_progress_total || 1);
+      const pct   = Math.min(100, Math.round(100 * step / total));
+      prog.style.display    = 'block';
+      progBar.style.width   = pct + '%';
+      progLbl.textContent   = s.last_progress_label || `Step ${step} of ${total}`;
+      progCtr.textContent   = `${pct}% · ${step}/${total}`;
+    } else if (prog.style.display === 'block') {
+      // Animate to 100% briefly when the run finishes, then hide
+      progBar.style.width = '100%';
+      setTimeout(() => { prog.style.display = 'none'; progBar.style.width = '0%'; }, 600);
+    } else {
+      prog.style.display  = 'none';
+      progBar.style.width = '0%';
+    }
+
     const errWrap = document.getElementById('onprem-mirror-err-wrap');
     const errEl   = document.getElementById('onprem-mirror-err');
     if (s.last_status === 'error' && s.last_error) {
@@ -1447,7 +1516,9 @@
 
   function startOnpremMirrorPolling() {
     stopOnpremMirrorPolling();
-    _onpremPollTimer = setInterval(loadOnpremMirrorState, 2000);
+    // 1.5 s cadence — matches the CommCare-sync progress polling so the
+    // step label feels equally responsive.
+    _onpremPollTimer = setInterval(loadOnpremMirrorState, 1500);
   }
   function stopOnpremMirrorPolling() {
     if (_onpremPollTimer) { clearInterval(_onpremPollTimer); _onpremPollTimer = null; }
@@ -1493,21 +1564,33 @@
         container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i>No projects found</div>';
         return;
       }
-      let rows = projects.map(p => `
+      const esc = s => String(s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      let rows = projects.map(p => {
+        const actions = [];
+        if (!p.is_active) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="setActiveProject(${p.id})" title="Make this the live round"><i class="fa-solid fa-toggle-on"></i> Set Active</button>`);
+        }
+        actions.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
+        if (!p.is_active) {
+          actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project — irreversible"><i class="fa-solid fa-trash"></i></button>`);
+        }
+        return `
         <tr>
           <td><b>${p.name}</b><br><small style="color:var(--muted)">${p.slug}</small></td>
           <td style="font-size:12px;color:var(--muted)">${p.description || '—'}</td>
           <td>
             ${p.is_active
               ? '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px"></i> Active</span>'
-              : `<button class="btn btn-ghost btn-sm" onclick="setActiveProject(${p.id})">Set Active</button>`}
+              : '<span class="chip" style="background:var(--mist);color:var(--muted)">Inactive</span>'}
           </td>
           <td style="color:var(--muted);font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
-        </tr>`).join('');
+          <td>${actions.join(' ')}</td>
+        </tr>`;
+      }).join('');
       container.innerHTML = `
         <div style="overflow-x:auto">
           <table>
-            <thead><tr><th>Name / Slug</th><th>Description</th><th>Status</th><th>Created</th></tr></thead>
+            <thead><tr><th>Name / Slug</th><th>Description</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -1553,6 +1636,48 @@
     } catch(e) {}
   };
 
+  window.editProject = async function(id, currentName, currentDesc) {
+    // Prompt-driven inline editor — keeps the UI simple and works for the
+    // two fields the backend's ProjectUpdate schema accepts (name, description).
+    const newName = window.prompt('Project name:', currentName || '');
+    if (newName === null) return;
+    if (!newName.trim()) { await alertDialog({ title: 'Validation', message: 'Project name cannot be empty.' }); return; }
+    const newDesc = window.prompt('Description (optional):', currentDesc || '');
+    if (newDesc === null) return;
+    const body = { name: newName.trim(), description: newDesc };
+    const res = await api('/api/projects/' + id, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); return; }
+    if (res.ok) {
+      await alertDialog({ title: 'Updated', message: 'Project saved.' });
+      loadProjects();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      await alertDialog({ title: 'Update failed', message: d.detail || `HTTP ${res.status}`, danger: true });
+    }
+  };
+
+  window.deleteProject = async function(id, name) {
+    const ok = await confirmDialog({
+      title: 'Delete project?',
+      message: `Permanently delete "${name}"? This removes all households, individuals, baseline rows, boundaries, and sync history scoped to this project. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
+    const res = await api('/api/projects/' + id, { method: 'DELETE' });
+    if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); return; }
+    if (res.ok) {
+      await alertDialog({ title: 'Deleted', message: `"${name}" deleted.` });
+      loadProjects();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      await alertDialog({ title: 'Delete failed', message: d.detail || `HTTP ${res.status}`, danger: true });
+    }
+  };
+
   /* ── USERS ── */
   async function loadUsers() {
     const container = document.getElementById('users-list');
@@ -1587,6 +1712,11 @@
         }
         if (isSuperadmin && u.is_superadmin && u.username !== username) {
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="demoteUser(${u.id})" title="Demote to Admin"><i class="fa-solid fa-arrow-down"></i> Demote</button>`);
+        }
+        // Superadmin-only override: reset another user's password. Hidden
+        // for the actor's own row — they use the self-service Account page.
+        if (isSuperadmin && u.username !== username) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="resetUserPassword(${u.id},'${usernameEsc}')" title="Reset this user's password"><i class="fa-solid fa-key"></i></button>`);
         }
         if (u.username !== 'admin' && u.username !== username && (isSuperadmin || !u.is_superadmin)) {
           actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${usernameEsc}')"><i class="fa-solid fa-trash"></i></button>`);
@@ -1708,48 +1838,35 @@
     } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); }
   };
 
-  /* ── QC RE-RUN ── */
-  let qcRunning = false;
-  window.runQC = async function(type) {
-    if (qcRunning) { appendLog('qc-log', 'QC already running — please wait.', 'err'); return; }
-    qcRunning = true;
-    const prog = document.getElementById('qc-progress');
-    prog.style.width = '0%';
-    appendLog('qc-log', 'Starting QC re-run: ' + type, 'info');
-
-    // Animate progress
-    let pct = 0;
-    const ticker = setInterval(() => {
-      pct = Math.min(pct + 5, 85);
-      prog.style.width = pct + '%';
-    }, 200);
-
-    try {
-      const endpoint = type === 'all'
-        ? '/api/mda/qc/rerun'
-        : '/api/mda/qc/rerun?type=' + type;
-      const res = await api(endpoint, { method: 'POST' });
-      clearInterval(ticker);
-      prog.style.width = '100%';
-
-      if (!res) {
-        appendLog('qc-log', 'Request failed — check network.', 'err');
-        return;
-      }
-      if (res.ok) {
-        const d = await res.json();
-        appendLog('qc-log', 'QC complete: ' + JSON.stringify(d), 'ok');
-      } else {
-        const d = await res.json().catch(() => ({}));
-        appendLog('qc-log', 'QC endpoint returned ' + res.status + ': ' + (d.detail || 'Unknown error'), 'err');
-        appendLog('qc-log', 'Note: QC re-run endpoint may not yet be implemented.', 'info');
-      }
-    } catch(e) {
-      clearInterval(ticker);
-      appendLog('qc-log', 'Error: ' + e.message, 'err');
-    } finally {
-      qcRunning = false;
-      setTimeout(() => { prog.style.width = '0%'; }, 2000);
+  window.resetUserPassword = async function(id, uname) {
+    // Superadmin override — bypasses the current-password check.
+    // Prompted instead of a custom modal because we only need one input.
+    const newPw = window.prompt(
+      `Set a new password for "${uname}". They'll need to use this on their next sign-in. Minimum 8 characters.`,
+      ''
+    );
+    if (newPw === null) return;
+    if (newPw.length < 8) {
+      await alertDialog({ title: 'Too short', message: 'Password must be at least 8 characters.', danger: true });
+      return;
+    }
+    const ok = await confirmDialog({
+      title: `Reset password for "${uname}"?`,
+      message: `Their existing password will stop working immediately. Make sure you share the new one with them through a safe channel.`,
+      confirmLabel: 'Reset password',
+      danger: true,
+    });
+    if (!ok) return;
+    const res = await api('/api/auth/users/' + id + '/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ new_password: newPw }),
+    });
+    if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.' }); return; }
+    if (res.status === 204 || res.ok) {
+      await alertDialog({ title: 'Done', message: `Password reset for ${uname}. Share the new password securely.` });
+    } else {
+      const d = await res.json().catch(() => ({}));
+      await alertDialog({ title: 'Reset failed', message: d.detail || `HTTP ${res.status}`, danger: true });
     }
   };
 
@@ -1781,12 +1898,18 @@
         '<tr><td colspan="3" style="text-align:center;color:var(--bad);padding:14px">API unreachable</td></tr>';
     }
 
-    // MDA overview for counts
+    // All six count tiles — single round-trip to /system/counts.
     try {
-      const res = await api('/api/mda/overview');
+      const res = await api('/api/mda/system/counts');
       if (res && res.ok) {
-        const d = await res.json();
-        document.getElementById('ss-households').textContent = (d.total_forms || 0).toLocaleString();
+        const c = await res.json();
+        const fmt = n => Number(n || 0).toLocaleString();
+        document.getElementById('ss-households').textContent   = fmt(c.households);
+        document.getElementById('ss-individuals').textContent  = fmt(c.individuals);
+        document.getElementById('ss-baseline').textContent     = fmt(c.baseline_records);
+        document.getElementById('ss-lgas').textContent         = fmt(c.lgas);
+        document.getElementById('ss-wards').textContent        = fmt(c.wards);
+        document.getElementById('ss-settlements').textContent  = fmt(c.settlements);
       }
     } catch(e) {}
 
@@ -1815,39 +1938,21 @@
       }
     } catch(e) {}
 
-    // Projects / Boundaries
-    try {
-      const res = await api('/api/projects');
-      if (res && res.ok) {
-        const ps = await res.json();
-        const active = ps.find(p => p.is_active) || ps[0];
-        if (active) {
-          // LGA/Ward/Settlement counts
-          const [lgaR, wardR, settlR] = await Promise.all([
-            api('/api/projects/' + active.id + '/boundaries/lga'),
-            api('/api/projects/' + active.id + '/boundaries/ward'),
-            api('/api/projects/' + active.id + '/boundaries/settlement'),
-          ]);
-          if (lgaR && lgaR.ok) {
-            const lgas = await lgaR.json();
-            document.getElementById('ss-lgas').textContent = (lgas.length || 0).toLocaleString();
-          }
-          if (wardR && wardR.ok) {
-            const wards = await wardR.json();
-            document.getElementById('ss-wards').textContent = (wards.length || 0).toLocaleString();
-          }
-          if (settlR && settlR.ok) {
-            const setls = await settlR.json();
-            document.getElementById('ss-settlements').textContent = (setls.length || 0).toLocaleString();
-          }
-        }
-      }
-    } catch(e) {}
   }
   window.loadSystemStatus = loadSystemStatus;
 
   /* ── INIT ── */
-  loadUploadHistory();
+  // Pick a sensible landing view based on role:
+  //   superadmin → Data Sources  (their primary action: data pipeline)
+  //   admin only → Users         (their primary action: account mgmt)
+  //   everyone else → System Status (always visible, low blast-radius)
+  (function pickInitialView() {
+    const defaultView = isSuperadmin ? 'sync'
+                      : isAdmin      ? 'users'
+                      :                'system';
+    const navEl = document.querySelector(`.nav-item[data-view="${defaultView}"]`);
+    if (navEl) navEl.click();
+  })();
 
 })();
 </script>

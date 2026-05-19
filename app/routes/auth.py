@@ -150,6 +150,72 @@ async def get_me(user: User = Depends(get_current_user)):
     return user
 
 
+from pydantic import BaseModel, Field  # noqa: E402 — colocated with the route below
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password:     str = Field(min_length=8, max_length=200)
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=200)
+
+
+@router.post("/change-password", status_code=204)
+async def change_password(
+    data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Self-service password change for the logged-in user.
+
+    Requires the caller's current password — protects against an attacker
+    abusing a stolen session token to lock the real user out. New password
+    must be at least 8 chars; bcrypt-hashed before storage.
+    """
+    if not verify_password(data.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if data.new_password == data.current_password:
+        raise HTTPException(status_code=400, detail="New password must differ from the current one")
+
+    user.hashed_password = hash_password(data.new_password)
+    await db.commit()
+    # 204 No Content — client should redirect to login or refresh
+    return
+
+
+@router.post("/users/{user_id}/reset-password", status_code=204)
+async def admin_reset_password(
+    user_id: int,
+    data: AdminResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_superadmin),
+):
+    """Superadmin override: reset any user's password without their old one.
+
+    Restricted to superadmins because it bypasses the current-password check.
+    The target user is forced to use the new password on their next login —
+    they don't get a session-invalidation, but the old password no longer
+    works, so any active session of theirs is effectively dead on token
+    refresh.
+    """
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Defensive: prevent the actor from accidentally locking out the root
+    # admin via this endpoint — they can still change it via self-service.
+    if target.id == actor.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Use the self-service Change Password page for your own account.",
+        )
+    target.hashed_password = hash_password(data.new_password)
+    await db.commit()
+    return
+
+
 @router.get("/users", response_model=list[UserOut])
 async def list_users(
     db: AsyncSession = Depends(get_db),

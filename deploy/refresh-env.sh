@@ -47,6 +47,14 @@ TMP=$(mktemp)
     echo "# CommCare HQ credentials (used by the sync service)"
     fetch_json "${PROJECT}/commcare"
     echo ""
+    echo "# On-prem reverse-mirror target — surfaces the 'Mirror to on-prem'"
+    echo "# button to superadmin in the admin panel. The mirror call itself"
+    echo "# will only succeed if this host can reach the on-prem IP (i.e."
+    echo "# via a Site-to-Site VPN); from a stock AWS VPC it will time out."
+    echo "ONPREM_BACKUP_DATABASE_URL=$(aws secretsmanager get-secret-value \
+        --region $REGION --secret-id ${PROJECT}/onprem-database-url \
+        --query SecretString --output text 2>/dev/null || echo '')"
+    echo ""
     echo "# Static config not in any secret"
     echo "ACCESS_TOKEN_EXPIRE_MINUTES=480"
     echo "ALGORITHM=HS256"
