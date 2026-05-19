@@ -37,6 +37,23 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS check_treatment_date DATE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS hq_user TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN DEFAULT FALSE",
+            # Phase 4a — state + round on geo_projects, project_id on MDA tables
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS state_name TEXT",
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS round_number INTEGER",
+            "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS project_id INTEGER",
+            "ALTER TABLE mda_individuals ADD COLUMN IF NOT EXISTS project_id INTEGER",
+            "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS project_id INTEGER",
+            "ALTER TABLE mlos_settlements ADD COLUMN IF NOT EXISTS project_id INTEGER",
+            "CREATE INDEX IF NOT EXISTS idx_mda_households_project_id ON mda_households (project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mda_individuals_project_id ON mda_individuals (project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mda_baseline_project_id ON mda_baseline (project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mlos_settlements_project_id ON mlos_settlements (project_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_geo_projects_state_round ON geo_projects (state_name, round_number)",
+            # R5+: age/sex target breakdown on mda_baseline
+            "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_1_11_f INTEGER",
+            "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_1_11_m INTEGER",
+            "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_12_59_f INTEGER",
+            "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_12_59_m INTEGER",
         ]:
             try:
                 await db.execute(text(stmt))
@@ -94,17 +111,65 @@ async def lifespan(app: FastAPI):
             db.add(analyst)
             logger.info("Created analyst user (analyst/analyst123)")
 
-        # Seed Sokoto project
+        # Seed / migrate Sokoto Round 4 project
         result = await db.execute(select(GeoProject).where(GeoProject.slug == "sokoto"))
-        if not result.scalar_one_or_none():
-            project = GeoProject(
-                name="Sokoto",
+        sokoto_r4 = result.scalar_one_or_none()
+        if not sokoto_r4:
+            sokoto_r4 = GeoProject(
+                name="Sokoto Round 4",
                 slug="sokoto",
-                description="Sokoto State geospatial coverage monitoring",
+                description="Sokoto State — Round 4 (historical)",
+                state_name="Sokoto",
+                round_number=4,
+                is_active=False,
+            )
+            db.add(sokoto_r4)
+            logger.info("Created Sokoto R4 project")
+        elif sokoto_r4.state_name is None or sokoto_r4.round_number is None:
+            # First-time Phase 4a migration: tag the existing "Sokoto" project as R4
+            sokoto_r4.state_name = "Sokoto"
+            sokoto_r4.round_number = 4
+            sokoto_r4.name = "Sokoto Round 4"
+            sokoto_r4.description = "Sokoto State — Round 4 (historical)"
+            logger.info("Migrated existing Sokoto project to Sokoto R4")
+
+        await db.commit()
+        await db.refresh(sokoto_r4)
+
+        # Backfill any unscoped MDA rows to Sokoto R4 (one-time, idempotent)
+        for tbl in ("mda_households", "mda_individuals", "mda_baseline", "mlos_settlements"):
+            try:
+                res = await db.execute(
+                    text(f"UPDATE {tbl} SET project_id = :pid WHERE project_id IS NULL"),
+                    {"pid": sokoto_r4.id},
+                )
+                if res.rowcount:
+                    logger.info(f"Backfilled {res.rowcount} rows in {tbl} → Sokoto R4 (id={sokoto_r4.id})")
+            except Exception as e:
+                logger.warning(f"Backfill skipped for {tbl}: {e}")
+        await db.commit()
+
+        # Seed Sokoto Round 5 as the active project (R4 deactivates if it was active)
+        result = await db.execute(
+            select(GeoProject).where(
+                GeoProject.state_name == "Sokoto",
+                GeoProject.round_number == 5,
+            )
+        )
+        sokoto_r5 = result.scalar_one_or_none()
+        if not sokoto_r5:
+            sokoto_r5 = GeoProject(
+                name="Sokoto Round 5",
+                slug="sokoto-r5",
+                description="Sokoto State — Round 5 (live)",
+                state_name="Sokoto",
+                round_number=5,
                 is_active=True,
             )
-            db.add(project)
-            logger.info("Created default Sokoto project")
+            db.add(sokoto_r5)
+            # Only one project may be active at a time
+            sokoto_r4.is_active = False
+            logger.info("Seeded Sokoto R5 project (active)")
 
         await db.commit()
 

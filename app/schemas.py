@@ -60,6 +60,8 @@ class ProjectOut(BaseModel):
     slug: str
     description: str
     is_active: bool
+    state_name: Optional[str] = None
+    round_number: Optional[int] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

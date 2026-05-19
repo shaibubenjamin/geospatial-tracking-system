@@ -17,6 +17,7 @@ from app.services.spatial_engine import (
     compute_settlement_analytics,
     get_coverage_timeline,
     get_points_geojson,
+    _resolve_boundary_pid,
 )
 from app.services.qc_engine import run_stacked_point_check
 
@@ -38,7 +39,12 @@ async def lga_metrics(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_lga_metrics(project_id, db)
+    # The LGA list belongs to the state — use the boundary-owning project so
+    # the dashboard always shows all LGAs of the state, even for a round whose
+    # analytics haven't been computed yet. (Coverage metrics will be 0 until
+    # the round runs its own compute.)
+    pid = await _resolve_boundary_pid(project_id, db)
+    return await get_lga_metrics(pid, db)
 
 
 @router.get("/wards")
@@ -48,7 +54,8 @@ async def ward_metrics(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_ward_metrics(project_id, db, lgacode=lgacode)
+    pid = await _resolve_boundary_pid(project_id, db)
+    return await get_ward_metrics(pid, db, lgacode=lgacode)
 
 
 @router.get("/settlements")
@@ -59,7 +66,8 @@ async def settlement_metrics(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_settlement_metrics(project_id, db, wardcode=wardcode, lgacode=lgacode)
+    pid = await _resolve_boundary_pid(project_id, db)
+    return await get_settlement_metrics(pid, db, wardcode=wardcode, lgacode=lgacode)
 
 
 @router.get("/timeline")

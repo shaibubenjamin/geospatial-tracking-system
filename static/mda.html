@@ -353,6 +353,11 @@ tbody tr:hover{background:var(--pale)}
         <span style="color:var(--muted);margin-left:6px;font-size:11px">(<span id="crumb-start">&mdash;</span> to <span id="crumb-end">&mdash;</span>)</span>
       </div>
       <div class="spacer"></div>
+      <!-- State / Round selector -->
+      <select id="project-selector" title="Switch between states and rounds"
+              style="border:1px solid var(--line);background:#fff;color:var(--ink);font-size:12.5px;font-weight:600;padding:7px 28px 7px 12px;border-radius:8px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M1 1l4 4 4-4%22 stroke=%22%234A6852%22 stroke-width=%221.5%22 fill=%22none%22 stroke-linecap=%22round%22/></svg>');background-repeat:no-repeat;background-position:right 10px center">
+        <option value="">Loading…</option>
+      </select>
       <div class="search"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search LGA, ward, team&hellip;"></div>
       <div class="icon-btn auth-only" onclick="openUploadModal()" title="Upload Data"><i class="fa-solid fa-cloud-arrow-up"></i></div>
       <div class="icon-btn auth-only" onclick="handleLogout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></div>
@@ -1125,11 +1130,27 @@ tbody tr:hover{background:var(--pale)}
 
   function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
 
+  /* ── PROJECT SCOPE (state + round) ── */
+  // The selector value is the project_id the user is viewing. null = use server-side active default.
+  let SELECTED_PID = (function() {
+    const stored = localStorage.getItem('selected_project_id');
+    return stored && /^\d+$/.test(stored) ? parseInt(stored, 10) : null;
+  })();
+
+  // List of /api/mda/* endpoints that accept ?project_id=. Other endpoints (notably the
+  // boundary/analytics routes under /api/projects/{pid}/...) take pid in the URL path and
+  // are not scoped via this helper.
+  function _withProjectScope(path) {
+    if (SELECTED_PID == null) return path;
+    if (!/^\/api\/mda\//.test(path)) return path;
+    return path + (path.includes('?') ? '&' : '?') + 'project_id=' + SELECTED_PID;
+  }
+
   /* ── API HELPER ── */
   async function api(path) {
     try {
       const headers = token ? { Authorization: 'Bearer ' + token } : {};
-      const r = await fetch(path, { headers });
+      const r = await fetch(_withProjectScope(path), { headers });
       if (r.status === 401) {
         if (!PUBLIC_MODE) handleLogout();
         return null;
@@ -3578,6 +3599,49 @@ tbody tr:hover{background:var(--pale)}
   Chart.defaults.color='#5B6B82';
   // Disable datalabels globally by default — enable per chart
   Chart.defaults.set('plugins.datalabels', { display: false });
+
+  /* ── PROJECT SELECTOR (state / round) ── */
+  async function populateProjectSelector() {
+    const sel = document.getElementById('project-selector');
+    if (!sel) return;
+    const projects = await api('/api/projects');
+    if (!Array.isArray(projects) || !projects.length) {
+      sel.innerHTML = '<option value="">No projects</option>';
+      sel.disabled = true;
+      return;
+    }
+    // Sort by state then round ascending
+    projects.sort((a, b) => {
+      const sa = (a.state_name || '').localeCompare(b.state_name || '');
+      if (sa !== 0) return sa;
+      return (a.round_number || 0) - (b.round_number || 0);
+    });
+    // Default if nothing stored: the server-side active project
+    const active = projects.find(p => p.is_active) || projects[0];
+    if (SELECTED_PID == null) SELECTED_PID = active ? active.id : null;
+
+    const opts = projects.map(p => {
+      const state = p.state_name || 'Unknown state';
+      const round = p.round_number != null ? `Round ${p.round_number}` : null;
+      const status = p.is_active ? ' (live)' : '';
+      // "Sokoto Round 5 (live)" — falls back to project name if round_number is missing
+      const label = round ? `${state} ${round}${status}` : (p.name || `Project ${p.id}`) + status;
+      const sel = p.id === SELECTED_PID ? ' selected' : '';
+      return `<option value="${p.id}"${sel}>${label}</option>`;
+    });
+    sel.innerHTML = opts.join('');
+
+    sel.addEventListener('change', () => {
+      const v = parseInt(sel.value, 10);
+      if (!Number.isFinite(v)) return;
+      SELECTED_PID = v;
+      localStorage.setItem('selected_project_id', String(v));
+      // Hard reload so every cached chart / map layer re-fetches with the new scope
+      window.location.reload();
+    });
+  }
+
+  populateProjectSelector();
 
   loadOverview().then(()=>{
     populateLGAFilter();
