@@ -44,6 +44,8 @@ class SyncConfigOut(BaseModel):
     last_status: Optional[str]
     last_error: Optional[str]
     last_row_count: Optional[int]
+    last_progress_step: Optional[int] = None
+    last_progress_total: Optional[int] = None
 
 
 async def _get_config(project_id: int, db: AsyncSession) -> Optional[SyncConfig]:
@@ -81,7 +83,28 @@ async def get_config(
         last_status=cfg.last_status,
         last_error=cfg.last_error,
         last_row_count=cfg.last_row_count,
+        last_progress_step=cfg.last_progress_step,
+        last_progress_total=cfg.last_progress_total,
     )
+
+
+@router.get("/history")
+async def get_history(
+    project_id: int,
+    limit: int = 5,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_superadmin),
+):
+    """Most-recent N sync runs for this project (default 5)."""
+    limit = max(1, min(limit, 50))  # safety cap
+    res = await db.execute(text("""
+        SELECT id, started_at, ended_at, status, rows_fetched, error_message
+        FROM sync_history
+        WHERE project_id = :pid
+        ORDER BY started_at DESC
+        LIMIT :limit
+    """), {"pid": project_id, "limit": limit})
+    return [dict(r._mapping) for r in res.fetchall()]
 
 
 @router.put("/config")

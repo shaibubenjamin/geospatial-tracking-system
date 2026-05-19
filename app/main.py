@@ -56,6 +56,19 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS target_12_59_m INTEGER",
             # Index supporting the per-household individual deletion during sync
             "CREATE INDEX IF NOT EXISTS idx_mda_individuals_hh_formid_proj ON mda_individuals (project_id, hh_formid)",
+            # Sync progress + history
+            "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS last_progress_step INTEGER",
+            "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS last_progress_total INTEGER",
+            """CREATE TABLE IF NOT EXISTS sync_history (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES geo_projects(id),
+                started_at TIMESTAMPTZ DEFAULT NOW(),
+                ended_at TIMESTAMPTZ,
+                status TEXT DEFAULT 'running',
+                rows_fetched INTEGER DEFAULT 0,
+                error_message TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_sync_history_project_started ON sync_history (project_id, started_at DESC)",
         ]:
             try:
                 await db.execute(text(stmt))

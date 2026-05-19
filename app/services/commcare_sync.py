@@ -357,17 +357,28 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
         bp_row = cur.fetchone()
         boundary_pid = (bp_row["min"] if bp_row and bp_row.get("min") else project_id)
 
-        # 3. Mark sync as running
+        # 3. Mark sync as running + open a history row + reset progress
+        total_feeds = len([e for e in cfg["form_ids"] if e.get("form_id")]) * 2
         cur.execute(
-            "UPDATE sync_config SET last_status='running', last_synced_at=NOW(), last_error=NULL WHERE project_id=%s",
+            """UPDATE sync_config SET
+               last_status='running', last_synced_at=NOW(), last_error=NULL,
+               last_progress_step=0, last_progress_total=%s
+               WHERE project_id=%s""",
+            (total_feeds, project_id),
+        )
+        cur.execute(
+            "INSERT INTO sync_history (project_id, status, started_at) VALUES (%s, 'running', NOW()) RETURNING id",
             (project_id,),
         )
-        conn.commit()  # commit only the 'running' marker; the rest is one big transaction
+        history_id = cur.fetchone()["id"]
+        conn.commit()  # commit only the 'running' marker + history row; the rest is one big transaction
 
-        # 4. Pull every (form, record_type) feed
+        # 4. Pull every (form, record_type) feed; commit progress between feeds so the
+        #    admin panel's polling endpoint sees the bar fill in real time.
         per_feed: List[Dict[str, Any]] = []
         all_households: List[Dict[str, Any]] = []   # mapped rows
         all_individuals: List[Dict[str, Any]] = []  # mapped rows
+        step = 0
 
         auth = (cfg["username"], cfg["password"])
         async with httpx.AsyncClient() as client:
@@ -414,6 +425,14 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                         "fetched": len(rows),
                         "next_watermark": max_received.isoformat() if max_received else None,
                     })
+
+                    # Advance the progress counter and commit so the UI poll picks it up
+                    step += 1
+                    cur.execute(
+                        "UPDATE sync_config SET last_progress_step=%s WHERE project_id=%s",
+                        (step, project_id),
+                    )
+                    conn.commit()
 
         # 5. Persist — one transaction so a partial failure rolls back
         ph_cur = conn.cursor()  # tuple-cursor for bulk insert
@@ -655,14 +674,20 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                 """, (project_id, feed["form_id"], feed["record_type"],
                       feed["next_watermark"], feed["fetched"]))
 
-        # 5e. Mark sync ok
+        # 5e. Mark sync ok + close the history row
         total_fetched = sum(f["fetched"] for f in per_feed)
         ph_cur.execute("""
             UPDATE sync_config SET
               last_status='ok', last_synced_at=NOW(),
-              last_row_count=%s, last_error=NULL
+              last_row_count=%s, last_error=NULL,
+              last_progress_step=last_progress_total
             WHERE project_id=%s
         """, (total_fetched, project_id))
+        ph_cur.execute("""
+            UPDATE sync_history SET
+              status='ok', ended_at=NOW(), rows_fetched=%s, error_message=NULL
+            WHERE id=%s
+        """, (total_fetched, history_id))
 
         conn.commit()
         return {
@@ -678,9 +703,22 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
         try:
             cur2 = conn.cursor()
             cur2.execute(
-                "UPDATE sync_config SET last_status='error', last_error=%s WHERE project_id=%s",
+                """UPDATE sync_config SET
+                   last_status='error', last_error=%s,
+                   last_progress_step=NULL, last_progress_total=NULL
+                   WHERE project_id=%s""",
                 (str(e)[:1000], project_id),
             )
+            # Only update history if we managed to insert a history row before failing
+            try:
+                cur2.execute(
+                    """UPDATE sync_history SET
+                       status='error', ended_at=NOW(), error_message=%s
+                       WHERE id=%s""",
+                    (str(e)[:1000], history_id),
+                )
+            except (NameError, UnboundLocalError):
+                pass  # history_id wasn't created yet
             conn.commit()
         except Exception:
             conn.rollback()

@@ -321,7 +321,23 @@ class SyncConfig(Base):
     last_status = Column(Text)        # 'ok' / 'error' / 'running'
     last_error = Column(Text)
     last_row_count = Column(Integer, default=0)
+    # Live progress for the currently-running sync (polled by the admin panel)
+    last_progress_step = Column(Integer)   # feeds processed so far in this run
+    last_progress_total = Column(Integer)  # total feeds for this run (= len(form_ids) * 2)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SyncHistory(Base):
+    """One row per CommCare sync run for audit / history display."""
+    __tablename__ = "sync_history"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
+    started_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    ended_at = Column(DateTime(timezone=True))
+    status = Column(Text, default="running")  # 'running' / 'ok' / 'error'
+    rows_fetched = Column(Integer, default=0)
+    error_message = Column(Text)
 
 
 class SyncFeedState(Base):
