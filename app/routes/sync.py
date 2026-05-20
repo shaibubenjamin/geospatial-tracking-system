@@ -17,7 +17,11 @@ from app.models import User, SyncConfig, GeoProject
 from app.routes.auth import require_superadmin
 from app.services.crypto import encrypt, CryptoNotConfigured
 from app.services.commcare_sync import run_sync, test_connection
-from app.services.job_queue import enqueue_sync_job, health_check as redis_health_check
+from app.services.job_queue import (
+    enqueue_sync_job,
+    health_check as redis_health_check,
+    queue_depth as sync_queue_depth,
+)
 from app.services.onprem_mirror import (
     run_mirror as run_onprem_mirror,
     is_available as onprem_mirror_available,
@@ -267,6 +271,33 @@ async def trigger_sync(
         "mode":       "inline",
         "note":       "Redis unreachable — running sync inline. An API restart will kill this job.",
     }
+
+
+@router.get("/queue/depth")
+async def sync_queue_status(
+    _super: User = Depends(require_superadmin),
+):
+    """Return the current sync-worker queue depth (and worker availability).
+
+    Powers the Admin → Data Sources "Sync queue: N job(s) ahead" line so
+    the operator can see at a glance how many sync runs are stacked up
+    behind whatever's currently in flight. Returns ``worker_available:
+    False`` when Redis is unreachable, in which case the API would fall
+    back to the in-process BackgroundTasks path (no queue depth concept
+    applies).
+    """
+    available = await redis_health_check()
+    if not available:
+        return {"worker_available": False, "depth": 0,
+                "mode": "inline",
+                "note": "Redis unreachable — syncs will run inline in the API process"}
+    try:
+        depth = await sync_queue_depth()
+    except Exception as e:  # noqa: BLE001 — fall back rather than 500
+        logger.warning("Reading sync queue depth failed: %s", e)
+        return {"worker_available": True, "depth": 0,
+                "mode": "worker", "note": f"Could not read queue depth: {e}"}
+    return {"worker_available": True, "depth": int(depth), "mode": "worker"}
 
 
 @router.get("/onprem-mirror/state")
