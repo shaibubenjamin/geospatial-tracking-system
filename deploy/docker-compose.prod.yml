@@ -20,7 +20,11 @@ services:
       - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips='*'
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/health || exit 1"]
+      # The python:3.11-slim image doesn't ship curl. Use the stdlib's
+      # urllib instead so the healthcheck reflects real container state —
+      # the prod container has been reporting 'unhealthy' indefinitely
+      # even though /api/health returns 200, masking any real outage.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/api/health', timeout=3).status==200 else 1)\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
