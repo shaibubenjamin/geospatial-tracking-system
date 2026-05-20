@@ -12,8 +12,12 @@ services:
       - "8080:8080"  # ALB target group targets this port
     env_file:
       - /opt/mda-dashboard/.env  # written by /opt/mda-dashboard/refresh-env.sh
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - uploads:/app/uploads
+    depends_on:
+      - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips='*'
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/health || exit 1"]
@@ -41,6 +45,32 @@ services:
         awslogs-region: us-east-1
         awslogs-create-group: "true"
         tag: "redis"
+
+  # Dedicated CommCare-sync worker. Same image as the API but its CMD runs
+  # the worker loop instead of uvicorn — so a `Deploy on push to main` that
+  # pulls a new image and restarts the API does NOT kill an in-flight sync
+  # job on this container. Sync code changes still require a worker
+  # restart; the standard deploy hook restarts both api + sync_worker so
+  # this only matters if you redeploy the API without redeploying the
+  # worker (which the current deploy script does not do).
+  sync_worker:
+    image: ${ECR_REPO_URL}:latest
+    container_name: mda-dashboard-sync-worker
+    restart: unless-stopped
+    env_file:
+      - /opt/mda-dashboard/.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    command: python -m app.sync_worker
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /mda-dashboard/app
+        awslogs-region: us-east-1
+        awslogs-create-group: "true"
+        tag: "sync_worker"
 
 volumes:
   uploads:
