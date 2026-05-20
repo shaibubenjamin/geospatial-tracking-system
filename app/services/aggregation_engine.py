@@ -21,7 +21,18 @@ async def get_lga_metrics(
     project_id: int,
     db: AsyncSession,
 ) -> List[Dict[str, Any]]:
-    """Roll up settlement analytics to LGA level for the given round."""
+    """Roll up settlement analytics to LGA level for the given round.
+
+    Definitions (per the May 2026 campaign-team agreement):
+    * A settlement is **visited** when ≥ 1 GPS point falls inside its polygon
+      (i.e. ``sa.point_count > 0``). The legacy ``sa.is_visited`` flag — which
+      gated on grid completeness — is no longer used.
+    * Per-settlement **completeness** stays as ``visited_grids / total_grids``,
+      but settlements at ≥ 70 % are rounded up to 100 % for display and roll-up
+      (campaign-team rule: "near-complete is complete").
+    * LGA-level **completeness** is the *average* of the per-settlement capped
+      values, not a grid-weighted ratio — every settlement counts equally.
+    """
     boundary_pid = await _resolve_boundary_pid(project_id, db)
     result = await db.execute(
         text("""
@@ -29,17 +40,17 @@ async def get_lga_metrics(
                 l.lgacode,
                 l.lga_name,
                 COUNT(DISTINCT s.id) AS total_settlements,
-                SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END) AS visited_settlements,
+                SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END) AS visited_settlements,
                 CASE WHEN COUNT(DISTINCT s.id) > 0
-                     THEN ROUND(100.0 * SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END)
+                     THEN ROUND(100.0 * SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END)
                           / NULLIF(COUNT(DISTINCT s.id), 0), 1)
                      ELSE 0 END AS visitation_pct,
                 COALESCE(SUM(sa.total_grids), 0) AS total_grids,
                 COALESCE(SUM(sa.visited_grids), 0) AS visited_grids,
-                CASE WHEN COALESCE(SUM(sa.total_grids), 0) > 0
-                     THEN ROUND(100.0 * COALESCE(SUM(sa.visited_grids), 0)
-                          / NULLIF(COALESCE(SUM(sa.total_grids), 0), 0), 1)
-                     ELSE 0 END AS completeness_pct,
+                ROUND(AVG(CASE
+                    WHEN COALESCE(sa.completeness_pct, 0) >= 70 THEN 100.0
+                    ELSE COALESCE(sa.completeness_pct, 0)
+                END)::numeric, 1) AS completeness_pct,
                 COALESCE(SUM(sa.point_count), 0) AS point_count
             FROM lgas l
             LEFT JOIN settlements s ON s.lgacode = l.lgacode AND s.project_id = l.project_id
@@ -67,6 +78,8 @@ async def get_ward_metrics(
         filter_extra = "AND w.lgacode = :lgacode"
         params["lgacode"] = lgacode
 
+    # Same definitions as get_lga_metrics — visited = point_count > 0,
+    # completeness rounds up at 70 %, ward avg = mean of capped per-settlement values.
     result = await db.execute(
         text(f"""
             SELECT
@@ -75,17 +88,17 @@ async def get_ward_metrics(
                 w.lgacode,
                 w.lga_name,
                 COUNT(DISTINCT s.id) AS total_settlements,
-                SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END) AS visited_settlements,
+                SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END) AS visited_settlements,
                 CASE WHEN COUNT(DISTINCT s.id) > 0
-                     THEN ROUND(100.0 * SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END)
+                     THEN ROUND(100.0 * SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END)
                           / NULLIF(COUNT(DISTINCT s.id), 0), 1)
                      ELSE 0 END AS visitation_pct,
                 COALESCE(SUM(sa.total_grids), 0) AS total_grids,
                 COALESCE(SUM(sa.visited_grids), 0) AS visited_grids,
-                CASE WHEN COALESCE(SUM(sa.total_grids), 0) > 0
-                     THEN ROUND(100.0 * COALESCE(SUM(sa.visited_grids), 0)
-                          / NULLIF(COALESCE(SUM(sa.total_grids), 0), 0), 1)
-                     ELSE 0 END AS completeness_pct,
+                ROUND(AVG(CASE
+                    WHEN COALESCE(sa.completeness_pct, 0) >= 70 THEN 100.0
+                    ELSE COALESCE(sa.completeness_pct, 0)
+                END)::numeric, 1) AS completeness_pct,
                 COALESCE(SUM(sa.point_count), 0) AS point_count
             FROM wards w
             LEFT JOIN settlements s ON s.wardcode = w.wardcode AND s.project_id = w.project_id
@@ -123,6 +136,8 @@ async def get_settlement_metrics(
         params["lgacode"] = lgacode
     where_extra = ("AND " + " AND ".join(filters)) if filters else ""
 
+    # Per-settlement: completeness rounds up at 70 %, is_visited driven by
+    # point_count > 0. Raw values stay queryable via raw_* aliases if needed.
     result = await db.execute(
         text(f"""
             SELECT
@@ -134,8 +149,10 @@ async def get_settlement_metrics(
                 s.ward_name,
                 COALESCE(sa.total_grids, 0)       AS total_grids,
                 COALESCE(sa.visited_grids, 0)     AS visited_grids,
-                COALESCE(sa.completeness_pct, 0)  AS completeness_pct,
-                COALESCE(sa.is_visited, FALSE)    AS is_visited,
+                CASE WHEN COALESCE(sa.completeness_pct, 0) >= 70 THEN 100.0
+                     ELSE COALESCE(sa.completeness_pct, 0) END AS completeness_pct,
+                COALESCE(sa.completeness_pct, 0)  AS raw_completeness_pct,
+                (COALESCE(sa.point_count, 0) > 0) AS is_visited,
                 COALESCE(sa.point_count, 0)       AS point_count,
                 sa.last_computed
             FROM settlements s
@@ -160,9 +177,16 @@ async def get_project_summary(
                 (SELECT COUNT(*) FROM lgas WHERE project_id = :pid) AS total_lgas,
                 (SELECT COUNT(*) FROM wards WHERE project_id = :pid) AS total_wards,
                 (SELECT COUNT(*) FROM settlements WHERE project_id = :pid) AS total_settlements,
-                (SELECT COUNT(*) FROM settlement_analytics WHERE project_id = :pid AND is_visited = TRUE) AS visited_settlements,
+                -- Visited = settlement has ≥ 1 GPS point inside (no completeness gate).
+                (SELECT COUNT(*) FROM settlement_analytics
+                   WHERE project_id = :pid AND COALESCE(point_count, 0) > 0) AS visited_settlements,
                 (SELECT COALESCE(SUM(total_grids), 0) FROM settlement_analytics WHERE project_id = :pid) AS total_grids,
                 (SELECT COALESCE(SUM(visited_grids), 0) FROM settlement_analytics WHERE project_id = :pid) AS visited_grids,
+                -- Project-level completeness = mean of capped per-settlement values.
+                (SELECT ROUND(AVG(CASE WHEN COALESCE(completeness_pct, 0) >= 70
+                                       THEN 100.0
+                                       ELSE COALESCE(completeness_pct, 0) END), 1)
+                   FROM settlement_analytics WHERE project_id = :pid) AS completeness_pct,
                 (SELECT COUNT(*) FROM points_raw WHERE project_id = :pid) AS total_points,
                 (SELECT COUNT(*) FROM qc_flags WHERE project_id = :pid AND flag_type = 'out_of_bound') AS qc_out_of_bound,
                 (SELECT COUNT(*) FROM qc_flags WHERE project_id = :pid AND flag_type = 'time_violation') AS qc_time_violations,
@@ -183,7 +207,7 @@ async def get_project_summary(
         "visitation_pct": round(100.0 * visited_s / total_s, 1) if total_s > 0 else 0,
         "total_grids": total_g,
         "visited_grids": visited_g,
-        "completeness_pct": round(100.0 * visited_g / total_g, 1) if total_g > 0 else 0,
+        "completeness_pct": float(row.completeness_pct or 0),
         "total_points": row.total_points or 0,
         "qc_out_of_bound": row.qc_out_of_bound or 0,
         "qc_time_violations": row.qc_time_violations or 0,

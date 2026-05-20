@@ -73,6 +73,10 @@ async def lifespan(app: FastAPI):
                 error_message TEXT
             )""",
             "CREATE INDEX IF NOT EXISTS idx_sync_history_project_started ON sync_history (project_id, started_at DESC)",
+            # Project's official campaign start (overrides earliest received_on)
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS campaign_start_date DATE",
+            # Project's official campaign end (for "Day X of N" displays)
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS campaign_end_date DATE",
         ]:
             try:
                 await db.execute(text(stmt))
@@ -80,7 +84,7 @@ async def lifespan(app: FastAPI):
                 pass
         await db.commit()
 
-    # One-time backfill: tighten flag_gps_poor_accuracy from >20m to >10m.
+    # One-time backfill: GPS-accuracy threshold (set to 20 m for R5).
     # Scoped to the ACTIVE project only — R4 historical data stays at its
     # original threshold so existing reports aren't retroactively rewritten.
     # This runs every startup but is a no-op once the flag matches; the
@@ -89,18 +93,37 @@ async def lifespan(app: FastAPI):
         try:
             res = await db.execute(text("""
                 UPDATE mda_households h
-                SET flag_gps_poor_accuracy = (h.gps_accuracy > 10)
+                SET flag_gps_poor_accuracy = (h.gps_accuracy > 20)
                 WHERE h.project_id IN (
                         SELECT id FROM geo_projects WHERE is_active = TRUE
                       )
                   AND h.gps_accuracy IS NOT NULL
-                  AND h.flag_gps_poor_accuracy IS DISTINCT FROM (h.gps_accuracy > 10)
+                  AND h.flag_gps_poor_accuracy IS DISTINCT FROM (h.gps_accuracy > 20)
             """))
             await db.commit()
             if res.rowcount:
                 logger.info("GPS poor-accuracy backfill: %d row(s) updated on active project", res.rowcount)
         except Exception as e:
             logger.warning("GPS poor-accuracy backfill skipped: %s", e)
+
+    # One-time backfill: flag_fast_form threshold restored to <5 min.
+    # Active project only; R4 history stays at its original threshold.
+    async with AsyncSessionLocal() as db:
+        try:
+            res = await db.execute(text("""
+                UPDATE mda_households h
+                SET flag_fast_form = (h.form_duration_min < 5)
+                WHERE h.project_id IN (
+                        SELECT id FROM geo_projects WHERE is_active = TRUE
+                      )
+                  AND h.form_duration_min IS NOT NULL
+                  AND h.flag_fast_form IS DISTINCT FROM (h.form_duration_min < 5)
+            """))
+            await db.commit()
+            if res.rowcount:
+                logger.info("Fast-form (<2 min) backfill: %d row(s) updated on active project", res.rowcount)
+        except Exception as e:
+            logger.warning("Fast-form backfill skipped: %s", e)
 
     async with AsyncSessionLocal() as db:
         # Seed default superadmin from env (only if no user with this username exists)

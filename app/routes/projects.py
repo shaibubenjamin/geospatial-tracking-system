@@ -30,7 +30,15 @@ async def create_project(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Project slug already exists")
 
-    project = GeoProject(name=data.name, slug=data.slug, description=data.description or "")
+    project = GeoProject(
+        name=data.name,
+        slug=data.slug,
+        description=data.description or "",
+        state_name=data.state_name,
+        round_number=data.round_number,
+        campaign_start_date=data.campaign_start_date,
+        campaign_end_date=data.campaign_end_date,
+    )
     db.add(project)
     await db.commit()
     await db.refresh(project)
@@ -66,6 +74,14 @@ async def update_project(
         project.name = data.name
     if data.description is not None:
         project.description = data.description
+    if data.state_name is not None:
+        project.state_name = data.state_name
+    if data.round_number is not None:
+        project.round_number = data.round_number
+    if data.campaign_start_date is not None:
+        project.campaign_start_date = data.campaign_start_date
+    if data.campaign_end_date is not None:
+        project.campaign_end_date = data.campaign_end_date
     if data.is_active is not None:
         # Deactivate all others if activating this one
         if data.is_active:
