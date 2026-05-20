@@ -370,6 +370,90 @@
           </div>
         </div>
 
+        <!-- Settlement Master List (MLOS) — universe of settlements expected
+             to be visited. Drives "Not Yet Visited" on the Geographic View.
+             Uses the active round (resolve_pid). -->
+        <div class="card" style="margin-bottom:18px">
+          <div class="card-head">
+            <div class="card-title"><i class="fa-solid fa-map-pin"></i> Settlement Master List (MLOS)</div>
+            <div class="card-head-right" style="color:var(--muted);font-size:11.5px">Active round</div>
+          </div>
+          <div class="card-body">
+            <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
+              Upload the master list of expected settlements (<code>.xlsx</code>) with
+              <b>state_name, lga_name, ward_name, settlement_name, latitude, longitude, source</b>.
+              Replaces existing MLOS rows for the active round only.
+            </p>
+            <div class="upload-zone" id="mlos-drop" onclick="document.getElementById('mlos-file').click()">
+              <i class="fa-solid fa-file-excel"></i>
+              <div class="uz-title">Click to select MLOS workbook</div>
+              <div class="uz-sub">Accepts .xlsx &bull; Sokoto MLOS workbook</div>
+              <input type="file" id="mlos-file" accept=".xlsx" onchange="onFileSelected('mlos-file','mlos-file-label')">
+            </div>
+            <div id="mlos-file-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600"></div>
+            <button class="btn btn-primary" style="margin-top:12px" onclick="uploadMLOS()">
+              <i class="fa-solid fa-upload"></i> Upload MLOS
+            </button>
+            <div class="inline-feedback" id="mlos-feedback"></div>
+          </div>
+        </div>
+
+        <!-- Boundary Shapefiles — per-project shapefile ZIPs for LGA / Ward /
+             Settlement / Grid layers. Required once per state (shared across
+             rounds in that state). -->
+        <div class="card" style="margin-bottom:18px">
+          <div class="card-head">
+            <div class="card-title"><i class="fa-solid fa-draw-polygon"></i> Boundary Shapefiles</div>
+            <div class="card-head-right" style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:11.5px;color:var(--muted)">Project</label>
+              <select id="bnd-project-selector" style="border:1.5px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12.5px;background:#fff;cursor:pointer">
+                <option value="">Loading…</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
+              Upload <b>shapefile ZIPs</b> (each must contain .shp, .shx, .dbf, .prj for one boundary level).
+              Upload them in order — LGA first, then Ward, then Settlement, then Grid. Boundaries are
+              shared across rounds in the same state.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+              <!-- LGA -->
+              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-1"></i> LGA Boundaries</div>
+                <input type="file" id="bnd-lga-file" accept=".zip" onchange="onFileSelected('bnd-lga-file','bnd-lga-label')" style="font-size:12px;width:100%">
+                <div id="bnd-lga-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
+                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('lga')"><i class="fa-solid fa-upload"></i> Upload LGA ZIP</button>
+                <div class="inline-feedback" id="bnd-lga-feedback"></div>
+              </div>
+              <!-- Ward -->
+              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-2"></i> Ward Boundaries</div>
+                <input type="file" id="bnd-ward-file" accept=".zip" onchange="onFileSelected('bnd-ward-file','bnd-ward-label')" style="font-size:12px;width:100%">
+                <div id="bnd-ward-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
+                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('ward')"><i class="fa-solid fa-upload"></i> Upload Ward ZIP</button>
+                <div class="inline-feedback" id="bnd-ward-feedback"></div>
+              </div>
+              <!-- Settlement -->
+              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-3"></i> Settlement Boundaries</div>
+                <input type="file" id="bnd-sett-file" accept=".zip" onchange="onFileSelected('bnd-sett-file','bnd-sett-label')" style="font-size:12px;width:100%">
+                <div id="bnd-sett-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
+                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('settlement')"><i class="fa-solid fa-upload"></i> Upload Settlement ZIP</button>
+                <div class="inline-feedback" id="bnd-sett-feedback"></div>
+              </div>
+              <!-- Grid -->
+              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-4"></i> Grid Boundaries</div>
+                <input type="file" id="bnd-grid-file" accept=".zip" onchange="onFileSelected('bnd-grid-file','bnd-grid-label')" style="font-size:12px;width:100%">
+                <div id="bnd-grid-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
+                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('grid')"><i class="fa-solid fa-upload"></i> Upload Grid ZIP</button>
+                <div class="inline-feedback" id="bnd-grid-feedback"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Upload History -->
         <div class="card">
           <div class="card-head">
@@ -593,6 +677,16 @@
                 <label>Slug (URL key)</label>
                 <input type="text" id="proj-slug" placeholder="e.g. sokoto-2026">
               </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>State Name</label>
+                  <input type="text" id="proj-state" placeholder="e.g. Sokoto">
+                </div>
+                <div class="form-group">
+                  <label>Round #</label>
+                  <input type="number" id="proj-round" placeholder="e.g. 5" min="1" max="99">
+                </div>
+              </div>
               <div class="form-group">
                 <label>Description</label>
                 <textarea id="proj-desc" placeholder="Optional description…"></textarea>
@@ -601,6 +695,9 @@
                 <i class="fa-solid fa-folder-plus"></i> Create Project
               </button>
               <div class="inline-feedback" id="proj-feedback"></div>
+              <div style="margin-top:10px;font-size:11.5px;color:var(--muted);line-height:1.45">
+                State + Round attach the project to the right state's boundary pool and number it for round-over-round comparison. Both can be edited later.
+              </div>
             </div>
           </div>
 
@@ -957,7 +1054,7 @@
   });
 
   function onViewActivated(v) {
-    if (v === 'uploads')  { loadUploadHistory(); }
+    if (v === 'uploads')  { loadUploadHistory(); _populateBoundaryProjectSelector(); }
     if (v === 'projects') { loadProjects(); }
     if (v === 'users')    { loadUsers(); }
     if (v === 'system')   { loadSystemStatus(); }
@@ -1075,6 +1172,55 @@
 
   window.uploadMDA      = () => uploadFile('mda-file', '/api/mda/upload',          'mda-feedback');
   window.uploadBaseline = () => uploadFile('bl-file',  '/api/mda/upload-baseline', 'bl-feedback');
+  window.uploadMLOS     = () => uploadFile('mlos-file', '/api/mda/upload-mlos',    'mlos-feedback');
+
+  /* ── BOUNDARY SHAPEFILE UPLOADS ── */
+  // Boundary endpoints live under /api/projects/{id}/boundaries/{level} and
+  // require a project_id (state-scoped, not active-round-scoped). We populate
+  // the selector with all projects and POST a ZIP per level.
+  async function _populateBoundaryProjectSelector() {
+    const sel = document.getElementById('bnd-project-selector');
+    if (!sel) return;
+    try {
+      const res = await api('/api/projects');
+      if (!res || !res.ok) { sel.innerHTML = '<option value="">Failed to load</option>'; return; }
+      const projects = await res.json();
+      if (!projects.length) { sel.innerHTML = '<option value="">No projects yet</option>'; return; }
+      sel.innerHTML = '';
+      projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name + (p.is_active ? ' (active)' : '');
+        if (p.is_active) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    } catch(e) { sel.innerHTML = '<option value="">Failed to load</option>'; }
+  }
+
+  async function uploadBoundary(level) {
+    const sel = document.getElementById('bnd-project-selector');
+    const pid = sel?.value;
+    const fb = 'bnd-' + (level === 'settlement' ? 'sett' : level) + '-feedback';
+    if (!pid) { setFeedback(fb, 'Select a project first.', 'err'); return; }
+    const fileEl = document.getElementById('bnd-' + (level === 'settlement' ? 'sett' : level) + '-file');
+    if (!fileEl || !fileEl.files.length) { setFeedback(fb, 'Select a ZIP first.', 'err'); return; }
+    const fd = new FormData(); fd.append('file', fileEl.files[0]);
+    setFeedback(fb, 'Uploading…', 'info');
+    try {
+      const res = await api('/api/projects/' + pid + '/boundaries/' + level, { method: 'POST', body: fd });
+      if (!res) return;
+      const d = await res.json();
+      if (res.ok) {
+        const inserted = d.inserted ?? d.rows_inserted ?? d.imported ?? '';
+        setFeedback(fb, '✓ Uploaded' + (inserted !== '' ? ' (' + Number(inserted).toLocaleString() + ' rows)' : '') + '.', 'ok');
+      } else {
+        setFeedback(fb, 'Error: ' + (d.detail || 'Upload failed'), 'err');
+      }
+    } catch(e) {
+      setFeedback(fb, 'Network error: ' + e.message, 'err');
+    }
+  }
+  window.uploadBoundary = uploadBoundary;
 
   /* ── UPLOAD HISTORY ── */
   async function loadUploadHistory() {
@@ -1604,19 +1750,21 @@
     const name = document.getElementById('proj-name').value.trim();
     const slug = document.getElementById('proj-slug').value.trim();
     const desc = document.getElementById('proj-desc').value.trim();
+    const stateVal = (document.getElementById('proj-state')?.value || '').trim();
+    const roundRaw = (document.getElementById('proj-round')?.value || '').trim();
     if (!name || !slug) { setFeedback('proj-feedback', 'Name and slug are required.', 'err'); return; }
+    const body = { name, slug, description: desc };
+    if (stateVal) body.state_name = stateVal;
+    if (roundRaw)  body.round_number = parseInt(roundRaw, 10);
     try {
-      const res = await api('/api/projects', {
-        method: 'POST',
-        body: JSON.stringify({ name, slug, description: desc }),
-      });
+      const res = await api('/api/projects', { method: 'POST', body: JSON.stringify(body) });
       if (!res) return;
       const d = await res.json();
       if (res.ok) {
         setFeedback('proj-feedback', '✓ Project "' + name + '" created.', 'ok');
-        document.getElementById('proj-name').value = '';
-        document.getElementById('proj-slug').value = '';
-        document.getElementById('proj-desc').value = '';
+        ['proj-name','proj-slug','proj-desc','proj-state','proj-round'].forEach(id => {
+          const el = document.getElementById(id); if (el) el.value = '';
+        });
         loadProjects();
       } else {
         setFeedback('proj-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');

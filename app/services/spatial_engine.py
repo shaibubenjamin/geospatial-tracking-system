@@ -35,6 +35,9 @@ async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
     previous round's colouring.
     """
     boundary_pid = await _resolve_boundary_pid(project_id, db)
+    # Visited = settlement has ≥ 1 GPS point inside; completeness ≥70 rounds
+    # up to 100 (May 2026 campaign-team rule). LGA visitation_pct is the share
+    # of LGA settlements that are "visited" under that rule.
     result = await db.execute(
         text("""
             SELECT
@@ -43,12 +46,14 @@ async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
                 l.lga_name,
                 ST_AsGeoJSON(l.geom)::json AS geometry,
                 COUNT(DISTINCT sa.id) AS total_settlements,
-                SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END) AS visited_settlements,
+                SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END) AS visited_settlements,
                 COALESCE(SUM(sa.point_count), 0) AS point_count,
                 CASE WHEN COUNT(DISTINCT sa.id) > 0
-                     THEN ROUND(100.0 * SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END)
+                     THEN ROUND(100.0 * SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END)
                           / NULLIF(COUNT(DISTINCT sa.id), 0), 1)
-                     ELSE 0 END AS visitation_pct
+                     ELSE 0 END AS visitation_pct,
+                ROUND(AVG(CASE WHEN COALESCE(sa.completeness_pct, 0) >= 70 THEN 100.0
+                               ELSE COALESCE(sa.completeness_pct, 0) END)::numeric, 1) AS completeness_pct
             FROM lgas l
             LEFT JOIN settlements s ON s.lgacode = l.lgacode AND s.project_id = l.project_id
             LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
@@ -72,6 +77,7 @@ async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
                 "visited_settlements": row.visited_settlements or 0,
                 "point_count": row.point_count or 0,
                 "visitation_pct": float(row.visitation_pct or 0),
+                "completeness_pct": float(row.completeness_pct or 0),
             },
         })
     return {"type": "FeatureCollection", "features": features}
@@ -93,6 +99,8 @@ async def get_ward_geojson(
         where_extra = "AND w.lgacode = :lgacode"
         params["lgacode"] = lgacode
 
+    # Ward metrics use the same "visited = ≥1 GPS point" rule and per-settlement
+    # capped completeness (≥70 → 100). Ward completeness is mean of those caps.
     result = await db.execute(
         text(f"""
             SELECT
@@ -103,12 +111,14 @@ async def get_ward_geojson(
                 w.lga_name,
                 ST_AsGeoJSON(w.geom)::json AS geometry,
                 COUNT(DISTINCT sa.id) AS total_settlements,
-                SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END) AS visited_settlements,
+                SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END) AS visited_settlements,
                 COALESCE(SUM(sa.point_count), 0) AS point_count,
                 CASE WHEN COUNT(DISTINCT sa.id) > 0
-                     THEN ROUND(100.0 * SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END)
+                     THEN ROUND(100.0 * SUM(CASE WHEN COALESCE(sa.point_count, 0) > 0 THEN 1 ELSE 0 END)
                           / NULLIF(COUNT(DISTINCT sa.id), 0), 1)
-                     ELSE 0 END AS visitation_pct
+                     ELSE 0 END AS visitation_pct,
+                ROUND(AVG(CASE WHEN COALESCE(sa.completeness_pct, 0) >= 70 THEN 100.0
+                               ELSE COALESCE(sa.completeness_pct, 0) END)::numeric, 1) AS completeness_pct
             FROM wards w
             LEFT JOIN settlements s ON s.wardcode = w.wardcode AND s.project_id = w.project_id
             LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
@@ -134,6 +144,7 @@ async def get_ward_geojson(
                 "visited_settlements": row.visited_settlements or 0,
                 "point_count": row.point_count or 0,
                 "visitation_pct": float(row.visitation_pct or 0),
+                "completeness_pct": float(row.completeness_pct or 0),
             },
         })
     return {"type": "FeatureCollection", "features": features}
@@ -174,8 +185,12 @@ async def get_settlement_geojson(
                 ST_AsGeoJSON(s.geom)::json AS geometry,
                 COALESCE(sa.total_grids, 0) AS total_grids,
                 COALESCE(sa.visited_grids, 0) AS visited_grids,
-                COALESCE(sa.completeness_pct, 0) AS completeness_pct,
-                COALESCE(sa.is_visited, FALSE) AS is_visited,
+                -- Capped completeness: ≥70 % rounds up to 100 % for display.
+                CASE WHEN COALESCE(sa.completeness_pct, 0) >= 70 THEN 100.0
+                     ELSE COALESCE(sa.completeness_pct, 0) END AS completeness_pct,
+                COALESCE(sa.completeness_pct, 0) AS raw_completeness_pct,
+                -- Visited driven solely by GPS-point presence inside the polygon.
+                (COALESCE(sa.point_count, 0) > 0) AS is_visited,
                 COALESCE(sa.point_count, 0) AS point_count
             FROM settlements s
             LEFT JOIN settlement_analytics sa
@@ -312,6 +327,10 @@ async def get_points_geojson(
         """
         params["lgacode"] = lgacode
 
+    # in_settlement: TRUE when the point falls inside any settlement polygon
+    # for this state. Per the campaign-team rule, a point is "in-bounds" if it
+    # intersects either a settlement polygon OR a grid cell — the frontend
+    # colours the dot green when either is true.
     result = await db.execute(
         text(f"""
             SELECT
@@ -323,8 +342,12 @@ async def get_points_geojson(
                 h.hq_user           AS research_assistant,
                 h.lga               AS lga_name,
                 h.ward_name,
-                -- in_grid: pre-computed flag (TRUE = point inside a grid cell = green dot)
                 h.in_grid,
+                EXISTS (
+                    SELECT 1 FROM settlements s2
+                    WHERE s2.project_id = :boundary_pid
+                      AND ST_Within(h.geom, s2.geom)
+                ) AS in_settlement,
                 ST_AsGeoJSON(h.geom, 6)::json AS geometry
             FROM mda_households h
             {extra_join}
@@ -337,6 +360,8 @@ async def get_points_geojson(
     rows = result.fetchall()
     features = []
     for row in rows:
+        in_grid = bool(row.in_grid)
+        in_sett = bool(row.in_settlement)
         features.append({
             "type": "Feature",
             "geometry": row.geometry,
@@ -349,7 +374,10 @@ async def get_points_geojson(
                 "research_assistant":  row.research_assistant,
                 "lga_name":            row.lga_name,
                 "ward_name":           row.ward_name,
-                "in_grid":             bool(row.in_grid),
+                "in_grid":             in_grid,
+                "in_settlement":       in_sett,
+                # Convenience flag the map layer paint expressions key off.
+                "in_bounds":           in_grid or in_sett,
             },
         })
     return {"type": "FeatureCollection", "features": features}

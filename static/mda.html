@@ -122,6 +122,7 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
 .kpi-grid.cols-5{grid-template-columns:repeat(5,1fr)}
 .kpi-grid.cols-4{grid-template-columns:repeat(4,1fr)}
 .kpi-grid.cols-3{grid-template-columns:repeat(3,1fr)}
+.kpi-grid.cols-2{grid-template-columns:repeat(2,1fr)}
 @media(max-width:1100px){.kpi-grid.cols-5,.kpi-grid.cols-4{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.kpi-grid{grid-template-columns:1fr!important}}
 
@@ -470,7 +471,7 @@ tbody tr:hover{background:var(--pale)}
               <div class="kpi-text">
                 <div class="kpi-icon-strip"><i class="fa-solid fa-calendar-check"></i></div>
                 <div class="lbl">Campaign Days Active</div>
-                <div class="sub">Unique treatment dates recorded in submitted forms</div>
+                <div class="sub" id="kpi-days-sub">Unique submission dates within the campaign window</div>
               </div>
               <div class="kpi-metric">
                 <div class="val" id="kpi-days">&mdash;</div>
@@ -605,8 +606,8 @@ tbody tr:hover{background:var(--pale)}
           <div class="kpi"><div class="lbl">Baseline Total</div><div class="val" id="cov-kpi-baseline">&mdash;</div><div class="sub">Target population</div></div>
           <div class="kpi accent"><div class="lbl">Total Treated</div><div class="val" id="cov-kpi-treated">&mdash;</div><div class="sub">Administered this round</div></div>
           <div class="kpi good"><div class="lbl">Overall Coverage</div><div class="val" id="cov-kpi-pct">&mdash;</div><div class="sub">Campaign to date</div></div>
-          <div class="kpi good"><div class="lbl">LGAs on Target &ge;80%</div><div class="val" id="cov-kpi-good">&mdash;</div><div class="sub">Meeting WHO threshold</div></div>
-          <div class="kpi bad"><div class="lbl">LGAs Below 60%</div><div class="val" id="cov-kpi-below">&mdash;</div><div class="sub">Requiring mop-up</div></div>
+          <div class="kpi good"><div class="lbl">LGAs on Target &ge;80%</div><div class="val" id="cov-kpi-good">&mdash;</div><div class="sub" id="cov-kpi-good-sub">Meeting WHO threshold</div></div>
+          <div class="kpi bad"><div class="lbl">LGAs Below 60%</div><div class="val" id="cov-kpi-below">&mdash;</div><div class="sub" id="cov-kpi-below-sub">Requiring mop-up</div></div>
         </div>
 
         <!-- Treatment Coverage by LGA — full-width so every LGA fits at
@@ -633,6 +634,61 @@ tbody tr:hover{background:var(--pale)}
           <div class="chart-wrap tall"><canvas id="c_covProgress"></canvas></div>
         </div>
 
+        <!-- Refusals / Non-compliance — every refusing household is a missed
+             treatment opportunity. This card tallies them, estimates the
+             number of children missed, breaks them down by reason and shows
+             how R5 compares against R4 so the social-mobilisation team can
+             see whether community resistance is rising or falling. -->
+        <div class="card" style="margin-bottom:16px;padding:22px 24px">
+          <div class="card-head" style="margin-bottom:18px">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-ban"></i> Missed Households &amp; Refusals (Non-compliance)</div>
+              <div class="card-sub">Refusing households are the campaign's biggest miss after non-coverage. The children-missed estimate uses R5's own mean of children per consenting household.</div>
+            </div>
+            <div class="card-head-right"><button class="chart-dl" onclick="dlRefusalsCSV()" title="Download per-LGA refusals CSV"><i class="fa-solid fa-download"></i></button></div>
+          </div>
+          <div id="refusals-summary-row" class="kpi-grid cols-3" style="margin:0 0 20px"></div>
+          <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:22px">
+            <div style="padding-right:4px">
+              <div style="font-weight:600;font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Reasons given (codes)</div>
+              <div id="refusals-reason-chart-wrap" style="position:relative;height:220px"><canvas id="c_refusalReasons"></canvas></div>
+              <div style="font-weight:600;font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:20px 0 8px">Free-text reasons (code = Other)</div>
+              <div id="refusals-freetext" style="font-size:12.5px;color:var(--ink);max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px 12px"></div>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Per-LGA refusals — active round</div>
+              <div style="max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+                <table id="refusals-lga-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:380px">
+                  <thead>
+                    <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0">
+                      <th style="padding:10px 14px;text-align:left">LGA</th>
+                      <th style="padding:10px 14px;text-align:right">Refusals</th>
+                      <th style="padding:10px 14px;text-align:right">% of forms</th>
+                      <th style="padding:10px 14px;text-align:right" title="Estimated using round avg children per household">Est. children missed</th>
+                    </tr>
+                  </thead>
+                  <tbody id="refusals-lga-tbody"><tr><td colspan="4" style="text-align:center;padding:18px;color:var(--muted)">Loading&hellip;</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Coverage by Age Category — uses the R5 target file's 1-11 / 12-59
+             targets. If an age band trails the other in a given LGA, that's
+             where social-mobilisation effort should focus. -->
+        <div class="card" style="margin-bottom:16px;padding:22px 24px">
+          <div class="card-head" style="margin-bottom:18px">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-children"></i> Coverage by Age Category per LGA</div>
+              <div class="card-sub">Compares 1–11 months vs 12–59 months coverage against the R5 target. A wide gap between bars means uneven outreach to that age band.</div>
+            </div>
+            <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_covByAge','coverage_by_age_lga')" title="Download"><i class="fa-solid fa-download"></i></button></div>
+          </div>
+          <div id="cov-age-summary" class="kpi-grid cols-2" style="margin:0 0 20px"></div>
+          <div class="chart-wrap"><canvas id="c_covByAge"></canvas></div>
+        </div>
+
         <div class="card">
           <div class="card-head">
             <div class="card-title"><i class="fa-solid fa-circle-exclamation"></i> LGA Coverage Detail</div>
@@ -654,10 +710,7 @@ tbody tr:hover{background:var(--pale)}
             <div class="page-title">Quality Checks</div>
             <div class="page-sub">Automated integrity &amp; anomaly detection across submitted forms</div>
           </div>
-          <div class="actions">
-            <button class="btn btn-ghost auth-only" onclick="openUploadModal()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Workbook</button>
-            <button class="chart-dl" onclick="dlQCSummaryCSV()" title="Download QC summary CSV" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff"><i class="fa-solid fa-download"></i> Export</button>
-          </div>
+          <!-- Upload + bulk export removed: handled in Admin / System panel. -->
         </div>
 
         <!-- QC summary filters -->
@@ -700,7 +753,7 @@ tbody tr:hover{background:var(--pale)}
             <div class="kpi-icon-strip"><i class="fa-solid fa-clock"></i></div>
             <div class="lbl">Timing Anomalies</div>
             <div class="val" id="qc-kpi-timing">&mdash;</div>
-            <div class="sub">Forms submitted outside working hours, completed in under 5 min, or took over 60 min</div>
+            <div class="sub">Forms submitted outside working hours, completed in under 2 min, or took over 60 min</div>
           </div>
         </div>
 
@@ -708,9 +761,9 @@ tbody tr:hover{background:var(--pale)}
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-file-circle-check"></i></div><div class="qc-val" id="qc-total-forms">&mdash;</div><div class="qc-lbl">Total Forms Analysed</div><div class="qc-desc">All household MDA forms checked for data quality issues</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-clone"></i></div><div class="qc-val" id="qc-duplicates">&mdash;</div><div class="qc-lbl">Duplicate Form IDs</div><div class="qc-desc">Forms sharing an identical submission ID — possible double-counting of households</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-location-crosshairs"></i></div><div class="qc-val" id="qc-outside-lga">&mdash;</div><div class="qc-lbl">GPS Outside Stated LGA</div><div class="qc-desc">GPS coordinates fall outside the boundary of the LGA the team reported being in</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">&mdash;</div><div class="qc-lbl">Poor GPS Accuracy (&gt;10 m)</div><div class="qc-desc">GPS signal accuracy was too low — location may not be reliable for spatial analysis</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">&mdash;</div><div class="qc-lbl">Weak GPS Signal (&gt;20 m)</div><div class="qc-desc">GPS accuracy radius wider than 20 m — the recorded location may sit outside the settlement grid the team was actually inside, so spatial joins become unreliable</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-moon"></i></div><div class="qc-val" id="qc-after-hours">&mdash;</div><div class="qc-lbl">After-Hours Submissions</div><div class="qc-desc">Forms started outside 6:00 am – 7:00 pm local time — possible data back-entry or device clock error</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-bolt"></i></div><div class="qc-val" id="qc-fast-forms">&mdash;</div><div class="qc-lbl">Very Fast Forms (&lt;5 min)</div><div class="qc-desc">Completed in under 5 minutes — a full household visit typically takes longer; may indicate skipping questions</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-bolt"></i></div><div class="qc-val" id="qc-fast-forms">&mdash;</div><div class="qc-lbl">Very Fast Forms (&lt;5 min)</div><div class="qc-desc">Completed in under 5 minutes — a full household visit typically takes longer; may indicate skipping questions or rushed entry</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-hourglass-half"></i></div><div class="qc-val" id="qc-slow-forms">&mdash;</div><div class="qc-lbl">Very Slow Forms (&gt;60 min)</div><div class="qc-desc">Took over 1 hour — may indicate poor connectivity, form abandonment, or the device being left idle</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-ban"></i></div><div class="qc-val" id="qc-refusal-rate">&mdash;</div><div class="qc-lbl">Treatment Refusal Rate</div><div class="qc-desc" id="qc-refusal-count">% of households that declined treatment — social mobilisation may be needed in high-refusal LGAs</div></div>
         </div>
@@ -730,7 +783,7 @@ tbody tr:hover{background:var(--pale)}
             <div class="card-head">
               <div>
                 <div class="card-title"><i class="fa-solid fa-stopwatch"></i> Unusually Fast (&lt;5 min) &amp; Slow (&gt;60 min) Forms by LGA</div>
-                <div class="card-sub">Forms completed in under 5 minutes may be rushed or falsified. Forms over 60 minutes may indicate connectivity problems or data entry issues.</div>
+                <div class="card-sub">Forms completed in under 5 minutes may be rushed. Forms over 60 minutes may indicate connectivity problems or data entry issues.</div>
               </div>
               <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_duration','duration_by_lga')" title="Download"><i class="fa-solid fa-download"></i></button></div>
             </div>
@@ -743,11 +796,11 @@ tbody tr:hover{background:var(--pale)}
           <div class="card-head">
             <div>
               <div class="card-title"><i class="fa-solid fa-users-gear"></i> Quality Checks by Team</div>
-              <div class="card-sub">Which teams are generating the most data quality flags. Shows total records submitted and how many contain at least one error.</div>
+              <div class="card-sub">Error Rate = % of a team's forms with at least one data-quality flag (GPS, timing, duplicate). Refusals are tracked as a campaign outcome, not a data-quality error. Sync Lag is an ops/connectivity metric, also shown separately.</div>
             </div>
           </div>
           <div style="max-height:400px;overflow:auto">
-            <table id="qc-teams-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">
+            <table id="qc-teams-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:920px">
               <thead>
                 <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2">
                   <th style="padding:10px 14px;text-align:left;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('hq_user')">Team (hq_user) <span id="qcts-hq_user"></span></th>
@@ -758,12 +811,13 @@ tbody tr:hover{background:var(--pale)}
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_forms')">Dup Forms <span id="qcts-dup_forms"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('gps_issues')">GPS Issues <span id="qcts-gps_issues"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('after_hours')">After Hours <span id="qcts-after_hours"></span></th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast Forms <span id="qcts-fast_forms"></span></th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('refusals')">Refusals <span id="qcts-refusals"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast (&lt;5 min) <span id="qcts-fast_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('sync_lag')" title="Form sync delay &gt; 48h">Sync Lag <span id="qcts-sync_lag"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('refusals')" title="Campaign outcome, not a data-quality error">Refusals <span id="qcts-refusals"></span></th>
                 </tr>
               </thead>
               <tbody id="qc-teams-tbody">
-                <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
+                <tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -775,44 +829,47 @@ tbody tr:hover{background:var(--pale)}
         <div class="page-head" style="margin-bottom:10px">
           <div>
             <div class="page-title">Geographic View</div>
-            <div class="page-sub">Boundary drill-down — LGA &rarr; Ward &rarr; Settlement &bull; Green = visited (&ge;70% grids) &bull; Red = not visited</div>
+            <div class="page-sub">Boundary drill-down — LGA &rarr; Ward &rarr; Settlement &bull; Green = ≥1 GPS point inside &bull; Red = no GPS point yet</div>
           </div>
           <div class="actions">
             <button class="btn btn-ghost btn-sm" onclick="geoResetView()"><i class="fa-solid fa-arrows-to-dot"></i> Reset</button>
           </div>
         </div>
 
-        <!-- Geo top row: 2x2 KPIs on the left, 2x2 download tiles on the right.
+        <!-- Geo top row: 3 KPIs on the left, 2x2 download tiles on the right.
              For non-admins the download grid stays hidden and the KPI grid
              stretches to use the full width via CSS Grid auto-fit. -->
         <div class="geo-top-row" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;margin-bottom:10px;align-items:stretch">
-          <!-- 2x2 KPI grid -->
-          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:1fr 1fr;gap:10px">
-            <div class="kpi" style="padding:12px 16px">
-              <div class="kpi-icon-strip"><i class="fa-solid fa-chart-pie" style="font-size:13px"></i></div>
-              <div class="lbl">% Visitation Coverage</div>
-              <div class="val" style="font-size:22px;color:var(--blue)" id="geo-coverage-pct">&mdash;</div>
-              <div class="sub" style="font-size:10.5px">Settlements with &ge;70% grid coverage</div>
+          <!-- KPI strip — 3 wide tiles -->
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+            <!-- Visitation Ratio — combined: count + total + percentage -->
+            <div class="kpi" style="padding:14px 18px">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-route" style="font-size:13px"></i></div>
+              <div class="lbl">Visitation Ratio</div>
+              <div class="val" style="font-size:22px;color:var(--blue)" id="geo-visit-ratio">&mdash;</div>
+              <div class="sub" style="font-size:10.5px" id="geo-visit-ratio-sub">Settlements with at least 1 GPS point</div>
             </div>
-            <div class="kpi" style="padding:12px 16px">
-              <div class="kpi-icon-strip"><i class="fa-solid fa-circle-check" style="font-size:13px"></i></div>
-              <div class="lbl">Visited Settlements</div>
-              <div class="val" style="font-size:22px;color:var(--good)" id="geo-sett-visited-count">&mdash;</div>
-              <div class="sub" style="font-size:10.5px">of <span id="geo-sett-total-count">—</span> total settlements</div>
-            </div>
-            <div class="kpi" style="padding:12px 16px">
+            <!-- Not Yet Visited -->
+            <div class="kpi" style="padding:14px 18px">
               <div class="kpi-icon-strip"><i class="fa-solid fa-circle-xmark" style="font-size:13px"></i></div>
               <div class="lbl">Not Yet Visited</div>
               <div class="val" style="font-size:22px;color:var(--bad)" id="geo-sett-notvisited-count">&mdash;</div>
               <div class="sub" style="font-size:10.5px">settlements remaining</div>
             </div>
-            <div class="kpi" style="padding:12px 16px">
+            <!-- Overall Grid Completeness -->
+            <div class="kpi" style="padding:14px 18px">
               <div class="kpi-icon-strip"><i class="fa-solid fa-layer-group" style="font-size:13px"></i></div>
-              <div class="lbl">Overall Grid Completeness</div>
+              <div class="lbl">Overall Completeness</div>
               <div class="val" style="font-size:22px;color:var(--warn)" id="geo-avg-completeness">&mdash;</div>
-              <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements &ge;60% complete</div>
+              <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements ≥70% (counted as 100%)</div>
             </div>
           </div>
+          <!-- Hidden back-compat counters — keep so older render paths don't 404 -->
+          <span id="geo-coverage-pct" style="display:none"></span>
+          <span id="geo-sett-visited-count" style="display:none"></span>
+          <span id="geo-sett-total-count" style="display:none"></span>
+          <span id="geo-ward-active-count" style="display:none"></span>
+          <span id="geo-ward-total-count" style="display:none"></span>
           <!-- hidden back-compat counters -->
           <span id="geo-ward-active-count" style="display:none"></span>
           <span id="geo-ward-total-count" style="display:none"></span>
@@ -867,6 +924,14 @@ tbody tr:hover{background:var(--pale)}
               <div style="padding:8px 12px;border-bottom:1px solid var(--line);flex-shrink:0">
                 <input id="geo-search" type="text" placeholder="Search…" oninput="filterGeoList()"
                   style="width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12px;outline:none;color:var(--ink);background:var(--pale)">
+              </div>
+              <!-- Column-header strip telling users what the two pills on
+                   every row mean: Visitation (≥1 GPS point) and Completion
+                   (capped grid-coverage, ≥70 % counted as 100 %). -->
+              <div style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--mist);border-bottom:1px solid var(--line);font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0">
+                <span style="flex:1">Area</span>
+                <span title="Settlements with ≥1 GPS point inside" style="min-width:54px;text-align:center">Visited %</span>
+                <span title="Capped grid completeness — ≥70 % is counted as 100 %" style="min-width:60px;text-align:center">Completion %</span>
               </div>
               <div id="geo-nav-list" style="flex:1;overflow-y:auto"></div>
             </div>
@@ -983,26 +1048,64 @@ tbody tr:hover{background:var(--pale)}
             <div class="page-title">Campaign Trends</div>
             <div class="page-sub">Historical &amp; cross-campaign performance comparison</div>
           </div>
-          <div class="actions"><div class="seg"><button class="on">This round</button><button>2-year</button><button>All time</button></div></div>
         </div>
 
         <div class="grid-2">
           <div class="card" style="margin-bottom:0">
-            <div class="card-head"><div class="card-title"><i class="fa-solid fa-chart-line"></i> Daily Form Submissions</div></div>
+            <div class="card-head"><div>
+              <div class="card-title"><i class="fa-solid fa-chart-line"></i> Daily Form Submissions</div>
+              <div class="card-sub">Forms submitted on each day of the active campaign.</div>
+            </div></div>
             <div class="chart-wrap tall"><canvas id="c_rounds"></canvas></div>
           </div>
           <div class="card" style="margin-bottom:0">
-            <div class="card-head"><div class="card-title"><i class="fa-solid fa-arrow-trend-up"></i> Daily Cumulative Administration</div></div>
+            <div class="card-head"><div>
+              <div class="card-title"><i class="fa-solid fa-arrow-trend-up"></i> Cumulative Doses Administered</div>
+              <div class="card-sub">Running total of doses administered through the active campaign.</div>
+            </div></div>
             <div class="chart-wrap tall"><canvas id="c_cumul"></canvas></div>
           </div>
         </div>
 
+        <!-- Per-LGA coverage table. Target column is the R5 baseline target;
+             Treated and Coverage % come from R5 households so each row shows
+             how far along that LGA is against its own baseline. -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-table-cells-large"></i> Per-LGA Coverage Progress</div>
+              <div class="card-sub">Target is sourced from the R5 baseline upload; Treated and Coverage come from active-round households.</div>
+            </div>
+            <div class="card-head-right"><button class="chart-dl" onclick="dlLGACompareCSV()" title="Download CSV"><i class="fa-solid fa-download"></i></button></div>
+          </div>
+          <div style="max-height:520px;overflow:auto">
+            <table id="lga-compare-table" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:520px">
+              <thead>
+                <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2">
+                  <th style="padding:10px 14px;text-align:left">LGA</th>
+                  <th style="padding:10px 14px;text-align:right">Target (Baseline)</th>
+                  <th style="padding:10px 14px;text-align:right">R5 Treated</th>
+                  <th style="padding:10px 14px;text-align:right">R5 Coverage</th>
+                </tr>
+              </thead>
+              <tbody id="lga-compare-tbody">
+                <tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted)">Loading&hellip;</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="card">
-          <div class="card-head"><div class="card-title"><i class="fa-solid fa-table"></i> Round-over-Round Comparison</div></div>
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-table"></i> Round-over-Round Comparison</div>
+              <div class="card-sub">Each row is a campaign round. &Delta; vs Prev compares administered doses against the immediately previous round.</div>
+            </div>
+          </div>
           <table>
             <thead><tr><th>Round</th><th>Period</th><th>Targeted</th><th>Administered</th><th>Coverage</th><th>Refusal</th><th>QC Flags</th><th>&Delta; vs Prev</th></tr></thead>
-            <tbody>
-              <tr><td><b>Current Round</b></td><td>&mdash;</td><td id="trends-targeted">&mdash;</td><td id="trends-administered">&mdash;</td><td id="trends-coverage">&mdash;</td><td>&mdash;</td><td id="trends-flags">&mdash;</td><td>&mdash;</td></tr>
+            <tbody id="trends-tbody">
+              <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Loading rounds&hellip;</td></tr>
             </tbody>
           </table>
         </div>
@@ -1215,6 +1318,382 @@ tbody tr:hover{background:var(--pale)}
     : c >= 80 ? '✓ On target' : c >= 60 ? '⚠ Watch' : '✗ Below';
   function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
 
+  /* ── ROUND-OVER-ROUND COMPARISON TABLE ──
+     Populates #trends-tbody from /api/mda/rounds/summary. Δ vs prev compares
+     administered doses against the previous round (or '—' for the first row). */
+  async function renderRoundsTable() {
+    const tbody = document.getElementById('trends-tbody');
+    if (!tbody) return;
+    let rounds;
+    try {
+      rounds = await api('/api/mda/rounds/summary');
+    } catch (e) { rounds = null; }
+    if (!Array.isArray(rounds) || rounds.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">No rounds yet</td></tr>';
+      return;
+    }
+    const fmtDate = s => s ? s.substring(5) : '—'; // MM-DD
+    const period = r => (r.period_start && r.period_end)
+      ? (fmtDate(r.period_start) + ' → ' + fmtDate(r.period_end))
+      : (r.period_start ? ('from ' + fmtDate(r.period_start)) : '—');
+    // R4 row hidden by request — show only the active round (the prior-round
+    // delta column is left rendering '—' since there's no row to compare to).
+    let prev = null;
+    const visible = rounds.filter(r => r.is_active);
+    const rows = (visible.length ? visible : rounds).map(r => {
+      const cov = r.coverage_pct || 0;
+      const covChip = '<span class="chip ' + covCls(cov) + '">' + cov.toFixed(1) + '%</span>';
+      let delta = '—';
+      if (prev && prev.administered > 0) {
+        const d = r.administered - prev.administered;
+        const dpct = (d / prev.administered) * 100;
+        const cls = d >= 0 ? 'up' : 'down';
+        const sign = d >= 0 ? '+' : '';
+        delta = '<span class="kpi-delta ' + cls + '">' + sign + dpct.toFixed(1) + '%</span>';
+      }
+      prev = r;
+      const labelHtml = r.is_active
+        ? '<b>' + r.round_label + '</b> <span class="chip" style="background:rgba(0,107,46,.12);color:var(--blue);font-size:10px;padding:1px 7px">Live</span>'
+        : r.round_label;
+      const refusalCell = (r.refusals != null)
+        ? (fmt(r.refusals) + ' <span style="color:var(--muted);font-size:11px">(' + (r.refusal_pct || 0).toFixed(2) + '%)</span>')
+        : '—';
+      return '<tr>' +
+        '<td>' + labelHtml + '</td>' +
+        '<td style="white-space:nowrap">' + period(r) + '</td>' +
+        '<td>' + fmt(r.targeted) + '</td>' +
+        '<td>' + fmt(r.administered) + '</td>' +
+        '<td>' + covChip + '</td>' +
+        '<td>' + refusalCell + '</td>' +
+        '<td>' + fmt(r.qc_flags) + '</td>' +
+        '<td>' + delta + '</td>' +
+      '</tr>';
+    }).join('');
+    tbody.innerHTML = rows;
+  }
+
+  /* ── COVERAGE BY AGE CATEGORY (per LGA) ── */
+  let _covByAgeChart = null;
+  async function renderCoverageByAge() {
+    const el = document.getElementById('c_covByAge');
+    const summaryEl = document.getElementById('cov-age-summary');
+    if (!el) return;
+    let data;
+    try { data = await api('/api/mda/coverage/lga-by-age'); }
+    catch (e) { data = null; }
+    if (!Array.isArray(data) || data.length === 0) {
+      if (summaryEl) summaryEl.innerHTML = '<div class="kpi" style="padding:10px 14px"><div class="sub">No age-band targets in the active baseline — upload the R5 Target file under Admin → Data Uploads to enable this view.</div></div>';
+      return;
+    }
+    // Top-line summary (state-wide) above the chart
+    const sumBl1  = data.reduce((s, r) => s + r.baseline_1_11,  0);
+    const sumBl2  = data.reduce((s, r) => s + r.baseline_12_59, 0);
+    const sumTr1  = data.reduce((s, r) => s + r.treated_1_11,   0);
+    const sumTr2  = data.reduce((s, r) => s + r.treated_12_59,  0);
+    const cov1 = sumBl1 > 0 ? (sumTr1 / sumBl1 * 100) : 0;
+    const cov2 = sumBl2 > 0 ? (sumTr2 / sumBl2 * 100) : 0;
+    if (summaryEl) {
+      summaryEl.innerHTML =
+        '<div class="kpi" style="padding:12px 16px"><div class="lbl">1–11 Months Coverage</div>' +
+          '<div class="val" style="color:var(--deep)">' + cov1.toFixed(1) + '%</div>' +
+          '<div class="sub">' + sumTr1.toLocaleString() + ' of ' + sumBl1.toLocaleString() + ' children treated</div></div>' +
+        '<div class="kpi" style="padding:12px 16px"><div class="lbl">12–59 Months Coverage</div>' +
+          '<div class="val" style="color:var(--sky)">' + cov2.toFixed(1) + '%</div>' +
+          '<div class="sub">' + sumTr2.toLocaleString() + ' of ' + sumBl2.toLocaleString() + ' children treated</div></div>';
+    }
+    // Stacked 100% horizontal bars per LGA. Each bar shows progress against
+    // the LGA's total baseline target, split into 1-11 treated (deep green),
+    // 12-59 treated (mid green), and the untreated remainder (light grey).
+    // Total bar width = 100% of baseline, so the unfilled portion is the gap
+    // still to close. Ranked by overall coverage descending.
+    const sorted = [...data].map(r => {
+      const bl = (r.baseline_1_11 || 0) + (r.baseline_12_59 || 0);
+      const t1 = r.treated_1_11 || 0, t2 = r.treated_12_59 || 0;
+      const p1 = bl > 0 ? (t1 / bl * 100) : 0;
+      const p2 = bl > 0 ? (t2 / bl * 100) : 0;
+      const pCov = p1 + p2;
+      const pRem = Math.max(0, 100 - pCov);
+      return { ...r, baseline_total: bl, pct_1_11: p1, pct_12_59: p2, pct_remaining: pRem, pct_total_cov: pCov };
+    }).sort((a, b) => b.pct_total_cov - a.pct_total_cov);
+    const wrap = el.parentElement;
+    if (wrap) wrap.style.height = Math.max(280, sorted.length * 30 + 56) + 'px';
+    if (_covByAgeChart) { _covByAgeChart.destroy(); _covByAgeChart = null; }
+    _covByAgeChart = new Chart(el, {
+      type: 'bar',
+      data: {
+        labels: sorted.map(r => r.lga),
+        datasets: [
+          { label: '1–11 months treated',  data: sorted.map(r => r.pct_1_11),
+            backgroundColor: '#006B2E', hoverBackgroundColor: '#005225', stack: 'cov', borderRadius: 0, maxBarThickness: 22 },
+          { label: '12–59 months treated', data: sorted.map(r => r.pct_12_59),
+            backgroundColor: '#44B568', hoverBackgroundColor: '#16A34A', stack: 'cov', borderRadius: 0, maxBarThickness: 22 },
+          { label: 'Untreated (gap)',      data: sorted.map(r => r.pct_remaining),
+            backgroundColor: '#E5E7EB', hoverBackgroundColor: '#D1D5DB', stack: 'cov', borderRadius: 0, maxBarThickness: 22 },
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 500 },
+        onClick: (evt, elems) => {
+          if (!elems.length) return;
+          const r = sorted[elems[0].index]; if (!r) return;
+          showToast(r.lga + ' — 1-11: ' + r.coverage_1_11_pct.toFixed(1) + '% · 12-59: ' + r.coverage_12_59_pct.toFixed(1) + '% · overall: ' + r.pct_total_cov.toFixed(1) + '%');
+        },
+        onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+          // Label only segments wider than ~6% so tiny slices don't get clipped text.
+          datalabels: { display: ctx => ctx.dataset.data[ctx.dataIndex] > 6,
+            color: ctx => ctx.datasetIndex === 2 ? 'var(--muted)' : '#fff',
+            font: { size: 10, weight: '700' },
+            anchor: 'center', align: 'center',
+            formatter: v => v.toFixed(1) + '%' },
+          tooltip: { callbacks: { label: ctx => {
+            const r = sorted[ctx.dataIndex] || {};
+            if (ctx.datasetIndex === 0)
+              return ' 1–11 months: ' + r.treated_1_11.toLocaleString() + ' of ' + r.baseline_1_11.toLocaleString() + ' (' + r.coverage_1_11_pct.toFixed(1) + '% of band)';
+            if (ctx.datasetIndex === 1)
+              return ' 12–59 months: ' + r.treated_12_59.toLocaleString() + ' of ' + r.baseline_12_59.toLocaleString() + ' (' + r.coverage_12_59_pct.toFixed(1) + '% of band)';
+            return ' Untreated gap: ' + Math.round(r.baseline_total - r.treated_1_11 - r.treated_12_59).toLocaleString() + ' children remaining';
+          } } }
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, min: 0, max: 100,
+               ticks: { font: { size: 10 }, callback: v => v + '%' } },
+          y: { stacked: true, grid: { display: false }, ticks: { font: { size: 10.5 } } }
+        }
+      }
+    });
+  }
+
+  /* ── CAMPAIGN TRENDS ── active-round daily lines + per-LGA coverage table.
+     Round-over-round insight tiles and per-round overlays were removed by
+     request so the page focuses on the active round (R5) only. */
+  let _trendsCharts = { rounds: null, cumul: null };
+  async function renderCampaignTrends() {
+    const [daily, lgaCmp] = await Promise.all([
+      api('/api/mda/trends/daily-by-round').catch(() => null),
+      api('/api/mda/rounds/lga-compare').catch(() => null),
+    ]);
+    _renderTrendsRoundsCharts(daily);
+    _renderLGACompareTable(lgaCmp);
+  }
+
+  function _renderTrendsRoundsCharts(roundData) {
+    if (!Array.isArray(roundData) || roundData.length === 0) return;
+    // Active round only — historical rounds dropped from these two charts.
+    const active = roundData.find(r => r.is_active) || roundData[roundData.length - 1];
+    if (!active) return;
+    const days = active.days || [];
+    const labels = days.map(d => d.day);
+    const formsData   = days.map(d => d.forms);
+    const cumulData   = days.reduce((acc, d) => { acc.push((acc[acc.length-1] || 0) + d.treated); return acc; }, []);
+    if (_trendsCharts.rounds) { _trendsCharts.rounds.destroy(); }
+    _trendsCharts.rounds = new Chart(document.getElementById('c_rounds'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Forms submitted',
+        data: formsData,
+        borderColor: '#006B2E', backgroundColor: 'rgba(0,107,46,.08)',
+        tension: .3, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
+        pointBackgroundColor: '#006B2E', fill: true }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, datalabels: { display: false },
+          tooltip: { callbacks: { label: ctx => ' ' + ctx.raw.toLocaleString() + ' forms' } } },
+        scales: {
+          y: { grid: { display: false }, ticks: { callback: v => v.toLocaleString() } },
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
+    if (_trendsCharts.cumul) { _trendsCharts.cumul.destroy(); }
+    _trendsCharts.cumul = new Chart(document.getElementById('c_cumul'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Cumulative doses',
+        data: cumulData,
+        borderColor: '#44B568', backgroundColor: 'rgba(68,181,104,.18)',
+        tension: .3, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
+        pointBackgroundColor: '#44B568', fill: true }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, datalabels: { display: false },
+          tooltip: { callbacks: { label: ctx => ' ' + ctx.raw.toLocaleString() + ' doses' } } },
+        scales: {
+          y: { grid: { display: false }, ticks: { callback: v => v.toLocaleString() } },
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
+  }
+
+  let _lgaCompareCache = null;
+  function _renderLGACompareTable(data) {
+    const tbody = document.getElementById('lga-compare-tbody');
+    if (!tbody) return;
+    if (!data || !Array.isArray(data.lgas) || !data.lgas.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">No comparison data yet</td></tr>';
+      return;
+    }
+    _lgaCompareCache = data;
+    // Target column comes from the R5 baseline (mda_baseline.total_treated),
+    // exposed by the lga-compare endpoint as rounds[5].baseline. R4 columns
+    // and the delta are no longer rendered.
+    const rows = [...data.lgas].sort((a, b) => {
+      const av = a.rounds['5']?.coverage_pct || 0;
+      const bv = b.rounds['5']?.coverage_pct || 0;
+      return bv - av;
+    });
+    tbody.innerHTML = rows.map(r => {
+      const r5 = r.rounds['5'] || { baseline: 0, treated: 0, coverage_pct: 0 };
+      return '<tr>' +
+        '<td style="padding:9px 14px">' + r.lga + '</td>' +
+        '<td style="padding:9px 14px;text-align:right">' + Number(r5.baseline || 0).toLocaleString() + '</td>' +
+        '<td style="padding:9px 14px;text-align:right">' + Number(r5.treated || 0).toLocaleString() + '</td>' +
+        '<td style="padding:9px 14px;text-align:right">' + (r5.coverage_pct || 0).toFixed(1) + '%</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function dlLGACompareCSV() {
+    if (!_lgaCompareCache) return;
+    const rows = [['LGA','Target (Baseline)','R5 Treated','R5 Coverage %']];
+    _lgaCompareCache.lgas.forEach(r => {
+      const r5 = r.rounds['5'] || {};
+      rows.push([r.lga, r5.baseline || 0, r5.treated || 0, r5.coverage_pct ?? '']);
+    });
+    const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'lga_coverage.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.dlLGACompareCSV = dlLGACompareCSV;
+
+  /* ── REFUSALS / NON-COMPLIANCE ANALYSIS ──
+     Coverage Analysis card. KPI strip + reason-code chart + free-text list +
+     per-LGA refusal table. R(n) vs R(n-1) delta on refusal rate. */
+  let _refusalReasonChart = null;
+  let _refusalsCache = null;
+  // Best-known mapping for the SARMAAN refusal-reason choice list. Codes
+  // come from the CommCare form; '9' is "Other" (free-text). Override here
+  // if the form's labels change without code-side edits.
+  const REFUSAL_REASON_LABELS = {
+    '1': 'Caregiver / parent declined',
+    '2': 'Child temporarily absent',
+    '3': 'Religious / cultural reason',
+    '9': 'Other (free-text)',
+  };
+  async function renderRefusalsAnalysis() {
+    const data = await api('/api/mda/coverage/refusals-analysis').catch(() => null);
+    if (!data) return;
+    _refusalsCache = data;
+
+    // Build summary tiles — active round only, no R4 comparisons.
+    const rounds = data.rounds || [];
+    const r5 = rounds.find(r => r.is_active) || rounds.slice(-1)[0] || {};
+    const summaryEl = document.getElementById('refusals-summary-row');
+    if (summaryEl) {
+      summaryEl.className = 'kpi-grid cols-3';
+      summaryEl.innerHTML =
+        '<div class="kpi bad" style="padding:14px 16px"><div class="lbl">Refusing households</div>' +
+          '<div class="val" style="font-size:22px;color:var(--bad)">' + (r5.refusals || 0).toLocaleString() + '</div>' +
+          '<div class="sub">of ' + (r5.total_forms || 0).toLocaleString() + ' forms submitted</div></div>' +
+        '<div class="kpi warn" style="padding:14px 16px"><div class="lbl">Refusal rate</div>' +
+          '<div class="val" style="font-size:22px;color:var(--warn)">' + (r5.refusal_pct || 0).toFixed(2) + '%</div>' +
+          '<div class="sub">share of forms ending in refusal</div></div>' +
+        '<div class="kpi" style="padding:14px 16px"><div class="lbl">Children missed (estimated)</div>' +
+          '<div class="val" style="font-size:22px;color:var(--deep)">' + (r5.estimated_missed_individuals || 0).toLocaleString() + '</div>' +
+          '<div class="sub">' + (r5.avg_children_per_household || 0).toFixed(2) + ' children per refusing household</div></div>';
+    }
+
+    // Reason-code chart (horizontal bar, green palette)
+    const reasonEl = document.getElementById('c_refusalReasons');
+    if (reasonEl) {
+      const reasons = data.by_reason || [];
+      const labels  = reasons.map(r => (REFUSAL_REASON_LABELS[r.code] || ('Reason ' + r.code)));
+      if (_refusalReasonChart) { _refusalReasonChart.destroy(); }
+      _refusalReasonChart = new Chart(reasonEl, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Households', data: reasons.map(r => r.count),
+          backgroundColor: '#006B2E', hoverBackgroundColor: '#005225', borderRadius: 4, maxBarThickness: 22 }] },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false },
+            datalabels: { color: '#fff', font: { size: 11, weight: '700' }, anchor: 'end', align: 'start', offset: 4, formatter: v => v.toLocaleString() },
+            tooltip: { callbacks: { label: ctx => ' ' + ctx.raw.toLocaleString() + ' households' } } },
+          scales: { x: { grid: { display: false } }, y: { grid: { display: false } } }
+        }
+      });
+    }
+
+    // Free-text reasons
+    const ftEl = document.getElementById('refusals-freetext');
+    if (ftEl) {
+      const free = data.free_text || [];
+      ftEl.innerHTML = free.length
+        ? free.map(f => '<div style="display:flex;justify-content:space-between;padding:5px 8px;border-bottom:1px solid var(--line)"><span style="color:var(--ink)">' + (f.text || '—') + '</span><span style="color:var(--muted);font-variant-numeric:tabular-nums">' + f.count + '</span></div>').join('')
+        : '<div style="color:var(--muted);padding:8px 4px">No free-text reasons recorded.</div>';
+    }
+
+    // Per-LGA table
+    const tbody = document.getElementById('refusals-lga-tbody');
+    if (tbody) {
+      const rows = (data.by_lga || []).filter(r => r.refusals > 0);
+      tbody.innerHTML = rows.length
+        ? rows.map(r =>
+            '<tr style="border-bottom:1px solid var(--line)">' +
+              '<td style="padding:10px 14px;font-weight:600">' + r.lga + '</td>' +
+              '<td style="padding:10px 14px;text-align:right">' + r.refusals.toLocaleString() + '</td>' +
+              '<td style="padding:10px 14px;text-align:right">' + r.refusal_pct.toFixed(2) + '%</td>' +
+              '<td style="padding:10px 14px;text-align:right;color:var(--deep);font-weight:700">' + (r.estimated_missed_individuals || 0).toLocaleString() + '</td>' +
+            '</tr>').join('')
+        : '<tr><td colspan="4" style="text-align:center;padding:18px;color:var(--muted)">No refusals recorded this round</td></tr>';
+    }
+  }
+
+  function dlRefusalsCSV() {
+    if (!_refusalsCache) return;
+    const rows = [['LGA','Refusals','% of forms','Est. children missed']];
+    (_refusalsCache.by_lga || []).forEach(r => rows.push([r.lga, r.refusals, r.refusal_pct, r.estimated_missed_individuals || 0]));
+    const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'refusals_by_lga.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.dlRefusalsCSV = dlRefusalsCSV;
+
+  /* ── SCROLLABLE CHART LAYOUT ──
+     Fixes the chart card height and scrolls internally when there are more
+     rows than fit. Used by every horizontal per-LGA chart so cards stay
+     uniform across the dashboard and Sokoto's 20 LGAs never push a row
+     of cards into a giant slab. The canvas lives inside an inner div whose
+     height grows with the row count; Chart.js (responsive + maintainAspectRatio
+     false) sizes itself to the inner div, the outer wrap scrolls. */
+  function applyScrollableChartHeight(canvasEl, rowCount, opts) {
+    const { fixedHeight = 420, rowPx = 30, minInner = 360, gutterPx = 40 } = opts || {};
+    const wrap = canvasEl?.parentElement;
+    if (!wrap) return;
+    wrap.style.height = fixedHeight + 'px';
+    wrap.style.overflowY = 'auto';
+    wrap.style.overflowX = 'hidden';
+    wrap.style.position = 'relative';
+    const innerId = canvasEl.id + '-scroll-inner';
+    let inner = wrap.querySelector('#' + innerId);
+    if (!inner) {
+      inner = document.createElement('div');
+      inner.id = innerId;
+      inner.style.position = 'relative';
+      wrap.insertBefore(inner, canvasEl);
+      inner.appendChild(canvasEl);
+    }
+    inner.style.height = Math.max(minInner, rowCount * rowPx + gutterPx) + 'px';
+  }
+
   /* ── CHART GRADIENT ── */
   function gradient(ctx, c1, c2) {
     const g = ctx.createLinearGradient(0, 0, 0, 260);
@@ -1248,18 +1727,22 @@ tbody tr:hover{background:var(--pale)}
     setEl('kpi-treated', fmt(tt));
     setEl('kpi-teams', fmt(teams));
     setEl('kpi-coverage', covPct.toFixed(1) + '%');
+    // Plain day count in the value; subtitle adds the official start date
+    // when the project has one configured. "Day X (starts YYYY-MM-DD)".
     setEl('kpi-days', days);
+    const subEl = document.getElementById('kpi-days-sub');
+    if (subEl) {
+      subEl.textContent = overviewData.planned_start_date
+        ? 'Day ' + days + ' (starts ' + overviewData.planned_start_date + ')'
+        : 'Unique submission dates within the campaign window';
+    }
     setEl('kpi-flags', Number(qcFlags || 0).toLocaleString());
 
     setEl('crumb-start', overviewData.campaign_start || '—');
     setEl('crumb-end', overviewData.campaign_end || '—');
 
-    // Trends row
-    setEl('trends-targeted', fmt(bl));
-    setEl('trends-administered', fmt(tt));
-    setEl('trends-flags', qcFlags);
-    const tcEl = document.getElementById('trends-coverage');
-    if (tcEl) tcEl.innerHTML = '<span class="chip ' + covCls(covPct) + '">' + covPct.toFixed(1) + '%</span>';
+    // Round-over-Round Comparison table (R4, R5, …)
+    renderRoundsTable();
 
     // Tables
     buildLGATable('lga-table-body', lgaCovData);
@@ -1932,12 +2415,14 @@ tbody tr:hover{background:var(--pale)}
     setEl('qc-refusal-rate', refPct);
     setEl('qc-refusal-count', '(' + fmtN(summary.refusals) + ' households)');
 
-    // Populate QC summary KPI cards
-    const totalFlags = (summary.duplicates||0) + (summary.gps_outside_lga||0) + (summary.gps_poor_accuracy||0)
-                     + (summary.after_hours||0) + (summary.fast_forms||0) + (summary.slow_forms||0)
-                     + (summary.duplicate_gps||0);
-    const flagRate = summary.total_forms > 0 ? ((totalFlags / summary.total_forms) * 100).toFixed(1) + '%' : '—';
-    const gpsAnomalies = (summary.gps_outside_lga||0) + (summary.duplicate_gps||0);
+    // Use the server-side rollups so Overview, QC page, and Round-over-Round
+    // all read the same numbers. Refusals are NOT counted as data-quality
+    // errors (they're a campaign outcome) — the API already excludes them.
+    const totalFlags = summary.total_qc_flags || 0;
+    const flagRate = summary.error_rate_pct != null
+      ? summary.error_rate_pct.toFixed(1) + '%'
+      : (summary.total_forms > 0 ? ((totalFlags / summary.total_forms) * 100).toFixed(1) + '%' : '—');
+    const gpsAnomalies = (summary.gps_outside_lga||0) + (summary.duplicate_gps||0) + (summary.gps_poor_accuracy||0);
     const timingIssues = (summary.after_hours||0) + (summary.fast_forms||0) + (summary.slow_forms||0);
     setEl('qc-kpi-total',  totalFlags.toLocaleString());
     setEl('qc-kpi-rate',   flagRate);
@@ -1960,22 +2445,28 @@ tbody tr:hover{background:var(--pale)}
     }
 
     if (refusals && refusals.length) {
+      // Horizontal bars so the card matches the Fast/Slow card layout in the
+      // 2-column grid (both grow vertically to fit the LGA count).
+      const sortedRef = [...refusals].sort((a, b) => (b.refusals||0) - (a.refusals||0));
       const el = document.getElementById('c_refusalBar');
+      applyScrollableChartHeight(el, sortedRef.length, { rowPx: 28 });
       if (el) new Chart(el, {
         type: 'bar',
         data: {
-          labels: refusals.map(r => r.lga),
-          datasets: [{ label: 'Refusals', data: refusals.map(r => r.refusals),
-            backgroundColor: refusals.map(() => C_BLUE1),
-            hoverBackgroundColor: C_BLUE2,
-            borderRadius: 5, maxBarThickness: 28 }]
+          labels: sortedRef.map(r => r.lga),
+          datasets: [{ label: 'Refusals', data: sortedRef.map(r => r.refusals || 0),
+            backgroundColor: '#006B2E', hoverBackgroundColor: '#005225',
+            borderRadius: 4, maxBarThickness: 22 }]
         },
         options: {
-          ...barOpts(),
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 500 },
           onClick: (evt, elems) => {
             if (!elems.length) return;
-            const lga = refusals[elems[0].index]?.lga;
-            const cnt = refusals[elems[0].index]?.refusals;
+            const lga = sortedRef[elems[0].index]?.lga;
+            const cnt = sortedRef[elems[0].index]?.refusals;
             if (!lga) return;
             qcFilterLGA = qcFilterLGA === lga ? '' : lga;
             const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
@@ -1986,30 +2477,56 @@ tbody tr:hover{background:var(--pale)}
           onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
           plugins: {
             legend: { display: false },
-            datalabels: { ...DL_BASE, anchor: 'end', align: 'top', formatter: v => v.toLocaleString() },
+            datalabels: { display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+              color: '#fff', font: { size: 10.5, weight: '700' },
+              anchor: 'end', align: 'start', offset: 4,
+              formatter: v => v.toLocaleString() },
             tooltip: { callbacks: { label: ctx => ' Refusals: ' + ctx.raw.toLocaleString() + ' — click to filter QC' } }
           },
-          scales: { y: { grid: { display: false } }, x: { grid: { display: false } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { font: { size: 10 }, callback: v => v.toLocaleString() } },
+            y: { grid: { display: false }, ticks: { font: { size: 10.5 } } }
+          },
         }
       });
     }
 
     if (durations && durations.length) {
+      // Horizontal grouped bars (Fast above, Slow below per LGA). The Refusals
+      // card next door has 20 LGAs and one dataset — the duration card has 20
+      // LGAs × 2 datasets which clusters when rendered vertically in a narrow
+      // column. Going horizontal + per-row growth keeps each pair readable.
+      const sortedDur = [...durations].sort((a, b) =>
+        ((b.fast_count||0) + (b.slow_count||0)) - ((a.fast_count||0) + (a.slow_count||0)));
       const el = document.getElementById('c_duration');
+      applyScrollableChartHeight(el, sortedDur.length, { rowPx: 30 });
       if (el) new Chart(el, {
         type: 'bar',
         data: {
-          labels: durations.map(r => r.lga),
+          labels: sortedDur.map(r => r.lga),
+          // Stacked horizontal bars: deep-green Fast segment + bold gold Slow
+          // segment on top. Slow is typically <2% of Fast so we render the
+          // gold segment with a thin dark border + dedicated end-of-bar label
+          // so the small count never disappears.
           datasets: [
-            { label: 'Fast <5 min',  data: durations.map(r => r.fast_count),  backgroundColor: C_BLUE1, hoverBackgroundColor: C_BLUE2, borderRadius: 5, maxBarThickness: 20 },
-            { label: 'Slow >60 min', data: durations.map(r => r.slow_count), backgroundColor: C_BLUE2, hoverBackgroundColor: C_BLUE3, borderRadius: 5, maxBarThickness: 20 },
+            { label: 'Fast <5 min',  data: sortedDur.map(r => r.fast_count || 0),
+              backgroundColor: '#006B2E', hoverBackgroundColor: '#005225',
+              borderRadius: 0, maxBarThickness: 22, stack: 'dur',
+              borderWidth: 0 },
+            { label: 'Slow >60 min', data: sortedDur.map(r => r.slow_count || 0),
+              backgroundColor: '#C8A000', hoverBackgroundColor: '#92400E',
+              borderRadius: 0, maxBarThickness: 22, stack: 'dur',
+              borderColor: '#7C4A00', borderWidth: { right: 0, top: 0, bottom: 0, left: 2 } },
           ]
         },
         options: {
-          ...barOpts(),
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 500 },
           onClick: (evt, elems) => {
             if (!elems.length) return;
-            const lga = durations[elems[0].index]?.lga;
+            const lga = sortedDur[elems[0].index]?.lga;
             if (!lga) return;
             qcFilterLGA = qcFilterLGA === lga ? '' : lga;
             const s = document.getElementById('qc-f-lga'); if(s) s.value = qcFilterLGA;
@@ -2020,17 +2537,36 @@ tbody tr:hover{background:var(--pale)}
           onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
           plugins: {
             legend: { position: 'bottom', labels: { font: { size: 11 } } },
-            datalabels: { ...DL_BASE, anchor: 'end', align: 'top', formatter: v => v || '' },
-            tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + ctx.raw + ' — click to filter QC' } }
+            datalabels: { display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+              // Fast segment: white label centred inside; Slow segment:
+              // dark label parked outside the bar tip so a 50-count slow
+              // chunk on top of a 8,000-count fast bar is still readable.
+              color: ctx => ctx.datasetIndex === 0 ? '#fff' : '#5B4500',
+              font: ctx => ctx.datasetIndex === 0
+                ? { size: 10.5, weight: '700' }
+                : { size: 10, weight: '700' },
+              anchor: ctx => ctx.datasetIndex === 0 ? 'center' : 'end',
+              align: ctx => ctx.datasetIndex === 0 ? 'center' : 'end',
+              offset: ctx => ctx.datasetIndex === 0 ? 0 : 4,
+              formatter: v => v.toLocaleString() },
+            tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + ' — click to filter QC' } }
           },
-          scales: { y: { grid: { display: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 }, callback: v => v.toLocaleString() } },
+            y: { stacked: true, grid: { display: false }, ticks: { font: { size: 10.5 } } }
+          },
         }
       });
     }
 
     // ── QC Teams table ──
     if (teamQC && teamQC.length) {
-      qcTeamsData = teamQC.map(r => ({ ...r, gps_issues: (r.gps_outside_lga||0)+(r.poor_gps||0) }));
+      // GPS Issues column rolls up all three location anomalies (mis-placed,
+      // duplicate, poor accuracy) into one count so the team table stays
+      // narrow but the underlying signal is still trackable per team.
+      qcTeamsData = teamQC.map(r => ({ ...r,
+        gps_issues: (r.gps_outside_lga||0) + (r.poor_gps||0) + (r.dup_gps||0)
+      }));
       renderQCTeamsTable();
     }
   }
@@ -2049,7 +2585,7 @@ tbody tr:hover{background:var(--pale)}
       return asc ? va - vb : vb - va;
     });
     // Update sort indicators in header
-    ['hq_user','lga','total_forms','forms_with_error','error_rate','dup_forms','gps_issues','after_hours','fast_forms','refusals'].forEach(c => {
+    ['hq_user','lga','total_forms','forms_with_error','error_rate','dup_forms','gps_issues','after_hours','fast_forms','sync_lag','refusals'].forEach(c => {
       const el = document.getElementById('qcts-' + c);
       if (el) el.textContent = c === col ? (asc ? '▲' : '▼') : '';
     });
@@ -2067,6 +2603,7 @@ tbody tr:hover{background:var(--pale)}
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.gps_issues||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.after_hours||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.fast_forms||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.sync_lag||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.refusals||0}</td>
       </tr>`).join('');
   }
@@ -2116,13 +2653,17 @@ tbody tr:hover{background:var(--pale)}
     setEl('kpi-treated',  fmt(tt));
     setEl('kpi-teams',    fmt(ov.teams_active));
     setEl('kpi-coverage', (ov.coverage_pct || 0).toFixed(1) + '%');
-    setEl('kpi-days',     ov.days_active || 0);
+    const dDays = ov.days_active || 0;
+    setEl('kpi-days', dDays);
+    const subEl = document.getElementById('kpi-days-sub');
+    if (subEl) {
+      subEl.textContent = ov.planned_start_date
+        ? 'Day ' + dDays + ' (starts ' + ov.planned_start_date + ')'
+        : 'Unique submission dates within the campaign window';
+    }
     setEl('kpi-flags',    Number(ov.total_qc_flags || 0).toLocaleString());
-    setEl('trends-targeted',      fmt(ov.baseline_total));
-    setEl('trends-administered',  fmt(tt));
-    setEl('trends-flags',         ov.total_qc_flags || 0);
-    const tcEl = document.getElementById('trends-coverage');
-    if (tcEl) tcEl.innerHTML = '<span class="chip ' + covCls(ov.coverage_pct||0) + '">' + (ov.coverage_pct||0).toFixed(1) + '%</span>';
+    // Refresh round-over-round rows so the active-round totals stay in sync.
+    renderRoundsTable();
     // Refresh age-summary for children
     const ageSel = await api('/api/mda/individuals/age-summary' + qs);
     if (ageSel) _renderAgeSummary(ageSel);
@@ -2248,15 +2789,7 @@ tbody tr:hover{background:var(--pale)}
     // taller. Bars and y-axis ticks stay aligned because Chart.js sizes
     // the canvas to fill the chart-wrap.
     const sorted = [...data].sort((a,b) => (b[key]||0) - (a[key]||0));
-    const wrap = el.parentElement;
-    const rowHeight = 32;       // px per LGA row
-    const minHeight = 280;
-    const desiredHeight = Math.max(minHeight, sorted.length * rowHeight + 32);
-    if (wrap) {
-      wrap.style.overflowY = '';
-      wrap.style.height = desiredHeight + 'px';
-    }
-    el.style.height = '';
+    applyScrollableChartHeight(el, sorted.length, { rowPx: 30 });
     new Chart(el, {
       type: 'bar',
       data: {
@@ -2491,14 +3024,8 @@ tbody tr:hover{background:var(--pale)}
       if (lgaCovData.length) {
         const sorted = [...lgaCovData].sort((a,b)=>b.coverage_pct-a.coverage_pct);
         const maxCov = Math.max(...sorted.map(l => parseFloat(l.coverage_pct)||0), 1);
-        // Grow chart-wrap to fit every LGA at full bar thickness (mirror of
-        // the Overview Forms-per-LGA card). No scroll.
         const covEl = document.getElementById('c_covLgaBar');
-        const covWrap = covEl?.parentElement;
-        if (covWrap) {
-          covWrap.style.overflowY = '';
-          covWrap.style.height = Math.max(280, sorted.length * 32 + 32) + 'px';
-        }
+        applyScrollableChartHeight(covEl, sorted.length, { rowPx: 30 });
         new Chart(covEl, {
           type: 'bar',
           data: { labels: sorted.map(l=>l.lga),
@@ -2567,16 +3094,45 @@ tbody tr:hover{background:var(--pale)}
             }
           });
         }
-        const covGood  = lgaCovData.filter(l=>l.coverage_pct>=80).length;
-        const covBelow = lgaCovData.filter(l=>l.coverage_pct<60).length;
+        // KPI values are computed as counts (out of total LGAs in this round).
+        // When a tier is empty we surface *why* in the subtitle so the card
+        // doesn't read as "no information" — e.g. "Highest: Gwadabawa (29.8%)".
+        const totalLgas = lgaCovData.length;
+        const covGood  = lgaCovData.filter(l => parseFloat(l.coverage_pct) >= 80).length;
+        const covBelow = lgaCovData.filter(l => parseFloat(l.coverage_pct) <  60).length;
         const ovPct = overviewData.coverage_pct || 0;
         setEl('cov-kpi-baseline', fmt(overviewData.baseline_total));
         setEl('cov-kpi-treated',  fmt(overviewData.total_treated));
         setEl('cov-kpi-pct',      ovPct.toFixed(1)+'%');
-        setEl('cov-kpi-good',     covGood);
-        setEl('cov-kpi-below',    covBelow);
+        setEl('cov-kpi-good',     covGood + ' / ' + totalLgas);
+        setEl('cov-kpi-below',    covBelow + ' / ' + totalLgas);
+        const sortedByCov = [...lgaCovData].sort((a, b) => parseFloat(b.coverage_pct) - parseFloat(a.coverage_pct));
+        const highest = sortedByCov[0];
+        const lowest  = sortedByCov[sortedByCov.length - 1];
+        const goodSub = document.getElementById('cov-kpi-good-sub');
+        if (goodSub) {
+          if (covGood === 0 && highest) {
+            goodSub.textContent = 'No LGA yet — highest: ' + highest.lga + ' (' + parseFloat(highest.coverage_pct).toFixed(1) + '%)';
+          } else if (covGood > 0) {
+            goodSub.textContent = 'Meeting WHO threshold (≥80%)';
+          } else {
+            goodSub.textContent = 'Meeting WHO threshold';
+          }
+        }
+        const belowSub = document.getElementById('cov-kpi-below-sub');
+        if (belowSub) {
+          if (covBelow > 0 && lowest) {
+            belowSub.textContent = 'Lowest: ' + lowest.lga + ' (' + parseFloat(lowest.coverage_pct).toFixed(1) + '%) — needs mop-up';
+          } else if (covBelow === 0) {
+            belowSub.textContent = 'All LGAs ≥60% — good progress';
+          }
+        }
         buildLGATable('cov-lga-table-body', lgaCovData, true);
         populateCovFilters();
+        // Render age-category coverage (1-11 vs 12-59) per LGA. Fetched once
+        // per coverage-tab render; the API is cheap enough at this granularity.
+        renderCoverageByAge();
+        renderRefusalsAnalysis();
         // Surface campaign-scope details: how many LGAs are in this round's baseline
         // vs how many polygons exist in the state. Helpful when 3 Sokoto LGAs
         // (Binji / Sabon Birni / Silame) sit out of the MDA target set.
@@ -2640,42 +3196,7 @@ tbody tr:hover{background:var(--pale)}
     }
 
     if (view === 'trends') {
-      if (dailyData.length) {
-        new Chart(document.getElementById('c_rounds'), {
-          type: 'line',
-          data: { labels: dailyData.map(d=>d.date),
-            datasets:[{ label:'Daily Forms', data:dailyData.map(d=>d.forms),
-              borderColor: C_BLUE1, backgroundColor:'rgba(0,107,46,.08)', fill:true, tension:.3, borderWidth:2.5, pointRadius:3 }]
-          },
-          options: {
-            plugins: { legend: { position: 'bottom' }, datalabels: { display: false } },
-            scales: { y: { grid: { display: false }, ticks: { callback: v => v.toLocaleString() } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } },
-            maintainAspectRatio: false
-          }
-        });
-        let acc = 0;
-        const cumul = dailyData.map(d=>{acc+=d.forms;return acc;});
-        new Chart(document.getElementById('c_cumul'), {
-          type: 'line',
-          data: { labels: dailyData.map(d=>d.date),
-            datasets:[{ label:'Cumulative Forms', data:cumul,
-              borderColor: C_BLUE2, backgroundColor:ctx=>gradient(ctx.chart.ctx,'rgba(68,181,104,.25)','rgba(29,204,240,0)'),
-              fill:true, tension:.3, borderWidth:2.5, pointRadius:3, pointHoverRadius:7, pointBackgroundColor: C_BLUE2 }]
-          },
-          options: {
-            onClick: (evt, elems) => {
-              if (!elems.length) return;
-              const idx = elems[0].dataIndex;
-              showToast(dailyData[idx]?.date + ' — Cumulative total: ' + cumul[idx].toLocaleString() + ' forms');
-            },
-            onHover: (evt, elems) => { document.getElementById('c_cumul').style.cursor = elems.length ? 'crosshair' : 'default'; },
-            interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { display: false }, datalabels: { display: false } },
-            scales: { y: { grid: { display: false }, ticks: { callback: v => v.toLocaleString() } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } },
-            maintainAspectRatio: false
-          }
-        });
-      }
+      renderCampaignTrends();
     }
   }
 
@@ -2865,22 +3386,24 @@ tbody tr:hover{background:var(--pale)}
       }
     });
 
-    // GPS Points — green if inside a grid cell, red if outside all grids
+    // GPS Points — green if the point intersects either a settlement polygon
+    // OR a grid cell (in_bounds = in_settlement OR in_grid). Red only when
+    // the point falls outside every settlement and grid in the state.
     geoMap.addSource('points-src', { type: 'geojson', data: EMPTY_FC });
     geoMap.addLayer({ id: 'points-circle', type: 'circle', source: 'points-src', minzoom: 11,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 14, 6],
-        'circle-color': ['case', ['get', 'in_grid'], '#16a34a', '#dc2626'],
+        'circle-color': ['case', ['get', 'in_bounds'], '#16a34a', '#dc2626'],
         'circle-opacity': 0.9,
         'circle-stroke-color': '#ffffff',
         'circle-stroke-width': 1.0,
       }
     });
-    // Outer glow ring for in-grid points (visibility aid)
+    // Outer glow ring (visibility aid)
     geoMap.addLayer({ id: 'points-glow', type: 'circle', source: 'points-src', minzoom: 12,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 7, 15, 11],
-        'circle-color': ['case', ['get', 'in_grid'], '#16a34a', '#dc2626'],
+        'circle-color': ['case', ['get', 'in_bounds'], '#16a34a', '#dc2626'],
         'circle-opacity': 0.18,
         'circle-stroke-width': 0,
       }
@@ -2928,35 +3451,29 @@ tbody tr:hover{background:var(--pale)}
     geoNavData.lga = d;
     geoNavLevel = 'lga';
     renderGeoNav(d, 'lga');
-    // Compute completeness stats
-    const totalSett    = d.reduce((s, r) => s + (r.total_settlements || 0), 0);
-    const visitedSett  = d.reduce((s, r) => s + (r.visited_settlements || 0), 0);
-    const pct          = totalSett > 0 ? (visitedSett / totalSett * 100) : 0;
-    const activeWards  = d.reduce((s, r) => s + (r.visited_settlements > 0 ? 1 : 0), 0);
-    const totalLGAs    = d.length;
-
-    // Compute avg completeness (visited_grids / total_grids per settlement)
-    const avgComp = d.length > 0
-      ? d.reduce((s, r) => s + (r.avg_completeness_pct || r.visitation_pct || 0), 0) / d.length
-      : 0;
-    const completedSetts = d.reduce((s, r) => s + ((r.visited_settlements_60 || 0)), 0);
-
-    // Top KPI strip
-    setEl('geo-coverage-pct', pct.toFixed(1) + '%');
-    setEl('geo-sett-visited-count', visitedSett.toLocaleString());
-    setEl('geo-sett-total-count', totalSett.toLocaleString());
-    setEl('geo-sett-notvisited-count', (totalSett - visitedSett).toLocaleString());
-    setEl('geo-ward-active-count', activeWards);
-    setEl('geo-ward-total-count', totalLGAs);
-    // Completeness — fetched separately from settlement_analytics
+    // The state-wide rollups (Visitation Ratio, Not Yet Visited, Overall
+    // Completeness) are driven by /api/mda/geo/completeness so they use the
+    // server-side capped formulas, not whatever sums we'd compute client-side.
     _loadGeoCompleteness();
   }
 
   async function _loadGeoCompleteness() {
     const result = await api('/api/mda/geo/completeness');
     if (!result) return;
-    setEl('geo-avg-completeness', result.overall_completeness.toFixed(1) + '%');
-    setEl('geo-completed-count', result.completed_60.toLocaleString());
+    const total   = Number(result.total_settlements || 0);
+    const visited = Number(result.visited_settlements || 0);
+    const pct     = total > 0 ? (visited / total * 100) : 0;
+    setEl('geo-visit-ratio', visited.toLocaleString() + ' / ' + total.toLocaleString() + ' (' + pct.toFixed(1) + '%)');
+    const subEl = document.getElementById('geo-visit-ratio-sub');
+    if (subEl) subEl.textContent = 'Settlements with at least 1 GPS point inside';
+    setEl('geo-sett-notvisited-count', (total - visited).toLocaleString());
+    setEl('geo-avg-completeness', (result.overall_completeness || 0).toFixed(1) + '%');
+    setEl('geo-completed-count', Number(result.completed_70 || 0).toLocaleString());
+    // Keep the hidden back-compat counters in sync for code paths that still
+    // read them (settlement-drill, downloads, chatbot, etc.).
+    setEl('geo-coverage-pct', pct.toFixed(1) + '%');
+    setEl('geo-sett-visited-count', visited.toLocaleString());
+    setEl('geo-sett-total-count', total.toLocaleString());
   }
   async function loadGeoMetricsWard(lgacode) {
     const d = await api('/api/projects/' + geoPid + '/analytics/wards?lgacode=' + lgacode);
@@ -2980,22 +3497,36 @@ tbody tr:hover{background:var(--pale)}
 
     rows.forEach(r => {
       const div = document.createElement('div');
-      div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:12.5px;transition:background .1s';
+      div.style.cssText = 'display:flex;align-items:center;gap:6px;padding:9px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:12.5px;transition:background .1s';
       div.onmouseover = () => div.style.background = 'var(--pale)';
       div.onmouseout  = () => div.style.background = '';
 
-      let name, pct, isVisited;
-      if (level === 'lga')       { name = r.lga_name;  pct = r.visitation_pct || 0; isVisited = pct >= 10; }
-      else if (level === 'ward') { name = r.ward_name; pct = r.visitation_pct || 0; isVisited = pct >= 10; }
-      else                       { name = r.settlement_name || r.unique_cod; pct = r.completeness_pct || 0; isVisited = r.is_visited; }
-
-      const barColor = isVisited ? '#16a34a' : '#dc2626';
-      const textColor = isVisited ? '#15803d' : '#b91c1c';
+      // Each row now surfaces TWO numbers — visitation% and completeness% —
+      // so a settlement that's been "visited" but only barely covered is
+      // distinguishable from one with deep grid coverage. Visitation uses
+      // the ≥1-GPS-point rule (binary at settlement level → 0 or 100), so
+      // for settlements we show is_visited as a green/red dot. Completeness
+      // is the capped value (≥70 → 100).
+      let name, visPct, compPct;
+      if (level === 'lga' || level === 'ward') {
+        name = (level === 'lga') ? r.lga_name : r.ward_name;
+        visPct  = Number(r.visitation_pct  || 0);
+        compPct = Number(r.completeness_pct || 0);
+      } else {
+        name    = r.settlement_name || r.unique_cod;
+        visPct  = r.is_visited ? 100 : 0;
+        compPct = Number(r.completeness_pct || 0);
+      }
+      const visColor  = visPct  >= 70 ? '#16a34a' : visPct  >= 30 ? '#D97706' : '#dc2626';
+      const compColor = compPct >= 70 ? '#16a34a' : compPct >= 30 ? '#D97706' : '#dc2626';
+      const pill = (label, val, colour) =>
+        '<span title="' + label + '" style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,0,0,.04);padding:1px 6px;border-radius:99px;font-size:10.5px;font-weight:700;color:' + colour + '">' +
+          '<span style="width:5px;height:5px;border-radius:50%;background:' + colour + '"></span>' +
+          val.toFixed(0) + '%</span>';
       div.innerHTML =
         '<span style="flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px">' + (name || '—') + '</span>' +
-        '<div style="width:36px;height:5px;border-radius:99px;background:var(--mist);overflow:hidden;margin-right:4px;flex-shrink:0">' +
-          '<div style="height:100%;border-radius:99px;background:' + barColor + ';width:' + Math.min(pct, 100) + '%"></div></div>' +
-        '<span style="font-weight:700;color:' + textColor + ';min-width:34px;text-align:right;font-size:11px">' + pct.toFixed(0) + '%</span>';
+        pill('Visitation %', visPct, visColor) +
+        pill('Completeness %', compPct, compColor);
       div.onclick = () => {
         if (level === 'lga')       geodrillLGA(r);
         else if (level === 'ward') geodrillWard(r);
@@ -3020,13 +3551,22 @@ tbody tr:hover{background:var(--pale)}
     updateGeoNavHeader();
     const f = ['==', ['get', 'lgacode'], item.lgacode];
     ['lga-line', 'lga-label', 'lga-fill'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, f); });
-    if (geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(EMPTY_FC);
     await Promise.all([
       loadGeoBoundariesWard(item.lgacode),
       loadGeoBoundariesSettlement(item.lgacode, null),
       loadGeoMetricsWard(item.lgacode),
+      _loadGeoPointsForLGA(item.lgacode),
     ]);
     zoomGeoTo(geoLGAfc, 'lgacode', item.lgacode);
+    if (movementActive) {
+      _spatialMovementFilter = { lga: item.lga_name || null, ward: null };
+      geoFilterMovement();
+    }
+  }
+
+  async function _loadGeoPointsForLGA(lgacode) {
+    const d = await api('/api/projects/' + geoPid + '/analytics/points/geojson?lgacode=' + encodeURIComponent(lgacode) + '&limit=10000');
+    if (d && geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(d);
   }
 
   async function geodrillWard(item) {
@@ -3034,12 +3574,26 @@ tbody tr:hover{background:var(--pale)}
     updateGeoNavHeader();
     const f = ['==', ['get', 'wardcode'], item.wardcode];
     ['ward-line', 'ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, f); });
-    if (geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(EMPTY_FC);
+    // Eagerly load GPS points for the whole ward so the green-in-grid /
+    // red-outside dots in the legend actually populate at ward level — users
+    // previously had to drill into a single settlement to see any points.
     await Promise.all([
       loadGeoBoundariesSettlement(null, item.wardcode),
       loadGeoMetricsSettlement(item.wardcode),
+      _loadGeoPointsForWard(item.wardcode),
     ]);
     zoomGeoTo(geoWardfc, 'wardcode', item.wardcode);
+    // If the movement overlay is currently active, refilter it spatially to
+    // the clicked ward so the team-movement view follows the drill.
+    if (movementActive) {
+      _spatialMovementFilter = { lga: item.lga_name || null, ward: item.ward_name || null };
+      geoFilterMovement();
+    }
+  }
+
+  async function _loadGeoPointsForWard(wardcode) {
+    const d = await api('/api/projects/' + geoPid + '/analytics/points/geojson?wardcode=' + encodeURIComponent(wardcode) + '&limit=10000');
+    if (d && geoMap.getSource('points-src')) geoMap.getSource('points-src').setData(d);
   }
 
   async function geodrillSettlement(item) {
@@ -3049,6 +3603,17 @@ tbody tr:hover{background:var(--pale)}
       loadGeoPoints(item.unique_cod),
       loadGeoGridAndZoom(item.unique_cod),
     ]);
+    if (movementActive) {
+      _spatialMovementFilter = {
+        lga: (item.lga_name || geoCurrentLGA?.lga_name) || null,
+        ward: (item.ward_name || geoCurrentWard?.ward_name) || null,
+        settlement: item.settlement_name || null,
+        // Settlement-level spatial filter falls back to ward in the API since
+        // mda_households does not carry settlement_name reliably; the bbox
+        // around the settlement still narrows the visible movement on zoom.
+      };
+      geoFilterMovement();
+    }
   }
 
   async function loadGeoGridAndZoom(unique_cod) {
@@ -3271,11 +3836,16 @@ tbody tr:hover{background:var(--pale)}
     geoMap.on('click', 'points-circle', (e) => {
       const p = e.features[0].properties;
       const inGrid = p.in_grid === true || p.in_grid === 'true';
+      const inSett = p.in_settlement === true || p.in_settlement === 'true';
+      const inBounds = p.in_bounds === true || p.in_bounds === 'true' || inGrid || inSett;
+      const where = inGrid
+        ? '✓ Inside a grid cell'
+        : (inSett ? '✓ Inside a settlement polygon (no grid)' : '✗ Outside all settlements and grids');
       popup.setLngLat(e.lngLat).setHTML(
         '<div style="font-size:12px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
         '<b style="color:#003D1A">GPS Point</b><br>' +
-        '<span style="color:' + (inGrid ? '#15803d' : '#b91c1c') + ';font-weight:700">' +
-          (inGrid ? '✓ Inside a grid cell' : '✗ Outside all grid cells') +
+        '<span style="color:' + (inBounds ? '#15803d' : '#b91c1c') + ';font-weight:700">' +
+          where +
         '</span><br>' +
         '<span style="color:#5B6B82;font-size:11px">' +
           'Lat ' + Number(p.latitude||0).toFixed(5) + ', Lon ' + Number(p.longitude||0).toFixed(5) +
@@ -3378,6 +3948,9 @@ tbody tr:hover{background:var(--pale)}
 
   /* ── GEO HEATMAP / MOVEMENT OVERLAYS ── */
   let activeHeatmapFlag = null, movementActive = false, movementAllFC = null;
+  // Spatial filter for team movement — set when the user drills into an LGA,
+  // ward or settlement while the movement layer is on. {lga, ward, settlement?}
+  let _spatialMovementFilter = null;
   const TEAM_COLOURS = ['#006B2E','#D97706','#DC2626','#7C3AED','#0891B2','#BE185D','#059669','#B45309','#1D4ED8','#9333EA','#0F766E','#92400E'];
 
   function initOverlaySources() {
@@ -3421,15 +3994,42 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function _buildMovementLayers(pts, colourMap) {
+    // Each team's movement line is broken at every settlement boundary —
+    // we group points by (hq_user, settlement_uniq_cod) instead of just by
+    // hq_user, then draw one LineString per group sorted by started_time.
+    // Points outside every settlement polygon (settlement_uniq_cod = null)
+    // bucket into a sentinel key per team so they still draw a single line
+    // among themselves rather than disappearing.
     pts.forEach(f => { f.properties.colour = colourMap[f.properties.hq_user] || '#006B2E'; });
-    const byTeam = {};
-    pts.forEach(f => { const k=f.properties.hq_user||'?'; if(!byTeam[k]) byTeam[k]=[]; byTeam[k].push(f); });
+    const buckets = {};
+    pts.forEach(f => {
+      const hq = f.properties.hq_user || '?';
+      const sid = f.properties.settlement_uniq_cod || '__no_settlement__';
+      const key = hq + '||' + sid;
+      if (!buckets[key]) buckets[key] = { hq, sid, name: f.properties.settlement_name || null, pts: [] };
+      buckets[key].pts.push(f);
+    });
     const lines = [];
-    Object.entries(byTeam).forEach(([t,tp]) => {
-      tp.sort((a,b)=>(a.properties.started_time||'')<(b.properties.started_time||'')?-1:1);
-      const coords = tp.map(p=>p.geometry.coordinates).filter(c=>c&&c.length===2);
-      if (coords.length>=2) lines.push({ type:'Feature', geometry:{type:'LineString',coordinates:coords},
-        properties:{hq_user:t,colour:colourMap[t]||'#006B2E',point_count:coords.length} });
+    Object.values(buckets).forEach(b => {
+      b.pts.sort((a, b2) => {
+        const ta = a.properties.started_time || '';
+        const tb = b2.properties.started_time || '';
+        return ta < tb ? -1 : (ta > tb ? 1 : 0);
+      });
+      const coords = b.pts.map(p => p.geometry.coordinates).filter(c => c && c.length === 2);
+      if (coords.length >= 2) {
+        lines.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: {
+            hq_user:          b.hq,
+            settlement_id:    b.sid === '__no_settlement__' ? null : b.sid,
+            settlement_name:  b.name,
+            colour:           colourMap[b.hq] || '#006B2E',
+            point_count:      coords.length,
+          },
+        });
+      }
     });
     return lines;
   }
@@ -3461,6 +4061,9 @@ tbody tr:hover{background:var(--pale)}
       geoMap.getSource('movement-lines-src').setData(EMPTY_FC);
       geoMap.getSource('movement-pts-src').setData(EMPTY_FC);
       movementAllFC = null;
+      _spatialMovementFilter = null;
+      const badge = document.getElementById('geo-movement-badge');
+      if (badge) badge.remove();
       if (teamSel) { teamSel.style.display='none'; teamSel.value=''; }
       if (dateSel) { dateSel.style.display='none'; dateSel.value=''; }
       return;
@@ -3506,18 +4109,25 @@ tbody tr:hover{background:var(--pale)}
     }
   }
 
-  /* Combined team + date filter for movement overlay */
+  /* Combined team + date + spatial (lga/ward) filter for movement overlay */
   async function geoFilterMovement() {
     if (!geoMap || !geoMapBuilt || !movementActive) return;
     if (!geoMap.getSource('movement-lines-src')) initOverlaySources();
     const team    = (document.getElementById('geo-team-select')?.value)  || '';
     const dateVal = (document.getElementById('geo-movement-date')?.value) || '';
+    const sp      = _spatialMovementFilter || {};
 
-    // If a date is selected, re-fetch from the API with the date filter
-    if (dateVal) {
-      let qs = '?date=' + encodeURIComponent(dateVal);
-      if (team) qs += '&hq_user=' + encodeURIComponent(team);
-      const fc = await api('/api/mda/teams/movement-geojson' + qs);
+    // Re-fetch from the API whenever a date or spatial filter is present —
+    // these slice the row set on the server side rather than relying on the
+    // cached movementAllFC.
+    const needsServerFetch = dateVal || sp.lga || sp.ward;
+    if (needsServerFetch) {
+      const qs = new URLSearchParams();
+      if (dateVal) qs.set('date', dateVal);
+      if (team)    qs.set('hq_user', team);
+      if (sp.ward) qs.set('ward', sp.ward);
+      else if (sp.lga) qs.set('lga', sp.lga);
+      const fc = await api('/api/mda/teams/movement-geojson?' + qs.toString());
       if (!fc || !fc.features) return;
       const teams = [...new Set(fc.features.map(f=>f.properties.hq_user).filter(Boolean))].sort();
       const colourMap = {}; teams.forEach((t,i)=>{ colourMap[t]=TEAM_COLOURS[i%TEAM_COLOURS.length]; });
@@ -3525,19 +4135,56 @@ tbody tr:hover{background:var(--pale)}
       const lines = _buildMovementLayers(fc.features.map(f=>({...f,properties:{...f.properties}})), colourMap);
       geoMap.getSource('movement-lines-src').setData({type:'FeatureCollection',features:lines});
       geoMap.getSource('movement-pts-src').setData(fc);
-      if (team && fc.features.length) {
+      if (fc.features.length && (team || sp.ward || sp.lga)) {
         const lngs=fc.features.map(f=>f.geometry.coordinates[0]), lats=fc.features.map(f=>f.geometry.coordinates[1]);
         geoMap.fitBounds([[Math.min(...lngs)-.05,Math.min(...lats)-.05],[Math.max(...lngs)+.05,Math.max(...lats)+.05]],{padding:40,maxZoom:13,duration:800});
       }
+      _updateMovementBadge(team, sp, fc.features.length);
       return;
     }
 
-    // No date selected — filter the cached movementAllFC by team only
+    // No date and no spatial scope — filter the cached movementAllFC by team only
     geoFilterTeam(team);
+    _updateMovementBadge(team, sp, movementAllFC?.features?.length || 0);
   }
+
+  // Tiny status badge next to the Team Movement button so the user can see
+  // what spatial scope the overlay is currently honouring.
+  function _updateMovementBadge(team, sp, count) {
+    let badge = document.getElementById('geo-movement-badge');
+    if (!badge) {
+      const btn = document.getElementById('geo-btn-movement');
+      if (!btn) return;
+      badge = document.createElement('span');
+      badge.id = 'geo-movement-badge';
+      badge.style.cssText = 'margin-left:6px;font-size:10.5px;color:var(--muted);display:inline-flex;gap:6px;align-items:center';
+      btn.parentNode.insertBefore(badge, btn.nextSibling);
+    }
+    const parts = [];
+    if (team) parts.push('team: ' + team);
+    if (sp.ward) parts.push('ward: ' + sp.ward);
+    else if (sp.lga) parts.push('LGA: ' + sp.lga);
+    parts.push(count.toLocaleString() + ' pts');
+    badge.innerHTML = parts.join(' · ');
+    // Show a clear-spatial chip when spatial scope is set
+    if (sp.lga || sp.ward) {
+      const clear = '<a href="#" onclick="_clearMovementSpatial(event)" style="color:var(--blue);text-decoration:underline;margin-left:6px">clear area</a>';
+      badge.innerHTML += clear;
+    }
+  }
+
+  function _clearMovementSpatial(ev) {
+    if (ev) ev.preventDefault();
+    _spatialMovementFilter = null;
+    geoFilterMovement();
+  }
+  window._clearMovementSpatial = _clearMovementSpatial;
 
   function geoClearOverlays() {
     activeHeatmapFlag = null; movementActive = false; movementAllFC = null;
+    _spatialMovementFilter = null;
+    const badge = document.getElementById('geo-movement-badge');
+    if (badge) badge.remove();
     document.querySelectorAll('.geo-ctrl-btn').forEach(b => b.classList.remove('active'));
     const teamSel = document.getElementById('geo-team-select');
     const dateSel = document.getElementById('geo-movement-date');

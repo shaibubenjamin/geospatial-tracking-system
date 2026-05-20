@@ -230,12 +230,18 @@ def _map_household(row: Dict[str, Any], set_name: str) -> Dict[str, Any]:
 
     # Flags computed locally (spatial flags come from a separate UPDATE pass)
     out["flag_gps_zero"]        = bool(lat == 0.0 and lon == 0.0) if (lat is not None and lon is not None) else False
-    out["flag_gps_poor_accuracy"] = bool(acc is not None and acc > 10)
+    # GPS accuracy threshold set to 20 m (R5 calibration). At 10 m the flag
+    # fired on ~8 % of forms even though most were within usable range; at
+    # 14 m it still over-flagged. 20 m is the campaign-team's agreed cutoff
+    # for "usable for grid assignment" given Sokoto's 50-200 m settlement grids.
+    out["flag_gps_poor_accuracy"] = bool(acc is not None and acc > 20)
     out["flag_after_hours"]     = False
     if started:
         local_hour = (started + timedelta(hours=1)).hour
         out["flag_after_hours"] = local_hour < 6 or local_hour >= 19
     fdm = out["form_duration_min"]
+    # Fast-form threshold: 5 min (campaign-team agreed cutoff). Forms
+    # completed under 5 min are reviewed as potentially rushed.
     out["flag_fast_form"] = bool(fdm is not None and fdm < 5)
     out["flag_slow_form"] = bool(fdm is not None and fdm > 60)
     sl = out["sync_lag_hours"]
