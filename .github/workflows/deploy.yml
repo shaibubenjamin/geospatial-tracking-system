@@ -77,25 +77,36 @@ jobs:
         # Polls until the command finishes, then prints stdout/stderr and
         # exits non-zero if the command failed (so the workflow surfaces
         # rollout failures).
+        #
+        # We also ship the latest deploy/docker-compose.prod.yml from this
+        # repo to /opt/mda-dashboard/docker-compose.yml — without this,
+        # `docker compose up -d` keeps using whichever compose file was on
+        # disk at first deploy and silently ignores new services (e.g.
+        # the sync_worker added in PR #6 never showed up on prod). We pass
+        # the file as base64 inside the SSM command parameters so there's
+        # no extra infra (S3 bucket, git on the host, etc.).
         run: |
           set -euo pipefail
+          COMPOSE_B64=$(base64 -w0 deploy/docker-compose.prod.yml 2>/dev/null || base64 -b0 deploy/docker-compose.prod.yml)
           CMD_ID=$(aws ssm send-command \
               --region "$AWS_REGION" \
               --instance-ids "$EC2_INSTANCE_ID" \
               --document-name AWS-RunShellScript \
               --comment "Deploy $(echo "${GITHUB_SHA}" | cut -c1-7)" \
               --cloud-watch-output-config '{"CloudWatchLogGroupName":"/mda-dashboard/ec2-system","CloudWatchOutputEnabled":true}' \
-              --parameters '{"commands":[
-                "set -e",
-                "cd /opt/mda-dashboard",
-                "sudo /home/ec2-user/ecr-login.sh",
-                "sudo docker compose pull",
-                "sudo docker compose up -d",
-                "sleep 8",
-                "sudo docker compose ps",
-                "curl -fsS http://localhost:8080/api/health",
-                "echo Deployment complete"
-              ],"executionTimeout":["600"]}' \
+              --parameters "{\"commands\":[
+                \"set -e\",
+                \"cd /opt/mda-dashboard\",
+                \"sudo /home/ec2-user/ecr-login.sh\",
+                \"echo ${COMPOSE_B64} | base64 -d | sudo tee /opt/mda-dashboard/docker-compose.yml > /dev/null\",
+                \"sudo chown ec2-user:ec2-user /opt/mda-dashboard/docker-compose.yml\",
+                \"sudo docker compose pull\",
+                \"sudo docker compose up -d --remove-orphans\",
+                \"sleep 8\",
+                \"sudo docker compose ps\",
+                \"curl -fsS http://localhost:8080/api/health\",
+                \"echo Deployment complete\"
+              ],\"executionTimeout\":[\"600\"]}" \
               --query "Command.CommandId" --output text)
           echo "SSM Command ID: $CMD_ID"
 
