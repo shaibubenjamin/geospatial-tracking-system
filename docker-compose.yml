@@ -34,6 +34,10 @@ services:
     volumes:
       - .:/app
       - uploads:/app/uploads
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 
   redis:
@@ -44,6 +48,27 @@ services:
       - "6380:6379"
     volumes:
       - redisdata:/data
+
+  # Standalone CommCare-sync worker. Same image as the API but a different
+  # CMD — no uvicorn, no --reload. The whole point: an in-flight sync
+  # (5-15 min) keeps running even when the dev API hot-reloads or prod
+  # redeploys. Restart manually (`docker compose restart sync_worker`)
+  # when sync code itself changes.
+  sync_worker:
+    build: .
+    container_name: geo_tracker_sync_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    command: python -m app.sync_worker
 
 volumes:
   uploads:

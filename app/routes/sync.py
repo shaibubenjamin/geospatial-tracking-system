@@ -17,6 +17,7 @@ from app.models import User, SyncConfig, GeoProject
 from app.routes.auth import require_superadmin
 from app.services.crypto import encrypt, CryptoNotConfigured
 from app.services.commcare_sync import run_sync, test_connection
+from app.services.job_queue import enqueue_sync_job, health_check as redis_health_check
 from app.services.onprem_mirror import (
     run_mirror as run_onprem_mirror,
     is_available as onprem_mirror_available,
@@ -216,17 +217,21 @@ async def trigger_sync(
 ):
     """Queue a CommCare sync for the project. Returns immediately.
 
-    The sync runs as a FastAPI background task — it can take several minutes
-    for a large pull and would otherwise time out behind an ALB or reverse
-    proxy. The admin panel watches progress by polling ``GET /api/sync/config``
-    (which reports ``last_progress_step`` / ``last_progress_total``) and
-    refreshes the history once ``last_status`` flips to ``ok`` or ``error``.
+    Previously this ran via FastAPI ``BackgroundTasks`` inside the API
+    process, which meant any uvicorn restart (dev hot-reload, deploy,
+    OOM, EC2 cycle) killed in-flight syncs and left ``sync_history`` rows
+    stuck at ``'running'`` forever. We now enqueue the work onto a Redis
+    list that the standalone ``geo_tracker_sync_worker`` container drains
+    — so the worker (which has no hot-reload) keeps running through API
+    restarts and the user can continue using the dashboard during a sync.
 
-    Returns 409 if a sync is already running for this project — a single
-    superadmin shouldn't be able to fire two parallel pulls.
+    Falls back to the in-process BackgroundTasks path if Redis is
+    unreachable, so a dev laptop without Redis up still gets sync — just
+    without the isolation guarantee.
+
+    Returns 409 if a sync is already running for this project.
     """
-    # Pre-flight checks against current state. Use raw SQL to avoid hitting the
-    # ORM's update-tracking against fields the background task will mutate.
+    # Pre-flight: do we even have credentials configured?
     res = await db.execute(
         text("SELECT last_status FROM sync_config WHERE project_id = :pid"),
         {"pid": project_id},
@@ -240,8 +245,28 @@ async def trigger_sync(
             "A sync is already in progress for this project. Wait for it to finish.",
         )
 
+    if await redis_health_check():
+        try:
+            job = await enqueue_sync_job(project_id)
+            return {
+                "queued":      True,
+                "project_id":  project_id,
+                "queue_depth": job.get("queue_depth"),
+                "mode":        "worker",
+                "note":        "Sync handed off to the geo_tracker_sync_worker container. Watch progress via /api/sync/config.",
+            }
+        except Exception as e:  # noqa: BLE001 — fall back rather than 500
+            logger.warning("Redis enqueue failed (%s) — falling back to BackgroundTasks", e)
+
+    # Fallback: legacy in-process path. Survives Redis being down but loses
+    # the isolation benefit. Surface that in the response so the operator knows.
     background_tasks.add_task(_run_sync_background, project_id)
-    return {"queued": True, "project_id": project_id}
+    return {
+        "queued":     True,
+        "project_id": project_id,
+        "mode":       "inline",
+        "note":       "Redis unreachable — running sync inline. An API restart will kill this job.",
+    }
 
 
 @router.get("/onprem-mirror/state")
