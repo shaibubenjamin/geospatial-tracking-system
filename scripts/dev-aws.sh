@@ -35,15 +35,12 @@ cd "$PROJECT_ROOT"
 
 REGION=us-east-1
 PROJECT=mda-dashboard
-# ⚠️ KNOWN ISSUE — this tunnels through the PROD app server (mda-dashboard-app,
-# t3.medium). It should target the dedicated bastion (mda-dashboard-bastion,
-# t3.nano, i-0ee6b3eb3a84fa4cd) for proper dev↔prod isolation, but the bastion
-# currently has no IAM instance profile with AmazonSSMManagedInstanceCore so
-# SSM cannot start a session to it. Tracking issue: attach the SSM-enabled
-# instance profile to the bastion via Terraform, then change this line to
-# i-0ee6b3eb3a84fa4cd. Until that ships, do NOT issue `aws ec2 reboot-instances`
-# against the value below — it will take prod down.
-EC2_INSTANCE_ID=i-0f57573ce98580bfc
+# Tunnel through the dedicated bastion (t3.nano, mda-dashboard-bastion).
+# Isolates dev SSM activity from the prod app server — if this host's SSM
+# agent wedges or the tunnel host has to be rebooted, prod traffic stays up.
+# The bastion's IAM instance profile + AmazonSSMManagedInstanceCore policy
+# are defined in terraform/bastion.tf.
+EC2_INSTANCE_ID=i-0ee6b3eb3a84fa4cd
 RDS_ENDPOINT=mda-dashboard-db.cixghyv30jr7.us-east-1.rds.amazonaws.com
 
 # Local port the tunnel listens on (chosen not to collide with a local Postgres)
