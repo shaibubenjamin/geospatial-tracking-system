@@ -46,12 +46,20 @@ class ProjectCreate(BaseModel):
     name: str
     slug: str
     description: Optional[str] = ""
+    state_name: Optional[str] = None
+    round_number: Optional[int] = None
+    campaign_start_date: Optional[date] = None
+    campaign_end_date: Optional[date] = None
 
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    state_name: Optional[str] = None
+    round_number: Optional[int] = None
+    campaign_start_date: Optional[date] = None
+    campaign_end_date: Optional[date] = None
 
 
 class ProjectOut(BaseModel):
@@ -62,6 +70,8 @@ class ProjectOut(BaseModel):
     is_active: bool
     state_name: Optional[str] = None
     round_number: Optional[int] = None
+    campaign_start_date: Optional[date] = None
+    campaign_end_date: Optional[date] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
