@@ -40,7 +40,7 @@ PROJECT=mda-dashboard
 # agent wedges or the tunnel host has to be rebooted, prod traffic stays up.
 # The bastion's IAM instance profile + AmazonSSMManagedInstanceCore policy
 # are defined in terraform/bastion.tf.
-EC2_INSTANCE_ID=i-0ee6b3eb3a84fa4cd
+EC2_INSTANCE_ID=i-0da32cbe872649cf7
 RDS_ENDPOINT=mda-dashboard-db.cixghyv30jr7.us-east-1.rds.amazonaws.com
 
 # Local port the tunnel listens on (chosen not to collide with a local Postgres)
