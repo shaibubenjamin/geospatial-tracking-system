@@ -20,6 +20,14 @@ class GeoProject(Base):
     is_active = Column(Boolean, default=False)
     state_name = Column(Text)
     round_number = Column(Integer)
+    # Official campaign start date. When set, every received_on-based query
+    # hides rows received before this date so pre-campaign test submissions
+    # don't inflate Days Active / pace metrics. Raw data is preserved.
+    campaign_start_date = Column(Date)
+    # Official campaign end date. Used with campaign_start_date to compute the
+    # planned campaign length so cards can show "Day 2 of 5" rather than just
+    # the count of days for which data has been received.
+    campaign_end_date = Column(Date)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     lgas = relationship("LGA", back_populates="project", cascade="all, delete-orphan")
@@ -221,7 +229,7 @@ class MdaHousehold(Base):
     flag_gps_outside_lga = Column(Boolean, default=False)     # GPS not within stated LGA polygon
     flag_gps_outside_ward = Column(Boolean, default=False)    # GPS not within any ward polygon
     flag_gps_outside_state = Column(Boolean, default=False)   # GPS not within any Sokoto LGA
-    flag_gps_poor_accuracy = Column(Boolean, default=False)   # accuracy > 10m
+    flag_gps_poor_accuracy = Column(Boolean, default=False)   # accuracy > 20m
     flag_gps_zero = Column(Boolean, default=False)            # lat==0 & lon==0
     flag_after_hours = Column(Boolean, default=False)         # outside 06:00-19:00
     flag_fast_form = Column(Boolean, default=False)           # < 5 min
