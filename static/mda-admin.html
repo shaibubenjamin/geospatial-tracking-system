@@ -478,7 +478,13 @@
             <div class="page-title">Data Sources</div>
             <div class="page-sub">CommCare HQ pull — incremental, scoped to one project (state + round)</div>
           </div>
-          <div class="actions">
+          <div class="actions" style="display:flex;align-items:center;gap:10px">
+            <!-- Sync-worker queue status. Hidden until first poll resolves.
+                 - Worker mode + 0 depth   → muted "Worker idle"
+                 - Worker mode + N ≥ 1     → blue chip "Sync queue: N job(s) ahead"
+                 - Inline mode (Redis down)→ amber chip warning that syncs
+                   will run in-process and an API restart will kill them. -->
+            <span id="sync-queue-chip" style="display:none;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:99px;align-items:center;gap:6px;white-space:nowrap"></span>
             <select id="sync-project-selector" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;background:#fff;cursor:pointer">
               <option value="">Loading projects…</option>
             </select>
@@ -1060,6 +1066,11 @@
     if (v === 'system')   { loadSystemStatus(); }
     if (v === 'sync')     { loadSyncProjects(); }
     if (v === 'account')  { resetPasswordForm(); }
+    // Stop the sync-queue polling when leaving the Data Sources view so
+    // we don't hammer /api/sync/queue/depth from a background tab.
+    if (v !== 'sync' && typeof stopSyncQueuePolling === 'function') {
+      stopSyncQueuePolling();
+    }
   }
 
   /* ── ACCOUNT: change-password form ── */
@@ -1325,7 +1336,53 @@
     }).join('');
     sel.onchange = () => { SYNC_PROJECT_ID = parseInt(sel.value, 10); loadSyncConfig(); };
     await loadSyncConfig();
+    startSyncQueuePolling();
   }
+
+  /* ── SYNC QUEUE DEPTH CHIP ──────────────────────────────────────────────
+     Poll /api/sync/queue/depth every 5 s while the Data Sources view is
+     active. The chip surfaces three states:
+       worker_available + depth==0 → muted "Worker idle"
+       worker_available + depth>0  → blue "N job(s) ahead"
+       !worker_available           → amber "Inline mode — API restart will kill"
+     The same poll is rebumped (immediately + every 5 s) after Sync Now is
+     clicked so the user sees their job land in the queue.                 */
+  let _syncQueuePollHandle = null;
+  function startSyncQueuePolling() {
+    stopSyncQueuePolling();
+    pollSyncQueueDepth();
+    _syncQueuePollHandle = setInterval(pollSyncQueueDepth, 5000);
+  }
+  function stopSyncQueuePolling() {
+    if (_syncQueuePollHandle) { clearInterval(_syncQueuePollHandle); _syncQueuePollHandle = null; }
+  }
+  async function pollSyncQueueDepth() {
+    const chip = document.getElementById('sync-queue-chip');
+    if (!chip) return;
+    try {
+      const res = await api('/api/sync/queue/depth');
+      if (!res || !res.ok) { chip.style.display = 'none'; return; }
+      const d = await res.json();
+      chip.style.display = 'inline-flex';
+      if (!d.worker_available) {
+        chip.style.background = '#FEF3C7';
+        chip.style.color      = '#92400E';
+        chip.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Inline mode — API restart can interrupt sync';
+      } else if ((d.depth || 0) === 0) {
+        chip.style.background = 'var(--mist)';
+        chip.style.color      = 'var(--muted)';
+        chip.innerHTML = '<i class="fa-solid fa-circle-check"></i> Sync worker idle';
+      } else {
+        chip.style.background = 'rgba(0,107,46,.12)';
+        chip.style.color      = 'var(--blue)';
+        chip.innerHTML = '<i class="fa-solid fa-bolt"></i> Sync queue: ' + d.depth + ' job' + (d.depth === 1 ? '' : 's') + ' ahead';
+      }
+    } catch(e) {
+      chip.style.display = 'none';
+    }
+  }
+  // Polling is stopped from onViewActivated() when the user leaves the
+  // Data Sources view (see view-switch handler above).
 
   function _humanDuration(startISO, endISO) {
     if (!startISO || !endISO) return '—';
@@ -1557,10 +1614,16 @@
       appendLog('sync-log', 'Queue failed: ' + (data.detail || `HTTP ${res.status}`), 'err');
       return;
     }
-    // 200 with {queued: true}. Backend kicked off a background task; the progress
-    // bar + history table fill in via polling. The final summary (rows, errors)
-    // appears in the Sync History card the moment status flips off 'running'.
-    appendLog('sync-log', `Sync queued at ${new Date().toLocaleTimeString()} — fetching from CommCare in the background. Watch the progress bar.`, 'ok');
+    // 200 with {queued: true, mode: 'worker'|'inline'}. Surface the mode so
+    // the user understands whether their job went to the sync-worker
+    // container (D, safe across API restarts) or fell back to in-process
+    // (Redis was down). Bump the queue-depth chip immediately rather than
+    // waiting for the next 5 s poll tick.
+    const modeNote = data.mode === 'inline'
+      ? ' — running inline (Redis unreachable; API restart will kill it)'
+      : ' — queued for the sync worker';
+    appendLog('sync-log', `Sync ${data.mode === 'inline' ? 'started' : 'queued'} at ${new Date().toLocaleTimeString()}${modeNote}. Watch the progress bar.`, 'ok');
+    pollSyncQueueDepth();
     startProgressPolling();
   };
 
