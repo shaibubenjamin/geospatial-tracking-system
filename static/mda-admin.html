@@ -262,8 +262,8 @@
       <i class="fa-solid fa-shield-halved"></i> <span id="role-badge-label">Administrator Access</span>
     </div>
 
-    <div class="nav-section super-only" style="display:none">Data Management</div>
-    <div class="nav-item super-only" data-view="sync" style="display:none"><i class="fa-solid fa-rotate"></i> Data Sources</div>
+    <div class="nav-section">Data Management</div>
+    <div class="nav-item" data-view="sync"><i class="fa-solid fa-rotate"></i> Data Sources</div>
     <div class="nav-item super-only" data-view="uploads" style="display:none"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
 
     <div class="nav-section">Configuration</div>
@@ -494,8 +494,9 @@
 
         <!-- On-prem mirror banner. Sits directly under the page head so it's
              visible without scrolling. Hidden by default; loadOnpremMirrorState()
-             reveals it when the backend reports the env var is set. -->
-        <div id="onprem-mirror-card" style="display:none;margin-bottom:16px;background:linear-gradient(135deg,#FFF7E6 0%,#FFF1CC 100%);border:1.5px solid #F5C76B;border-radius:12px;padding:14px 18px;box-shadow:0 1px 0 rgba(0,0,0,.03)">
+             reveals it when the backend reports the env var is set.
+             Superadmin-only: admins can run syncs but cannot trigger on-prem mirror. -->
+        <div id="onprem-mirror-card" class="super-only" style="display:none;margin-bottom:16px;background:linear-gradient(135deg,#FFF7E6 0%,#FFF1CC 100%);border:1.5px solid #F5C76B;border-radius:12px;padding:14px 18px;box-shadow:0 1px 0 rgba(0,0,0,.03)">
           <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
             <div style="width:42px;height:42px;border-radius:10px;background:#FCD34D;color:#92400E;display:grid;place-items:center;flex-shrink:0">
               <i class="fa-solid fa-arrows-rotate" style="font-size:18px"></i>
@@ -540,7 +541,9 @@
 
         <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:18px">
           <div>
-            <div class="card">
+            <!-- CommCare connection form: superadmin-only. Admins run syncs
+                 but cannot edit credentials or form IDs. -->
+            <div class="card super-only" style="display:none">
               <div class="card-head">
                 <div class="card-title"><i class="fa-solid fa-plug"></i> CommCare Connection</div>
               </div>
@@ -577,7 +580,8 @@
               </div>
             </div>
 
-            <div class="card">
+            <!-- Form IDs editor: superadmin-only. -->
+            <div class="card super-only" style="display:none">
               <div class="card-head">
                 <div class="card-title"><i class="fa-solid fa-list"></i> Form IDs</div>
                 <div class="card-head-right">
