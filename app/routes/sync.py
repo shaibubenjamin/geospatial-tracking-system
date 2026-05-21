@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 
 from app.database import get_db
 from app.models import User, SyncConfig, GeoProject
-from app.routes.auth import require_superadmin
+from app.routes.auth import require_admin, require_superadmin
 from app.services.crypto import encrypt, CryptoNotConfigured
 from app.services.commcare_sync import run_sync, test_connection
 from app.services.job_queue import (
@@ -95,9 +95,15 @@ async def _get_config(project_id: int, db: AsyncSession) -> Optional[SyncConfig]
 async def get_config(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    _super: User = Depends(require_superadmin),
+    user: User = Depends(require_admin),
 ):
-    """Read sync config for a project. Password never returned, only its presence."""
+    """Read sync config for a project. Password never returned, only its presence.
+
+    Admin (non-superadmin) callers receive only the runtime/status fields needed
+    to render the progress bar and history — the credentials and form-set
+    identifiers are stripped so they cannot be copied or leaked. Superadmin
+    callers see the full config.
+    """
     cfg = await _get_config(project_id, db)
     if not cfg:
         # Return an empty config so the UI can render a "first-time setup" form
@@ -110,13 +116,14 @@ async def get_config(
             form_ids=[],
             last_synced_at=None, last_status=None, last_error=None, last_row_count=None,
         )
+    is_super = bool(getattr(user, "is_superadmin", False))
     return SyncConfigOut(
         project_id=cfg.project_id,
-        commcare_base_url=cfg.commcare_base_url,
-        commcare_app_slug=cfg.commcare_app_slug,
-        commcare_username=cfg.commcare_username,
+        commcare_base_url=cfg.commcare_base_url if is_super else None,
+        commcare_app_slug=cfg.commcare_app_slug if is_super else None,
+        commcare_username=cfg.commcare_username if is_super else None,
         has_password=bool(cfg.commcare_password_encrypted),
-        form_ids=[FormEntry(**e) for e in (cfg.form_ids or [])],
+        form_ids=[FormEntry(**e) for e in (cfg.form_ids or [])] if is_super else [],
         last_synced_at=cfg.last_synced_at,
         last_status=cfg.last_status,
         last_error=cfg.last_error,
@@ -131,7 +138,7 @@ async def get_history(
     project_id: int,
     limit: int = 5,
     db: AsyncSession = Depends(get_db),
-    _super: User = Depends(require_superadmin),
+    _admin: User = Depends(require_admin),
 ):
     """Most-recent N sync runs for this project (default 5)."""
     limit = max(1, min(limit, 50))  # safety cap
@@ -217,7 +224,7 @@ async def trigger_sync(
     project_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _super: User = Depends(require_superadmin),
+    _admin: User = Depends(require_admin),
 ):
     """Queue a CommCare sync for the project. Returns immediately.
 
@@ -275,7 +282,7 @@ async def trigger_sync(
 
 @router.get("/queue/depth")
 async def sync_queue_status(
-    _super: User = Depends(require_superadmin),
+    _admin: User = Depends(require_admin),
 ):
     """Return the current sync-worker queue depth (and worker availability).
 
