@@ -1410,6 +1410,7 @@
     }
     tb.innerHTML = rows.map(r => {
       const chip = r.status === 'ok'      ? '<span class="chip good">✓ OK</span>'
+                 : r.status === 'partial' ? '<span class="chip warn">Partial</span>'
                  : r.status === 'running' ? '<span class="chip warn">Running…</span>'
                  : r.status === 'error'   ? '<span class="chip bad">Error</span>'
                  : `<span class="chip info">${r.status || '—'}</span>`;
@@ -1467,6 +1468,8 @@
       if (cfg.last_status !== 'running' && _lastPollStatus === 'running') {
         if (cfg.last_status === 'ok') {
           appendLog('sync-log', `Sync complete — ${(cfg.last_row_count || 0).toLocaleString()} rows fetched.`, 'ok');
+        } else if (cfg.last_status === 'partial') {
+          appendLog('sync-log', `Sync PARTIAL — ${(cfg.last_row_count || 0).toLocaleString()} rows fetched, but some sets failed: ${cfg.last_error || ''}`, 'warn');
         } else if (cfg.last_status === 'error') {
           appendLog('sync-log', 'Sync FAILED: ' + (cfg.last_error || 'unknown error'), 'err');
         }

@@ -14,9 +14,10 @@ Single-environment production deployment in **us-east-1**, account **`3875263617
                     │ 8080                      │ 22 (SSH)
                     ▼                           ▼
    ┌────────────────────────────┐    ┌──────────────────────────────┐
-   │  EC2 t3.medium (private)   │    │  Bastion t3.nano (public)    │
-   │  docker-compose: api+redis │    │  ssh / psql tunnel jumphost  │
-   │  pulls image from ECR      │    └───────────────┬──────────────┘
+   │  EC2 t3.large  (private)   │    │  Bastion t3.nano (public)    │
+   │  docker-compose:           │    │  ssh / psql tunnel jumphost  │
+   │   api + redis + worker     │    └───────────────┬──────────────┘
+   │  pulls image from ECR      │                    │
    │  reads secrets from SM     │                    │
    └─────────────┬──────────────┘                    │
                  │ 5432                              │ 5432 (dev only)
@@ -135,7 +136,7 @@ pg_restore -h localhost -p 5432 -U postgres_admin -d geospatial_tracking_system 
 
 | Resource | Spec | Monthly |
 |---|---|---|
-| EC2 app | t3.medium (1-year reserved) | ~$20 |
+| EC2 app | t3.large (1-year reserved) | ~$45 |
 | EC2 bastion | t3.nano | ~$4 |
 | RDS | db.t3.large, single-AZ, 50 GB gp3 | ~$130 |
 | ALB | Application load balancer | ~$20 |

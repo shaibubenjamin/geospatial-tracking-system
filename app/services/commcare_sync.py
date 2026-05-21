@@ -10,15 +10,27 @@ Design notes
   ``sync_feed_state.last_received_on``. Subsequent syncs use OData
   ``$filter=received_on gt <watermark>`` so we only pull new rows.
 
-- **All-or-nothing.** All feeds for a single sync run are committed in one DB
-  transaction. If anything fails partway, the entire transaction rolls back and
-  every watermark stays where it was; the next click retries cleanly.
+- **Per-set commits with tolerant skip.** Each configured form set
+  (``form_ids[i]``) is fetched, persisted, and committed as its own
+  transaction. A failure inside one set is logged and recorded in
+  ``sets_failed`` — the loop moves on to the next set. The successful sets'
+  rows and watermarks are already on disk. Subsequent syncs only re-fetch the
+  failed sets (because watermarks for successful sets advanced).
+
+- **Sync status is tri-state.** ``ok`` (all sets succeeded), ``partial`` (at
+  least one set succeeded and at least one failed), or ``error`` (every set
+  failed). ``partial`` is a successful sync from the platform's perspective —
+  the data on the dashboard is valid for the sets that came through.
 
 - **Upsert on formid.** Households use ``ON CONFLICT (formid) DO UPDATE`` so a
   record edited in CommCare overwrites the local copy. Individuals are
   replaced en-bloc per household (delete + insert by hh_formid) — handles
   add/remove/edit of children within a form without needing a per-row natural
   key.
+
+- **Spatial QC + settlement_analytics run once at the end** of the sync, over
+  all rows for the project (not just the sets that just synced). Runs only if
+  at least one set succeeded.
 
 - **State boundaries.** Spatial QC and ward-name population reference the
   state's canonical boundary project (the lowest-id project for the same
@@ -331,14 +343,21 @@ def _decrypt_config(row) -> Dict[str, Any]:
 
 
 async def run_sync(project_id: int) -> Dict[str, Any]:
-    """Pull every configured feed for ``project_id`` incrementally and upsert.
+    """Pull every configured form set for ``project_id`` incrementally and upsert.
 
-    Returns a dict with counts and per-feed status. Raises on hard errors so the
-    caller can return a 5xx. The DB write is wrapped in a single transaction —
-    on any failure, nothing is persisted and watermarks stay where they were.
+    Each form set is fetched, persisted and committed as its own transaction.
+    If a set fails (e.g. CommCare returns 404 for its OData feed) the failure
+    is logged in ``sets_failed`` and the loop moves on to the next set —
+    successfully synced sets stay on disk. Spatial QC + settlement_analytics
+    run once at the end over the whole project if at least one set succeeded.
+
+    Returns a dict with the tri-state status (``ok``/``partial``/``error``),
+    the lists of succeeded and failed sets, and per-feed fetch counts. Only
+    raises on hard errors (config missing, DB connection lost, etc.).
     """
     conn = psycopg2.connect(DATABASE_URL_SYNC)
     conn.autocommit = False
+    history_id: Optional[int] = None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -377,14 +396,16 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
             (project_id,),
         )
         history_id = cur.fetchone()["id"]
-        conn.commit()  # commit only the 'running' marker + history row; the rest is one big transaction
+        conn.commit()
 
-        # 4. Pull every (form, record_type) feed; commit progress between feeds so the
-        #    admin panel's polling endpoint sees the bar fill in real time.
+        # 4. Per-set loop: fetch -> persist -> commit. Failures are tolerated; the
+        #    loop continues to the next set so a single broken form ID doesn't
+        #    wipe out the rest of the sync.
+        sets_succeeded: List[str] = []
+        sets_failed: List[Dict[str, Any]] = []
         per_feed: List[Dict[str, Any]] = []
-        all_households: List[Dict[str, Any]] = []   # mapped rows
-        all_individuals: List[Dict[str, Any]] = []  # mapped rows
         step = 0
+        ph_cur = conn.cursor()  # tuple-cursor for bulk insert
 
         auth = (cfg["username"], cfg["password"])
         async with httpx.AsyncClient() as client:
@@ -393,319 +414,158 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                 form_id  = entry.get("form_id")
                 if not form_id:
                     continue
-                for rt in ("household", "individual"):
-                    cur.execute("""
-                        SELECT last_received_on FROM sync_feed_state
-                        WHERE project_id=%s AND form_id=%s AND record_type=%s
-                    """, (project_id, form_id, rt))
-                    wm_row = cur.fetchone()
-                    since = wm_row["last_received_on"] if wm_row else None
 
-                    url = _feed_url(cfg["base_url"], cfg["app_slug"], form_id, rt)
-                    try:
-                        rows = await _fetch_all_pages(url, auth, since, client)
-                    except httpx.HTTPStatusError as e:
-                        raise RuntimeError(f"{set_name}/{rt} HTTP {e.response.status_code}: {e.response.text[:200]}") from e
+                set_households: List[Dict[str, Any]] = []
+                set_individuals: List[Dict[str, Any]] = []
+                set_feeds: List[Dict[str, Any]] = []
 
-                    # Pick the max received_on of this batch for the next watermark
-                    max_received: Optional[datetime] = since
-                    if rt == "household":
-                        for r in rows:
-                            ts = _dt(r.get("received_on"))
-                            if ts and (max_received is None or ts > max_received):
-                                max_received = ts
-                            all_households.append({"_set": set_name, "_form": form_id, **_map_household(r, set_name)})
-                    else:
-                        # Individuals don't carry received_on; we'll bump the watermark using "now"
-                        max_received = max_received or datetime.now(timezone.utc)
-                        for r in rows:
-                            mapped = _map_individual(r)
-                            if not mapped["hh_formid"]:
-                                continue
-                            all_individuals.append({"_set": set_name, "_form": form_id, **mapped})
+                try:
+                    # 4a. Fetch both record types for this set
+                    for rt in ("household", "individual"):
+                        cur.execute("""
+                            SELECT last_received_on FROM sync_feed_state
+                            WHERE project_id=%s AND form_id=%s AND record_type=%s
+                        """, (project_id, form_id, rt))
+                        wm_row = cur.fetchone()
+                        since = wm_row["last_received_on"] if wm_row else None
 
-                    per_feed.append({
-                        "set_name": set_name,
-                        "form_id": form_id,
-                        "record_type": rt,
-                        "fetched": len(rows),
-                        "next_watermark": max_received.isoformat() if max_received else None,
-                    })
+                        url = _feed_url(cfg["base_url"], cfg["app_slug"], form_id, rt)
+                        try:
+                            rows = await _fetch_all_pages(url, auth, since, client)
+                        except httpx.HTTPStatusError as e:
+                            # Convert to RuntimeError tagged with set/rt so the outer
+                            # set-level except catches it and we record per-set failure.
+                            raise RuntimeError(
+                                f"{set_name}/{rt} HTTP {e.response.status_code}: {e.response.text[:200]}"
+                            ) from e
 
-                    # Advance the progress counter and commit so the UI poll picks it up
-                    step += 1
-                    cur.execute(
-                        "UPDATE sync_config SET last_progress_step=%s WHERE project_id=%s",
-                        (step, project_id),
+                        max_received: Optional[datetime] = since
+                        if rt == "household":
+                            for r in rows:
+                                ts = _dt(r.get("received_on"))
+                                if ts and (max_received is None or ts > max_received):
+                                    max_received = ts
+                                set_households.append({"_set": set_name, "_form": form_id, **_map_household(r, set_name)})
+                        else:
+                            max_received = max_received or datetime.now(timezone.utc)
+                            for r in rows:
+                                mapped = _map_individual(r)
+                                if not mapped["hh_formid"]:
+                                    continue
+                                set_individuals.append({"_set": set_name, "_form": form_id, **mapped})
+
+                        set_feeds.append({
+                            "set_name": set_name,
+                            "form_id": form_id,
+                            "record_type": rt,
+                            "fetched": len(rows),
+                            "next_watermark": max_received.isoformat() if max_received else None,
+                        })
+
+                        # Advance progress counter + commit so the UI sees the bar fill
+                        step += 1
+                        cur.execute(
+                            "UPDATE sync_config SET last_progress_step=%s WHERE project_id=%s",
+                            (step, project_id),
+                        )
+                        conn.commit()
+
+                    # 4b. Persist this set's rows in a single transaction (households,
+                    #     individuals, and watermarks all commit together).
+                    _persist_set(
+                        ph_cur,
+                        project_id=project_id,
+                        set_households=set_households,
+                        set_individuals=set_individuals,
+                        set_feeds=set_feeds,
                     )
                     conn.commit()
+                    sets_succeeded.append(set_name)
+                    per_feed.extend(set_feeds)
+                    logger.info(
+                        "Set %s persisted: %d households + %d individuals",
+                        set_name, len(set_households), len(set_individuals),
+                    )
 
-        # 5. Persist — one transaction so a partial failure rolls back
-        ph_cur = conn.cursor()  # tuple-cursor for bulk insert
-
-        # 5a. Household upsert
-        if all_households:
-            cols = [
-                "project_id",
-                "formid", "username", "teamcode", "data_type",
-                "data_entry_persons", "data_entry_persons_norm",
-                "phone_number_data", "ra_key", "lga",
-                "admin3_code", "admin5_code", "trt_day", "date_trt",
-                "consent_trt", "reasons_for_refusal", "others_reasons_for_refusal",
-                "hh_num", "hh_seq", "serial_number_hh_id", "number_of_treated",
-                "housemarking_code", "gps_raw", "latitude", "longitude",
-                "gps_accuracy", "geom",
-                "started_time", "completed_time", "received_on",
-                "form_duration_min", "sync_lag_hours",
-                "flag_duplicate", "flag_duplicate_gps",
-                "flag_gps_outside_lga", "flag_gps_outside_ward", "flag_gps_outside_state",
-                "flag_gps_poor_accuracy", "flag_gps_zero", "flag_after_hours",
-                "flag_fast_form", "flag_slow_form", "flag_sync_lag", "flag_refusal",
-                "check_treatment_date", "hq_user",
-                "uploaded_at",
-            ]
-            values = []
-            now_iso = datetime.now(timezone.utc).isoformat()
-            for h in all_households:
-                values.append((
-                    project_id,
-                    h["formid"], h["username"], h["teamcode"], h["data_type"],
-                    h["data_entry_persons"], h["data_entry_persons_norm"],
-                    h["phone_number_data"], h["ra_key"], h["lga"],
-                    h["admin3_code"], h["admin5_code"], h["trt_day"], h["date_trt"],
-                    h["consent_trt"], h["reasons_for_refusal"], h["others_reasons_for_refusal"],
-                    h["hh_num"], h["hh_seq"], h["serial_number_hh_id"], h["number_of_treated"],
-                    h["housemarking_code"], h["gps_raw"], h["latitude"], h["longitude"],
-                    h["gps_accuracy"], h["geom_wkt"],
-                    h["started_time"], h["completed_time"], h["received_on"],
-                    h["form_duration_min"], h["sync_lag_hours"],
-                    h["flag_duplicate"], h["flag_duplicate_gps"],
-                    h["flag_gps_outside_lga"], h["flag_gps_outside_ward"], h["flag_gps_outside_state"],
-                    h["flag_gps_poor_accuracy"], h["flag_gps_zero"], h["flag_after_hours"],
-                    h["flag_fast_form"], h["flag_slow_form"], h["flag_sync_lag"], h["flag_refusal"],
-                    h["check_treatment_date"], h["hq_user"],
-                    now_iso,
-                ))
-            # Build INSERT ... ON CONFLICT (formid) DO UPDATE SET col = EXCLUDED.col for every col except formid
-            col_list = ", ".join(cols)
-            ph_list = ", ".join("ST_GeomFromEWKT(%s)" if c == "geom" else "%s" for c in cols)
-            update_cols = [c for c in cols if c != "formid"]
-            update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
-            psycopg2.extras.execute_values(
-                ph_cur,
-                f"""INSERT INTO mda_households ({col_list}) VALUES %s
-                    ON CONFLICT (formid) DO UPDATE SET {update_set}""",
-                values,
-                template=f"({ph_list})",
-                page_size=500,
-            )
-
-        # 5b. Individuals — replace per-household (delete then insert)
-        if all_individuals:
-            affected_hh_formids = list({i["hh_formid"] for i in all_individuals})
-            ph_cur.execute(
-                "DELETE FROM mda_individuals WHERE project_id = %s AND hh_formid = ANY(%s)",
-                (project_id, affected_hh_formids),
-            )
-            indv_cols = [
-                "project_id", "hh_formid", "mother_name", "child_name", "dob", "dob_checknote",
-                "sex", "height_cm", "age_in_months", "treatment_status",
-                "not_treated", "vomit_spill_azt", "child_id_r2",
-                "respondent_hh_id", "individual_id", "flag_orphan", "uploaded_at",
-            ]
-            valid_hh = {h["formid"] for h in all_households}
-            indv_values = [
-                (
-                    project_id, i["hh_formid"], i["mother_name"], i["child_name"],
-                    i["dob"], i["dob_checknote"], i["sex"], i["height_cm"],
-                    i["age_in_months"], i["treatment_status"], i["not_treated"],
-                    i["vomit_spill_azt"], i["child_id_r2"], i["respondent_hh_id"],
-                    i["individual_id"],
-                    bool(i["hh_formid"] and i["hh_formid"] not in valid_hh),
-                    now_iso,
-                )
-                for i in all_individuals
-            ]
-            psycopg2.extras.execute_values(
-                ph_cur,
-                f"INSERT INTO mda_individuals ({', '.join(indv_cols)}) VALUES %s",
-                indv_values,
-                page_size=1000,
-            )
-
-        # 5c. Spatial QC pass — only touch rows we just synced (this project)
-        if all_households:
-            ph_cur.execute("""
-                UPDATE mda_households h
-                SET flag_gps_outside_lga = TRUE
-                WHERE h.project_id = %s
-                  AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
-                  AND NOT EXISTS (
-                      SELECT 1 FROM lgas l
-                      WHERE l.project_id = %s
-                        AND UPPER(TRIM(l.lga_name)) = UPPER(TRIM(h.lga))
-                        AND ST_Within(h.geom, l.geom)
-                  )
-            """, (project_id, boundary_pid))
-            ph_cur.execute("""
-                UPDATE mda_households h
-                SET flag_gps_outside_state = TRUE
-                WHERE h.project_id = %s
-                  AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
-                  AND NOT EXISTS (
-                      SELECT 1 FROM lgas l
-                      WHERE l.project_id = %s AND ST_Within(h.geom, l.geom)
-                  )
-            """, (project_id, boundary_pid))
-            ph_cur.execute("""
-                UPDATE mda_households h
-                SET flag_gps_outside_ward = TRUE
-                WHERE h.project_id = %s
-                  AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
-                  AND NOT EXISTS (
-                      SELECT 1 FROM wards w
-                      WHERE w.project_id = %s AND ST_Within(h.geom, w.geom)
-                  )
-            """, (project_id, boundary_pid))
-            ph_cur.execute("""
-                UPDATE mda_households h
-                SET flag_duplicate_gps = TRUE
-                WHERE h.project_id = %s
-                  AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
-                  AND h.flag_gps_zero = FALSE
-                  AND EXISTS (
-                      SELECT 1 FROM mda_households h2
-                      WHERE h2.project_id = %s
-                        AND h2.id != h.id
-                        AND h2.latitude = h.latitude
-                        AND h2.longitude = h.longitude
-                  )
-            """, (project_id, project_id))
-            ph_cur.execute("""
-                UPDATE mda_households h
-                SET ward_name = w.ward_name
-                FROM wards w
-                WHERE h.project_id = %s AND w.project_id = %s
-                  AND ST_Within(h.geom, w.geom)
-                  AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
-            """, (project_id, boundary_pid))
-
-        # 5c-bis. Recompute settlement_analytics for this project so the geo view's
-        # grid-cell colouring and per-settlement completeness reflect the freshly-synced
-        # households. Settlements/grids come from the state's boundary project;
-        # household EXISTS checks are scoped to the round being synced. Inside the
-        # same transaction so analytics + data either both commit or both roll back.
-        if all_households:
-            ph_cur.execute(
-                """
-                INSERT INTO settlement_analytics
-                  (project_id, settlement_id, unique_cod, lgacode, wardcode,
-                   settlement_name, lga_name, ward_name,
-                   total_grids, visited_grids, completeness_pct,
-                   is_visited, point_count, last_computed)
-                SELECT
-                    %(mda_pid)s          AS project_id,
-                    s.id                 AS settlement_id,
-                    s.unique_cod, s.lgacode, s.wardcode,
-                    s.settlement_name, s.lga_name, s.ward_name,
-                    COUNT(DISTINCT g.id) AS total_grids,
-                    COUNT(DISTINCT CASE
-                        WHEN EXISTS (
-                            SELECT 1 FROM mda_households h
-                            WHERE h.project_id = %(mda_pid)s
-                              AND h.geom IS NOT NULL
-                              AND ST_Within(h.geom, g.geom)
-                        ) THEN g.id END
-                    ) AS visited_grids,
-                    CASE WHEN COUNT(DISTINCT g.id) > 0
-                         THEN ROUND(100.0 * COUNT(DISTINCT CASE
-                              WHEN EXISTS (
-                                  SELECT 1 FROM mda_households h
-                                  WHERE h.project_id = %(mda_pid)s
-                                    AND h.geom IS NOT NULL
-                                    AND ST_Within(h.geom, g.geom)
-                              ) THEN g.id END
-                         ) / NULLIF(COUNT(DISTINCT g.id), 0), 2)
-                         ELSE 0 END AS completeness_pct,
-                    CASE
-                        WHEN COUNT(DISTINCT g.id) > 0
-                        THEN (
-                            COUNT(DISTINCT CASE WHEN EXISTS (
-                                SELECT 1 FROM mda_households h
-                                WHERE h.project_id = %(mda_pid)s
-                                  AND h.geom IS NOT NULL AND ST_Within(h.geom, g.geom)
-                            ) THEN g.id END) * 100.0
-                            / NULLIF(COUNT(DISTINCT g.id), 0)
-                        ) >= %(visit_threshold)s
-                        ELSE EXISTS (
-                            SELECT 1 FROM mda_households h2
-                            WHERE h2.project_id = %(mda_pid)s
-                              AND h2.geom IS NOT NULL AND ST_Within(h2.geom, s.geom)
+                except Exception as set_err:
+                    # Roll back any partial work on this set's transaction; the
+                    # previous sets' commits stay on disk. Record the failure and
+                    # advance the progress step counter past the slots we skipped
+                    # so the UI bar doesn't appear stuck.
+                    conn.rollback()
+                    logger.warning("Set %s failed, continuing: %s", set_name, set_err)
+                    sets_failed.append({
+                        "set_name": set_name,
+                        "form_id": form_id,
+                        "error": str(set_err)[:500],
+                    })
+                    # Make sure step counter reflects the slots we skipped (2 feeds per set)
+                    while step % 2 != 0:
+                        step += 1
+                    expected_step_after_set = (
+                        ([e.get("form_id") for e in cfg["form_ids"]].index(form_id) + 1) * 2
+                    )
+                    if step < expected_step_after_set:
+                        step = expected_step_after_set
+                    try:
+                        cur.execute(
+                            "UPDATE sync_config SET last_progress_step=%s WHERE project_id=%s",
+                            (step, project_id),
                         )
-                    END AS is_visited,
-                    (SELECT COUNT(*) FROM mda_households h3
-                     WHERE h3.project_id = %(mda_pid)s
-                       AND h3.geom IS NOT NULL AND ST_Within(h3.geom, s.geom)
-                    ) AS point_count,
-                    NOW() AS last_computed
-                FROM settlements s
-                LEFT JOIN grids g
-                       ON g.unique_cod  = s.unique_cod
-                      AND g.project_id  = s.project_id
-                WHERE s.project_id = %(boundary_pid)s
-                GROUP BY s.id, s.unique_cod, s.lgacode, s.wardcode,
-                         s.settlement_name, s.lga_name, s.ward_name
-                ON CONFLICT (project_id, settlement_id) DO UPDATE SET
-                    total_grids      = EXCLUDED.total_grids,
-                    visited_grids    = EXCLUDED.visited_grids,
-                    completeness_pct = EXCLUDED.completeness_pct,
-                    is_visited       = EXCLUDED.is_visited,
-                    point_count      = EXCLUDED.point_count,
-                    last_computed    = EXCLUDED.last_computed
-                """,
-                {"mda_pid": project_id, "boundary_pid": boundary_pid, "visit_threshold": 70},
-            )
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                    continue
 
-        # 5d. Advance watermarks
-        for feed in per_feed:
-            if feed["next_watermark"]:
-                ph_cur.execute("""
-                    INSERT INTO sync_feed_state (project_id, form_id, record_type,
-                                                 last_received_on, last_synced_at, last_row_count)
-                    VALUES (%s, %s, %s, %s, NOW(), %s)
-                    ON CONFLICT (project_id, form_id, record_type) DO UPDATE
-                    SET last_received_on = EXCLUDED.last_received_on,
-                        last_synced_at   = EXCLUDED.last_synced_at,
-                        last_row_count   = EXCLUDED.last_row_count
-                """, (project_id, feed["form_id"], feed["record_type"],
-                      feed["next_watermark"], feed["fetched"]))
+        # 5. Spatial QC + settlement_analytics — only if at least one set succeeded.
+        #    Runs across the whole project so the dashboard reflects all rows
+        #    (including from successful sets in earlier syncs).
+        if sets_succeeded:
+            _run_spatial_qc(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
+            _recompute_settlement_analytics(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
+            conn.commit()
 
-        # 5e. Mark sync ok + close the history row
+        # 6. Final status: tri-state ok / partial / error
         total_fetched = sum(f["fetched"] for f in per_feed)
+        if sets_failed and sets_succeeded:
+            final_status = "partial"
+            final_error = " | ".join(f"{f['set_name']}: {f['error'][:100]}" for f in sets_failed)
+        elif sets_failed and not sets_succeeded:
+            final_status = "error"
+            final_error = " | ".join(f"{f['set_name']}: {f['error'][:100]}" for f in sets_failed)
+        else:
+            final_status = "ok"
+            final_error = None
+
         ph_cur.execute("""
             UPDATE sync_config SET
-              last_status='ok', last_synced_at=NOW(),
-              last_row_count=%s, last_error=NULL,
+              last_status=%s, last_synced_at=NOW(),
+              last_row_count=%s, last_error=%s,
               last_progress_step=last_progress_total
             WHERE project_id=%s
-        """, (total_fetched, project_id))
+        """, (final_status, total_fetched, final_error, project_id))
         ph_cur.execute("""
             UPDATE sync_history SET
-              status='ok', ended_at=NOW(), rows_fetched=%s, error_message=NULL
+              status=%s, ended_at=NOW(), rows_fetched=%s, error_message=%s
             WHERE id=%s
-        """, (total_fetched, history_id))
-
+        """, (final_status, total_fetched, final_error, history_id))
         conn.commit()
+
         return {
-            "ok": True,
+            "ok": final_status in ("ok", "partial"),
+            "status": final_status,
+            "sets_succeeded": sets_succeeded,
+            "sets_failed": sets_failed,
             "households_fetched":  sum(f["fetched"] for f in per_feed if f["record_type"] == "household"),
             "individuals_fetched": sum(f["fetched"] for f in per_feed if f["record_type"] == "individual"),
             "per_feed": per_feed,
         }
     except Exception as e:
+        # Only reached for hard failures BEFORE the per-set loop (config load, DB,
+        # the boundary-pid query) or for spatial-QC failures. Per-set failures are
+        # caught and recorded inside the loop, never re-raised.
         conn.rollback()
         logger.exception("CommCare sync failed for project %s", project_id)
-        # Record the failure outside the rolled-back transaction
         try:
             cur2 = conn.cursor()
             cur2.execute(
@@ -715,19 +575,278 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                    WHERE project_id=%s""",
                 (str(e)[:1000], project_id),
             )
-            # Only update history if we managed to insert a history row before failing
-            try:
+            if history_id is not None:
                 cur2.execute(
                     """UPDATE sync_history SET
                        status='error', ended_at=NOW(), error_message=%s
                        WHERE id=%s""",
                     (str(e)[:1000], history_id),
                 )
-            except (NameError, UnboundLocalError):
-                pass  # history_id wasn't created yet
             conn.commit()
         except Exception:
             conn.rollback()
         raise
     finally:
         conn.close()
+
+
+# ── Per-set persist + project-wide spatial QC helpers ─────────────────────────
+
+
+def _persist_set(
+    ph_cur,
+    *,
+    project_id: int,
+    set_households: List[Dict[str, Any]],
+    set_individuals: List[Dict[str, Any]],
+    set_feeds: List[Dict[str, Any]],
+) -> None:
+    """Persist one form set's rows and advance its watermarks.
+
+    Caller must hold the connection's transaction open; this function does NOT
+    commit. The caller commits after all three steps (household upsert,
+    individual replace, watermark advance) succeed so they land atomically.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # 1. Household upsert for this set
+    if set_households:
+        cols = [
+            "project_id",
+            "formid", "username", "teamcode", "data_type",
+            "data_entry_persons", "data_entry_persons_norm",
+            "phone_number_data", "ra_key", "lga",
+            "admin3_code", "admin5_code", "trt_day", "date_trt",
+            "consent_trt", "reasons_for_refusal", "others_reasons_for_refusal",
+            "hh_num", "hh_seq", "serial_number_hh_id", "number_of_treated",
+            "housemarking_code", "gps_raw", "latitude", "longitude",
+            "gps_accuracy", "geom",
+            "started_time", "completed_time", "received_on",
+            "form_duration_min", "sync_lag_hours",
+            "flag_duplicate", "flag_duplicate_gps",
+            "flag_gps_outside_lga", "flag_gps_outside_ward", "flag_gps_outside_state",
+            "flag_gps_poor_accuracy", "flag_gps_zero", "flag_after_hours",
+            "flag_fast_form", "flag_slow_form", "flag_sync_lag", "flag_refusal",
+            "check_treatment_date", "hq_user",
+            "uploaded_at",
+        ]
+        values = []
+        for h in set_households:
+            values.append((
+                project_id,
+                h["formid"], h["username"], h["teamcode"], h["data_type"],
+                h["data_entry_persons"], h["data_entry_persons_norm"],
+                h["phone_number_data"], h["ra_key"], h["lga"],
+                h["admin3_code"], h["admin5_code"], h["trt_day"], h["date_trt"],
+                h["consent_trt"], h["reasons_for_refusal"], h["others_reasons_for_refusal"],
+                h["hh_num"], h["hh_seq"], h["serial_number_hh_id"], h["number_of_treated"],
+                h["housemarking_code"], h["gps_raw"], h["latitude"], h["longitude"],
+                h["gps_accuracy"], h["geom_wkt"],
+                h["started_time"], h["completed_time"], h["received_on"],
+                h["form_duration_min"], h["sync_lag_hours"],
+                h["flag_duplicate"], h["flag_duplicate_gps"],
+                h["flag_gps_outside_lga"], h["flag_gps_outside_ward"], h["flag_gps_outside_state"],
+                h["flag_gps_poor_accuracy"], h["flag_gps_zero"], h["flag_after_hours"],
+                h["flag_fast_form"], h["flag_slow_form"], h["flag_sync_lag"], h["flag_refusal"],
+                h["check_treatment_date"], h["hq_user"],
+                now_iso,
+            ))
+        col_list = ", ".join(cols)
+        ph_list = ", ".join("ST_GeomFromEWKT(%s)" if c == "geom" else "%s" for c in cols)
+        update_cols = [c for c in cols if c != "formid"]
+        update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+        psycopg2.extras.execute_values(
+            ph_cur,
+            f"""INSERT INTO mda_households ({col_list}) VALUES %s
+                ON CONFLICT (formid) DO UPDATE SET {update_set}""",
+            values,
+            template=f"({ph_list})",
+            page_size=500,
+        )
+
+    # 2. Individuals — replace per-household (delete then insert)
+    if set_individuals:
+        affected_hh_formids = list({i["hh_formid"] for i in set_individuals})
+        ph_cur.execute(
+            "DELETE FROM mda_individuals WHERE project_id = %s AND hh_formid = ANY(%s)",
+            (project_id, affected_hh_formids),
+        )
+        indv_cols = [
+            "project_id", "hh_formid", "mother_name", "child_name", "dob", "dob_checknote",
+            "sex", "height_cm", "age_in_months", "treatment_status",
+            "not_treated", "vomit_spill_azt", "child_id_r2",
+            "respondent_hh_id", "individual_id", "flag_orphan", "uploaded_at",
+        ]
+        valid_hh = {h["formid"] for h in set_households}
+        indv_values = [
+            (
+                project_id, i["hh_formid"], i["mother_name"], i["child_name"],
+                i["dob"], i["dob_checknote"], i["sex"], i["height_cm"],
+                i["age_in_months"], i["treatment_status"], i["not_treated"],
+                i["vomit_spill_azt"], i["child_id_r2"], i["respondent_hh_id"],
+                i["individual_id"],
+                bool(i["hh_formid"] and i["hh_formid"] not in valid_hh),
+                now_iso,
+            )
+            for i in set_individuals
+        ]
+        psycopg2.extras.execute_values(
+            ph_cur,
+            f"INSERT INTO mda_individuals ({', '.join(indv_cols)}) VALUES %s",
+            indv_values,
+            page_size=1000,
+        )
+
+    # 3. Advance watermarks for this set's feeds
+    for feed in set_feeds:
+        if feed["next_watermark"]:
+            ph_cur.execute("""
+                INSERT INTO sync_feed_state (project_id, form_id, record_type,
+                                             last_received_on, last_synced_at, last_row_count)
+                VALUES (%s, %s, %s, %s, NOW(), %s)
+                ON CONFLICT (project_id, form_id, record_type) DO UPDATE
+                SET last_received_on = EXCLUDED.last_received_on,
+                    last_synced_at   = EXCLUDED.last_synced_at,
+                    last_row_count   = EXCLUDED.last_row_count
+            """, (project_id, feed["form_id"], feed["record_type"],
+                  feed["next_watermark"], feed["fetched"]))
+
+
+def _run_spatial_qc(ph_cur, *, project_id: int, boundary_pid: int) -> None:
+    """Apply spatial QC flags across all rows for this project.
+
+    Run after all per-set persists so flags reflect the full row set on the
+    dashboard (e.g. duplicate-GPS needs to see every form to flag duplicates
+    that span two form sets).
+    """
+    ph_cur.execute("""
+        UPDATE mda_households h
+        SET flag_gps_outside_lga = TRUE
+        WHERE h.project_id = %s
+          AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+          AND NOT EXISTS (
+              SELECT 1 FROM lgas l
+              WHERE l.project_id = %s
+                AND UPPER(TRIM(l.lga_name)) = UPPER(TRIM(h.lga))
+                AND ST_Within(h.geom, l.geom)
+          )
+    """, (project_id, boundary_pid))
+    ph_cur.execute("""
+        UPDATE mda_households h
+        SET flag_gps_outside_state = TRUE
+        WHERE h.project_id = %s
+          AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+          AND NOT EXISTS (
+              SELECT 1 FROM lgas l
+              WHERE l.project_id = %s AND ST_Within(h.geom, l.geom)
+          )
+    """, (project_id, boundary_pid))
+    ph_cur.execute("""
+        UPDATE mda_households h
+        SET flag_gps_outside_ward = TRUE
+        WHERE h.project_id = %s
+          AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+          AND NOT EXISTS (
+              SELECT 1 FROM wards w
+              WHERE w.project_id = %s AND ST_Within(h.geom, w.geom)
+          )
+    """, (project_id, boundary_pid))
+    ph_cur.execute("""
+        UPDATE mda_households h
+        SET flag_duplicate_gps = TRUE
+        WHERE h.project_id = %s
+          AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+          AND h.flag_gps_zero = FALSE
+          AND EXISTS (
+              SELECT 1 FROM mda_households h2
+              WHERE h2.project_id = %s
+                AND h2.id != h.id
+                AND h2.latitude = h.latitude
+                AND h2.longitude = h.longitude
+          )
+    """, (project_id, project_id))
+    ph_cur.execute("""
+        UPDATE mda_households h
+        SET ward_name = w.ward_name
+        FROM wards w
+        WHERE h.project_id = %s AND w.project_id = %s
+          AND ST_Within(h.geom, w.geom)
+          AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
+    """, (project_id, boundary_pid))
+
+
+def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: int) -> None:
+    """Recompute the settlement_analytics rollup for this project.
+
+    Settlements/grids come from the state's boundary project; household
+    EXISTS checks are scoped to the round being synced.
+    """
+    ph_cur.execute(
+        """
+        INSERT INTO settlement_analytics
+          (project_id, settlement_id, unique_cod, lgacode, wardcode,
+           settlement_name, lga_name, ward_name,
+           total_grids, visited_grids, completeness_pct,
+           is_visited, point_count, last_computed)
+        SELECT
+            %(mda_pid)s          AS project_id,
+            s.id                 AS settlement_id,
+            s.unique_cod, s.lgacode, s.wardcode,
+            s.settlement_name, s.lga_name, s.ward_name,
+            COUNT(DISTINCT g.id) AS total_grids,
+            COUNT(DISTINCT CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM mda_households h
+                    WHERE h.project_id = %(mda_pid)s
+                      AND h.geom IS NOT NULL
+                      AND ST_Within(h.geom, g.geom)
+                ) THEN g.id END
+            ) AS visited_grids,
+            CASE WHEN COUNT(DISTINCT g.id) > 0
+                 THEN ROUND(100.0 * COUNT(DISTINCT CASE
+                      WHEN EXISTS (
+                          SELECT 1 FROM mda_households h
+                          WHERE h.project_id = %(mda_pid)s
+                            AND h.geom IS NOT NULL
+                            AND ST_Within(h.geom, g.geom)
+                      ) THEN g.id END
+                 ) / NULLIF(COUNT(DISTINCT g.id), 0), 2)
+                 ELSE 0 END AS completeness_pct,
+            CASE
+                WHEN COUNT(DISTINCT g.id) > 0
+                THEN (
+                    COUNT(DISTINCT CASE WHEN EXISTS (
+                        SELECT 1 FROM mda_households h
+                        WHERE h.project_id = %(mda_pid)s
+                          AND h.geom IS NOT NULL AND ST_Within(h.geom, g.geom)
+                    ) THEN g.id END) * 100.0
+                    / NULLIF(COUNT(DISTINCT g.id), 0)
+                ) >= %(visit_threshold)s
+                ELSE EXISTS (
+                    SELECT 1 FROM mda_households h2
+                    WHERE h2.project_id = %(mda_pid)s
+                      AND h2.geom IS NOT NULL AND ST_Within(h2.geom, s.geom)
+                )
+            END AS is_visited,
+            (SELECT COUNT(*) FROM mda_households h3
+             WHERE h3.project_id = %(mda_pid)s
+               AND h3.geom IS NOT NULL AND ST_Within(h3.geom, s.geom)
+            ) AS point_count,
+            NOW() AS last_computed
+        FROM settlements s
+        LEFT JOIN grids g
+               ON g.unique_cod  = s.unique_cod
+              AND g.project_id  = s.project_id
+        WHERE s.project_id = %(boundary_pid)s
+        GROUP BY s.id, s.unique_cod, s.lgacode, s.wardcode,
+                 s.settlement_name, s.lga_name, s.ward_name
+        ON CONFLICT (project_id, settlement_id) DO UPDATE SET
+            total_grids      = EXCLUDED.total_grids,
+            visited_grids    = EXCLUDED.visited_grids,
+            completeness_pct = EXCLUDED.completeness_pct,
+            is_visited       = EXCLUDED.is_visited,
+            point_count      = EXCLUDED.point_count,
+            last_computed    = EXCLUDED.last_computed
+        """,
+        {"mda_pid": project_id, "boundary_pid": boundary_pid, "visit_threshold": 70},
+    )

@@ -30,9 +30,9 @@ variable "domain_name" {
 }
 
 variable "ec2_instance_type" {
-  description = "Size of the EC2 instance running the FastAPI + Redis docker-compose stack."
+  description = "Size of the EC2 instance running the FastAPI + Redis + sync_worker docker-compose stack. Upsized 2026-05-21 from t3.medium to t3.large after t3.medium's 2 vCPUs proved too tight when a CommCare sync coincided with normal API traffic — the sync_worker pegging one core was enough to wedge the API container."
   type        = string
-  default     = "t3.medium"
+  default     = "t3.large"
 }
 
 variable "rds_instance_class" {
