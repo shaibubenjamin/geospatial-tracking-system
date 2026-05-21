@@ -1,5 +1,6 @@
 ###############################################################################
-# Compute — single t3.medium EC2 running the docker-compose stack
+# Compute — single t3.large EC2 running the docker-compose stack
+#   (api + redis + sync_worker; upsized from t3.medium on 2026-05-21)
 #
 # The app pulls its image from ECR (see ecr.tf) and reads runtime secrets from
 # Secrets Manager via the IAM instance profile. Updating in prod looks like:

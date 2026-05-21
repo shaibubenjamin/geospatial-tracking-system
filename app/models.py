@@ -326,7 +326,7 @@ class SyncConfig(Base):
     commcare_password_encrypted = Column(Text)
     form_ids = Column(JSONB, default=list)  # [{"set_name": "SET 1", "form_id": "..."}, ...]
     last_synced_at = Column(DateTime(timezone=True))
-    last_status = Column(Text)        # 'ok' / 'error' / 'running'
+    last_status = Column(Text)        # 'ok' / 'partial' / 'error' / 'running'
     last_error = Column(Text)
     last_row_count = Column(Integer, default=0)
     # Live progress for the currently-running sync (polled by the admin panel)
@@ -343,7 +343,7 @@ class SyncHistory(Base):
     project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     started_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     ended_at = Column(DateTime(timezone=True))
-    status = Column(Text, default="running")  # 'running' / 'ok' / 'error'
+    status = Column(Text, default="running")  # 'running' / 'ok' / 'partial' / 'error'
     rows_fetched = Column(Integer, default=0)
     error_message = Column(Text)
 
