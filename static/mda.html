@@ -409,7 +409,7 @@ tbody tr:hover{background:var(--pale)}
                   <span id="delta-forms" class="kpi-delta neutral" style="display:none"></span>
                 </div>
                 <div class="lbl">Forms Submitted</div>
-                <div class="sub">Total household MDA forms received from all field teams</div>
+                <div class="sub">COUNT of household MDA forms received from field teams (one row per <code>mda_households</code> record)</div>
               </div>
               <div class="kpi-metric">
                 <div class="val" id="kpi-forms">&mdash;</div>
@@ -426,7 +426,7 @@ tbody tr:hover{background:var(--pale)}
                   <span id="delta-treated" class="kpi-delta neutral" style="display:none"></span>
                 </div>
                 <div class="lbl">Children Treated</div>
-                <div class="sub">Azithromycin doses given to children aged 1–59 months</div>
+                <div class="sub">SUM(<code>number_of_treated</code>) across all R5 forms — total azithromycin doses given to children aged 1–59 months</div>
               </div>
               <div class="kpi-metric">
                 <div class="val" id="kpi-treated">&mdash;</div>
@@ -443,7 +443,7 @@ tbody tr:hover{background:var(--pale)}
                   <span id="delta-coverage" class="kpi-delta neutral" style="display:none"></span>
                 </div>
                 <div class="lbl">Administrative Coverage</div>
-                <div class="sub">Treated ÷ Baseline × 100. WHO target is 80%</div>
+                <div class="sub">Children Treated ÷ Baseline Target × 100. WHO threshold for protective coverage is 80%</div>
               </div>
               <div class="kpi-metric">
                 <div class="val" id="kpi-coverage">&mdash;</div>
@@ -458,7 +458,7 @@ tbody tr:hover{background:var(--pale)}
               <div class="kpi-text">
                 <div class="kpi-icon-strip"><i class="fa-solid fa-people-group"></i></div>
                 <div class="lbl">Active Field Teams</div>
-                <div class="sub">Distinct HQ user IDs submitting forms across all LGAs</div>
+                <div class="sub">COUNT(DISTINCT <code>hq_user</code>) — each unique team ID that submitted at least one form</div>
               </div>
               <div class="kpi-metric">
                 <div class="val" id="kpi-teams">&mdash;</div>
@@ -487,7 +487,7 @@ tbody tr:hover{background:var(--pale)}
                   <span id="delta-flags" class="kpi-delta neutral" style="display:none"></span>
                 </div>
                 <div class="lbl">QC Flags</div>
-                <div class="sub">Forms with GPS errors, timing anomalies, or duplicates</div>
+                <div class="sub">SUM of error flag instances: fast-form + slow-form + after-hours + GPS-outside-LGA + weak-GPS + duplicate-GPS (refusals + sync-lag are NOT counted as errors)</div>
               </div>
               <div class="kpi-metric">
                 <div class="val" id="kpi-flags">&mdash;</div>
@@ -603,11 +603,11 @@ tbody tr:hover{background:var(--pale)}
         </div>
 
         <div class="kpi-grid cols-5">
-          <div class="kpi"><div class="lbl">Baseline Total</div><div class="val" id="cov-kpi-baseline">&mdash;</div><div class="sub">Target population</div></div>
-          <div class="kpi accent"><div class="lbl">Total Treated</div><div class="val" id="cov-kpi-treated">&mdash;</div><div class="sub">Administered this round</div></div>
-          <div class="kpi good"><div class="lbl">Overall Coverage</div><div class="val" id="cov-kpi-pct">&mdash;</div><div class="sub">Campaign to date</div></div>
-          <div class="kpi good"><div class="lbl">LGAs on Target &ge;80%</div><div class="val" id="cov-kpi-good">&mdash;</div><div class="sub" id="cov-kpi-good-sub">Meeting WHO threshold</div></div>
-          <div class="kpi bad"><div class="lbl">LGAs Below 60%</div><div class="val" id="cov-kpi-below">&mdash;</div><div class="sub" id="cov-kpi-below-sub">Requiring mop-up</div></div>
+          <div class="kpi"><div class="lbl">Baseline Total</div><div class="val" id="cov-kpi-baseline">&mdash;</div><div class="sub">SUM(<code>total_treated</code>) from the R5 baseline upload (<code>mda_baseline</code>) — eligible 1–59 month children per the R5 target file</div></div>
+          <div class="kpi accent"><div class="lbl">Total Treated</div><div class="val" id="cov-kpi-treated">&mdash;</div><div class="sub">SUM(<code>number_of_treated</code>) across active-round household forms</div></div>
+          <div class="kpi good"><div class="lbl">Overall Coverage</div><div class="val" id="cov-kpi-pct">&mdash;</div><div class="sub">Total Treated ÷ Baseline Total × 100 — campaign to date</div></div>
+          <div class="kpi good"><div class="lbl">LGAs on Target &ge;80%</div><div class="val" id="cov-kpi-good">&mdash;</div><div class="sub" id="cov-kpi-good-sub">COUNT of LGAs where coverage % ≥ 80 (WHO protective threshold)</div></div>
+          <div class="kpi bad"><div class="lbl">LGAs Below 60%</div><div class="val" id="cov-kpi-below">&mdash;</div><div class="sub" id="cov-kpi-below-sub">COUNT of LGAs where coverage % &lt; 60 — flagged for mop-up</div></div>
         </div>
 
         <!-- Treatment Coverage by LGA — full-width so every LGA fits at
@@ -735,25 +735,25 @@ tbody tr:hover{background:var(--pale)}
             <div class="kpi-icon-strip"><i class="fa-solid fa-flag"></i></div>
             <div class="lbl">Total Quality Check (QC) Flags</div>
             <div class="val" id="qc-kpi-total">&mdash;</div>
-            <div class="sub">Total number of issues identified across all forms — the lower the better</div>
+            <div class="sub">SUM of all error-flag instances on R5 forms. Excludes refusals (a campaign outcome) and sync-lag (an ops metric)</div>
           </div>
           <div class="kpi">
             <div class="kpi-icon-strip"><i class="fa-solid fa-percent"></i></div>
             <div class="lbl">Form Flag Rate</div>
             <div class="val" id="qc-kpi-rate">&mdash;</div>
-            <div class="sub">Share of forms that have at least one data quality issue</div>
+            <div class="sub">forms_with_error ÷ total_forms × 100. A form counts once regardless of how many flags it carries</div>
           </div>
           <div class="kpi">
             <div class="kpi-icon-strip"><i class="fa-solid fa-location-crosshairs"></i></div>
             <div class="lbl">GPS Location Anomalies</div>
             <div class="val" id="qc-kpi-gps">&mdash;</div>
-            <div class="sub">Forms where the GPS location is outside the LGA boundary or is a duplicate point</div>
+            <div class="sub">gps_outside_lga + duplicate_gps + gps_poor_accuracy — sum of all location-related flags</div>
           </div>
           <div class="kpi">
             <div class="kpi-icon-strip"><i class="fa-solid fa-clock"></i></div>
             <div class="lbl">Timing Anomalies</div>
             <div class="val" id="qc-kpi-timing">&mdash;</div>
-            <div class="sub">Forms submitted outside working hours, completed in under 2 min, or took over 60 min</div>
+            <div class="sub">after_hours + fast_forms (&lt;5 min) + slow_forms (&gt;60 min) — sum of timing-related flags</div>
           </div>
         </div>
 
@@ -847,21 +847,21 @@ tbody tr:hover{background:var(--pale)}
               <div class="kpi-icon-strip"><i class="fa-solid fa-route" style="font-size:13px"></i></div>
               <div class="lbl">Visitation Ratio</div>
               <div class="val" style="font-size:22px;color:var(--blue)" id="geo-visit-ratio">&mdash;</div>
-              <div class="sub" style="font-size:10.5px" id="geo-visit-ratio-sub">Settlements with at least 1 GPS point</div>
+              <div class="sub" style="font-size:10.5px" id="geo-visit-ratio-sub">Settlements with ≥1 GPS point inside ÷ Total settlements × 100</div>
             </div>
             <!-- Not Yet Visited -->
             <div class="kpi" style="padding:14px 18px">
               <div class="kpi-icon-strip"><i class="fa-solid fa-circle-xmark" style="font-size:13px"></i></div>
               <div class="lbl">Not Yet Visited</div>
               <div class="val" style="font-size:22px;color:var(--bad)" id="geo-sett-notvisited-count">&mdash;</div>
-              <div class="sub" style="font-size:10.5px">settlements remaining</div>
+              <div class="sub" style="font-size:10.5px">Total settlements − Visited settlements (no GPS point inside polygon)</div>
             </div>
             <!-- Overall Grid Completeness -->
             <div class="kpi" style="padding:14px 18px">
               <div class="kpi-icon-strip"><i class="fa-solid fa-layer-group" style="font-size:13px"></i></div>
               <div class="lbl">Overall Completeness</div>
               <div class="val" style="font-size:22px;color:var(--warn)" id="geo-avg-completeness">&mdash;</div>
-              <div class="sub" style="font-size:10.5px"><span id="geo-completed-count">—</span> settlements ≥70% (counted as 100%)</div>
+              <div class="sub" style="font-size:10.5px">Mean of per-settlement (visited_grids ÷ total_grids × 100). Settlements at ≥70% are counted as 100% in this average. <span id="geo-completed-count">—</span> settlements qualify.</div>
             </div>
           </div>
           <!-- Hidden back-compat counters — keep so older render paths don't 404 -->
@@ -1598,16 +1598,22 @@ tbody tr:hover{background:var(--pale)}
     const summaryEl = document.getElementById('refusals-summary-row');
     if (summaryEl) {
       summaryEl.className = 'kpi-grid cols-3';
+      const refusals    = r5.refusals || 0;
+      const totalForms  = r5.total_forms || 0;
+      const avgKids     = r5.avg_children_per_household || 0;
+      const missed      = r5.estimated_missed_individuals || 0;
       summaryEl.innerHTML =
         '<div class="kpi bad" style="padding:14px 16px"><div class="lbl">Refusing households</div>' +
-          '<div class="val" style="font-size:22px;color:var(--bad)">' + (r5.refusals || 0).toLocaleString() + '</div>' +
-          '<div class="sub">of ' + (r5.total_forms || 0).toLocaleString() + ' forms submitted</div></div>' +
+          '<div class="val" style="font-size:22px;color:var(--bad)">' + refusals.toLocaleString() + '</div>' +
+          '<div class="sub">COUNT(<code>mda_households</code> WHERE flag_refusal = TRUE) — out of ' + totalForms.toLocaleString() + ' total forms</div></div>' +
         '<div class="kpi warn" style="padding:14px 16px"><div class="lbl">Refusal rate</div>' +
           '<div class="val" style="font-size:22px;color:var(--warn)">' + (r5.refusal_pct || 0).toFixed(2) + '%</div>' +
-          '<div class="sub">share of forms ending in refusal</div></div>' +
+          '<div class="sub">Refusing households ÷ Total forms × 100 = ' + refusals.toLocaleString() + ' ÷ ' + totalForms.toLocaleString() + ' × 100</div></div>' +
         '<div class="kpi" style="padding:14px 16px"><div class="lbl">Children missed (estimated)</div>' +
-          '<div class="val" style="font-size:22px;color:var(--deep)">' + (r5.estimated_missed_individuals || 0).toLocaleString() + '</div>' +
-          '<div class="sub">' + (r5.avg_children_per_household || 0).toFixed(2) + ' children per refusing household</div></div>';
+          '<div class="val" style="font-size:22px;color:var(--deep)">' + missed.toLocaleString() + '</div>' +
+          '<div class="sub">Refusing households × mean children per consenting household = ' +
+            refusals.toLocaleString() + ' × ' + avgKids.toFixed(2) + ' ≈ ' + missed.toLocaleString() +
+            '. (Mean = consenting_individuals ÷ consenting_households for this round — refusing households never enter the individual repeat-group, so we apply the round’s own ratio.)</div></div>';
     }
 
     // Reason-code chart (horizontal bar, green palette)
@@ -1727,14 +1733,24 @@ tbody tr:hover{background:var(--pale)}
     setEl('kpi-treated', fmt(tt));
     setEl('kpi-teams', fmt(teams));
     setEl('kpi-coverage', covPct.toFixed(1) + '%');
-    // Plain day count in the value; subtitle adds the official start date
-    // when the project has one configured. "Day X (starts YYYY-MM-DD)".
-    setEl('kpi-days', days);
+    // Show the calendar day-of-campaign (e.g. Day 3 = today − start + 1)
+    // when the project has a configured start date; this ticks every
+    // calendar day regardless of whether forms have arrived yet. Falls
+    // back to the count of submission days when no start date is set.
+    const calDay = overviewData.current_campaign_day;
+    setEl('kpi-days', (calDay != null ? calDay : days));
     const subEl = document.getElementById('kpi-days-sub');
     if (subEl) {
-      subEl.textContent = overviewData.planned_start_date
-        ? 'Day ' + days + ' (starts ' + overviewData.planned_start_date + ')'
-        : 'Unique submission dates within the campaign window';
+      if (calDay != null && overviewData.planned_start_date) {
+        const subSuffix = (days != null && days !== calDay)
+          ? ' · ' + days + ' submission day' + (days === 1 ? '' : 's') + ' so far'
+          : '';
+        subEl.textContent = 'Day ' + calDay + ' (starts ' + overviewData.planned_start_date + ')' + subSuffix;
+      } else if (overviewData.planned_start_date) {
+        subEl.textContent = 'Day ' + days + ' (starts ' + overviewData.planned_start_date + ')';
+      } else {
+        subEl.textContent = 'Unique submission dates within the campaign window';
+      }
     }
     setEl('kpi-flags', Number(qcFlags || 0).toLocaleString());
 
@@ -2654,12 +2670,20 @@ tbody tr:hover{background:var(--pale)}
     setEl('kpi-teams',    fmt(ov.teams_active));
     setEl('kpi-coverage', (ov.coverage_pct || 0).toFixed(1) + '%');
     const dDays = ov.days_active || 0;
-    setEl('kpi-days', dDays);
+    const dCal  = ov.current_campaign_day;
+    setEl('kpi-days', (dCal != null ? dCal : dDays));
     const subEl = document.getElementById('kpi-days-sub');
     if (subEl) {
-      subEl.textContent = ov.planned_start_date
-        ? 'Day ' + dDays + ' (starts ' + ov.planned_start_date + ')'
-        : 'Unique submission dates within the campaign window';
+      if (dCal != null && ov.planned_start_date) {
+        const subSuffix = (dDays != null && dDays !== dCal)
+          ? ' · ' + dDays + ' submission day' + (dDays === 1 ? '' : 's') + ' so far'
+          : '';
+        subEl.textContent = 'Day ' + dCal + ' (starts ' + ov.planned_start_date + ')' + subSuffix;
+      } else if (ov.planned_start_date) {
+        subEl.textContent = 'Day ' + dDays + ' (starts ' + ov.planned_start_date + ')';
+      } else {
+        subEl.textContent = 'Unique submission dates within the campaign window';
+      }
     }
     setEl('kpi-flags',    Number(ov.total_qc_flags || 0).toLocaleString());
     // Refresh round-over-round rows so the active-round totals stay in sync.
@@ -3465,7 +3489,7 @@ tbody tr:hover{background:var(--pale)}
     const pct     = total > 0 ? (visited / total * 100) : 0;
     setEl('geo-visit-ratio', visited.toLocaleString() + ' / ' + total.toLocaleString() + ' (' + pct.toFixed(1) + '%)');
     const subEl = document.getElementById('geo-visit-ratio-sub');
-    if (subEl) subEl.textContent = 'Settlements with at least 1 GPS point inside';
+    if (subEl) subEl.textContent = 'Settlements with ≥1 GPS point inside ÷ Total settlements × 100';
     setEl('geo-sett-notvisited-count', (total - visited).toLocaleString());
     setEl('geo-avg-completeness', (result.overall_completeness || 0).toFixed(1) + '%');
     setEl('geo-completed-count', Number(result.completed_70 || 0).toLocaleString());
