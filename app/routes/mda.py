@@ -1376,11 +1376,17 @@ async def mda_overview(
         + d["gps_outside_lga"] + d["gps_poor_accuracy"] + d["duplicate_gps"]
     )
     d["error_rate_pct"] = round(100.0 * d["forms_with_error"] / d["total_forms"], 1) if d["total_forms"] else 0
-    # Planned campaign window — pulled from geo_projects.campaign_*_date. When
-    # both ends are set the frontend can show "Day 2 of 5"; otherwise it falls
-    # back to just the count of days with data.
+    # Planned campaign window — pulled from geo_projects.campaign_*_date.
+    # current_campaign_day is computed from today's date in Africa/Lagos,
+    # NOT from the count of submission-days. That way the Day-N tile ticks
+    # forward every calendar day even before the first form arrives, and
+    # stays clamped to [1, planned_duration_days] (or open-ended N if no
+    # end date is set). The legacy `days_active` field (count of distinct
+    # submission days) is preserved for callers that still want it.
     proj_res = await db.execute(text("""
-        SELECT campaign_start_date, campaign_end_date FROM geo_projects WHERE id = :pid
+        SELECT campaign_start_date, campaign_end_date,
+               (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS today_lagos
+        FROM geo_projects WHERE id = :pid
     """), {"pid": pid})
     proj_row = proj_res.fetchone()
     if proj_row:
@@ -1390,6 +1396,17 @@ async def mda_overview(
             d["planned_duration_days"] = (proj_row[1] - proj_row[0]).days + 1
         else:
             d["planned_duration_days"] = None
+        if proj_row[0]:
+            today = proj_row[2]
+            raw_day = (today - proj_row[0]).days + 1
+            if raw_day < 1:
+                d["current_campaign_day"] = 0  # campaign hasn't started yet
+            elif d.get("planned_duration_days"):
+                d["current_campaign_day"] = min(raw_day, d["planned_duration_days"])
+            else:
+                d["current_campaign_day"] = raw_day
+        else:
+            d["current_campaign_day"] = None
     return d
 
 
