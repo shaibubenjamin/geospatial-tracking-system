@@ -736,8 +736,9 @@
         </div>
 
         <div style="display:grid;grid-template-columns:320px 1fr;gap:18px">
-          <!-- Create user -->
-          <div class="card" style="height:fit-content">
+          <!-- Create user: superadmin-only. Regular admins can list/delete
+               users but not create new accounts. -->
+          <div class="card super-only" style="display:none;height:fit-content">
             <div class="card-head">
               <div class="card-title"><i class="fa-solid fa-user-plus"></i> Add User</div>
             </div>
@@ -757,9 +758,8 @@
               <div class="form-group">
                 <label>Access Level</label>
                 <select id="new-role">
-                  <option value="user">Analyst / Viewer (standard access)</option>
-                  <option value="admin" class="super-only-opt">Administrator</option>
-                  <option value="superadmin" class="super-only-opt">Superadmin (full data + user control)</option>
+                  <option value="admin">Administrator</option>
+                  <option value="superadmin">Superadmin (full data + user control)</option>
                 </select>
               </div>
               <button class="btn btn-primary" style="width:100%" onclick="createUser()">
@@ -1922,7 +1922,7 @@
           ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Superadmin</span>'
           : (u.is_admin
               ? '<span class="chip warn">Administrator</span>'
-              : '<span class="chip info">Analyst / Viewer</span>');
+              : '<span class="chip info">User</span>');
         const usernameEsc = String(u.username || '').replace(/'/g, "\\'");
         const actions = [];
         if (isSuperadmin && !u.is_superadmin) {
@@ -1968,11 +1968,6 @@
   }
   window.loadUsers = loadUsers;
 
-  // Hide admin/superadmin role options from non-superadmins
-  if (!isSuperadmin) {
-    document.querySelectorAll('#new-role option.super-only-opt').forEach(o => o.remove());
-  }
-
   window.createUser = async function() {
     const uname    = document.getElementById('new-username').value.trim();
     const email    = document.getElementById('new-email').value.trim();
@@ -1994,7 +1989,7 @@
         document.getElementById('new-username').value = '';
         document.getElementById('new-email').value    = '';
         document.getElementById('new-password').value = '';
-        document.getElementById('new-role').value     = 'user';
+        document.getElementById('new-role').value     = 'admin';
         loadUsers();
       } else {
         setFeedback('user-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');

@@ -219,10 +219,18 @@ async def admin_reset_password(
 @router.get("/users", response_model=list[UserOut])
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    actor: User = Depends(require_admin),
 ):
+    """List users. Admin (non-superadmin) callers do NOT see superadmin
+    accounts — they have no way to act on them anyway (delete/promote/demote
+    are all superadmin-gated), and surfacing them invites accidental UI
+    confusion or a future click-handler bug. Superadmin callers see all.
+    """
     result = await db.execute(select(User).order_by(User.id))
-    return result.scalars().all()
+    users = result.scalars().all()
+    if not actor.is_superadmin:
+        users = [u for u in users if not u.is_superadmin]
+    return users
 
 
 @router.delete("/users/{user_id}", status_code=204)
