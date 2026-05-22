@@ -584,7 +584,24 @@ def run_mirror(project_id: int) -> Dict[str, Any]:
 
 
 def is_available() -> bool:
+    """``ONPREM_BACKUP_DATABASE_URL`` is set — the target URL is configured.
+    The mirror feature shows in the UI when this is true.
+    """
     return bool(ONPREM_BACKUP_DATABASE_URL)
+
+
+def runs_local() -> bool:
+    """Whether THIS API container is the one allowed to execute mirror runs.
+
+    The on-prem target (10.11.52.x) is only reachable from a VPN-connected
+    laptop running the dev docker-compose stack — AWS prod has no route to
+    the office network. Dev sets ``MIRROR_RUNS_LOCAL=true`` in its .env (via
+    ``scripts/dev-aws.sh``); prod leaves it unset. The endpoint refuses runs
+    when this is false, and the UI surfaces a "local-only" notice instead
+    of an active Run button.
+    """
+    import os
+    return os.getenv("MIRROR_RUNS_LOCAL", "").lower() in ("1", "true", "yes")
 
 
 def get_state_for_ui(project_id: int) -> Dict[str, Any]:
@@ -592,12 +609,14 @@ def get_state_for_ui(project_id: int) -> Dict[str, Any]:
     if not ONPREM_BACKUP_DATABASE_URL:
         return {
             "available": False,
+            "runs_local": False,
             "last_mirror_at": None,
             "last_run_at": None,
             "last_status": None,
             "last_error": None,
             "last_row_count": 0,
         }
+    local = runs_local()
     src = psycopg2.connect(DATABASE_URL_SYNC)
     try:
         cur = src.cursor()
@@ -612,6 +631,7 @@ def get_state_for_ui(project_id: int) -> Dict[str, Any]:
         if not row:
             return {
                 "available": True,
+                "runs_local": local,
                 "last_mirror_at": None,
                 "last_run_at": None,
                 "last_status": None,
@@ -623,6 +643,7 @@ def get_state_for_ui(project_id: int) -> Dict[str, Any]:
             }
         return {
             "available": True,
+            "runs_local": local,
             "last_mirror_at":      row[0].isoformat() if row[0] else None,
             "last_run_at":         row[1].isoformat() if row[1] else None,
             "last_status":         row[2],

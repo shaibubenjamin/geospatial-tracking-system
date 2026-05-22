@@ -25,6 +25,7 @@ from app.services.job_queue import (
 from app.services.onprem_mirror import (
     run_mirror as run_onprem_mirror,
     is_available as onprem_mirror_available,
+    runs_local as onprem_mirror_runs_local,
     get_state_for_ui as onprem_mirror_state,
 )
 
@@ -349,8 +350,13 @@ async def trigger_onprem_mirror(
 ):
     """Queue an AWS RDS → on-prem mirror for this project. Returns immediately.
 
-    Only available when ``ONPREM_BACKUP_DATABASE_URL`` is set — i.e. on dev
-    laptops that are on the VPN. Production deployments don't expose this.
+    Hard-gated by ``MIRROR_RUNS_LOCAL``. The on-prem target (10.11.52.x) is
+    only reachable from a VPN-connected laptop running the dev docker-compose
+    stack — AWS prod's VPC has no route to the office network. So even if
+    ``ONPREM_BACKUP_DATABASE_URL`` is set on the API container, prod refuses
+    to attempt a connection (the connection would just time out anyway).
+    Run mirrors from the dev stack instead.
+
     Returns 409 if a mirror run is already in progress for this project.
     """
     if not onprem_mirror_available():
@@ -358,6 +364,14 @@ async def trigger_onprem_mirror(
             400,
             "On-prem mirror is not configured on this deployment "
             "(ONPREM_BACKUP_DATABASE_URL is unset).",
+        )
+    if not onprem_mirror_runs_local():
+        raise HTTPException(
+            400,
+            "On-prem mirror can only be triggered from the dev docker-compose "
+            "stack (VPN-connected laptop). The production deployment isn't on "
+            "the on-prem network. Run ./scripts/dev-aws.sh up on your laptop "
+            "and trigger the mirror from there.",
         )
 
     # Verify the project exists and check the running-state lock.
