@@ -32,13 +32,17 @@ from sqlalchemy import text
 
 from app.database import AsyncSessionLocal
 from app.services.commcare_sync import run_sync
-from app.services.job_queue import dequeue_sync_job
+from app.services.job_queue import dequeue_sync_job, enqueue_sync_job, queue_depth as redis_queue_depth
 
 logger = logging.getLogger("sync_worker")
 
 # Worker tunables — env-overridable so prod / dev can differ.
-SYNC_JOB_TIMEOUT_SECS = int(os.getenv("SYNC_JOB_TIMEOUT_SECS", "1800"))   # 30 min
-BLPOP_TIMEOUT_SECS    = int(os.getenv("SYNC_QUEUE_POLL_SECS",  "5"))
+SYNC_JOB_TIMEOUT_SECS    = int(os.getenv("SYNC_JOB_TIMEOUT_SECS", "1800"))   # 30 min
+BLPOP_TIMEOUT_SECS       = int(os.getenv("SYNC_QUEUE_POLL_SECS",  "5"))
+# Auto-sync scheduler: how often the scheduler_loop wakes up and decides
+# whether to enqueue a job. 60s is fine — interval granularity for users is
+# in minutes anyway.
+SCHEDULER_TICK_SECS      = int(os.getenv("SYNC_SCHEDULER_TICK_SECS", "60"))
 
 _shutdown = asyncio.Event()
 
@@ -118,9 +122,13 @@ async def _run_job(project_id: int) -> None:
         logger.exception("Sync job for project %s raised", project_id)
 
 
-async def _loop() -> None:
-    """Main worker loop. BLPOP → dispatch → repeat, until shutdown."""
-    await _recover_stuck_jobs()
+async def _consumer_loop() -> None:
+    """BLPOP → dispatch → repeat, until shutdown.
+
+    Single consumer of the queue. Auto-sync jobs and admin-triggered jobs
+    flow through the same path — the scheduler just pushes onto the queue
+    like the API does.
+    """
     logger.info(
         "Worker ready — listening on queue 'sync:queue' (job timeout %ds, poll %ds)",
         SYNC_JOB_TIMEOUT_SECS, BLPOP_TIMEOUT_SECS,
@@ -138,9 +146,96 @@ async def _loop() -> None:
         if not isinstance(pid, int):
             logger.warning("Dropping malformed job: %r", job)
             continue
-        logger.info("Picked up sync job for project %s (enqueued %s)", pid, job.get("enqueued_at"))
+        logger.info(
+            "Picked up sync job for project %s (enqueued %s, source=%s)",
+            pid, job.get("enqueued_at"), job.get("source", "manual"),
+        )
         await _run_job(pid)
-    logger.info("Worker received shutdown signal — exiting cleanly")
+    logger.info("Consumer loop received shutdown signal — exiting cleanly")
+
+
+async def _scheduler_tick() -> None:
+    """One scheduler iteration: for every project with auto-sync enabled,
+    enqueue a job if (now - last_synced_at) ≥ interval. Skips when a job
+    is already in flight or queued, so back-to-back ticks can't pile up.
+    """
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(text("""
+            SELECT project_id, auto_sync_interval_minutes,
+                   last_synced_at, last_status
+            FROM sync_config
+            WHERE auto_sync_enabled = TRUE
+        """))).mappings().all()
+
+    if not rows:
+        return
+
+    # If anything is already queued, skip every project for this tick — no
+    # point stacking. (Worker is single-consumer; one queued job is one
+    # sync about to happen.)
+    try:
+        depth = await redis_queue_depth()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("scheduler: couldn't read queue depth (%s) — skipping tick", e)
+        return
+    if depth > 0:
+        logger.debug("scheduler: queue depth=%d, skipping tick", depth)
+        return
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    for r in rows:
+        if r["last_status"] == "running":
+            continue
+        interval_min = int(r["auto_sync_interval_minutes"] or 60)
+        last_at = r["last_synced_at"]
+        if last_at is not None:
+            elapsed_min = (now - last_at).total_seconds() / 60.0
+            if elapsed_min < interval_min:
+                continue
+        pid = int(r["project_id"])
+        try:
+            await enqueue_sync_job(pid, source="auto")
+            logger.info(
+                "scheduler: enqueued auto-sync for project %s (interval=%dm, last_sync=%s)",
+                pid, interval_min, last_at.isoformat() if last_at else "never",
+            )
+            # Only enqueue one project per tick — the consumer is single-
+            # threaded so flooding doesn't help.
+            return
+        except Exception:  # noqa: BLE001
+            logger.exception("scheduler: failed to enqueue auto-sync for project %s", pid)
+
+
+async def _scheduler_loop() -> None:
+    """Auto-sync scheduler. Wakes every SCHEDULER_TICK_SECS, examines
+    sync_config rows with auto_sync_enabled=TRUE, and enqueues when due.
+    Runs in parallel with the consumer loop; both share the same shutdown
+    event.
+    """
+    logger.info(
+        "Scheduler ready — tick=%ds (interval granularity is minutes; tick just decides when to check)",
+        SCHEDULER_TICK_SECS,
+    )
+    while not _shutdown.is_set():
+        try:
+            await _scheduler_tick()
+        except Exception:  # noqa: BLE001
+            logger.exception("scheduler tick raised")
+        # Sleep in 1-second slices so shutdown is observed within ~1s.
+        for _ in range(SCHEDULER_TICK_SECS):
+            if _shutdown.is_set():
+                break
+            await asyncio.sleep(1)
+    logger.info("Scheduler loop received shutdown signal — exiting cleanly")
+
+
+async def _main_async() -> None:
+    """Run consumer + scheduler concurrently. Either failing should not take
+    the other down — they're independent feedback loops."""
+    await _recover_stuck_jobs()
+    await asyncio.gather(_consumer_loop(), _scheduler_loop())
 
 
 def main() -> None:
@@ -152,7 +247,7 @@ def main() -> None:
     asyncio.set_event_loop(loop)
     _install_signal_handlers(loop)
     try:
-        loop.run_until_complete(_loop())
+        loop.run_until_complete(_main_async())
     finally:
         loop.close()
 

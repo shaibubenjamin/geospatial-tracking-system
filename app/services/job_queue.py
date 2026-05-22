@@ -55,21 +55,34 @@ def get_sync_redis() -> redis.Redis:
     return _sync_client
 
 
-async def enqueue_sync_job(project_id: int, *, queue: str = SYNC_QUEUE_NAME) -> dict:
+async def enqueue_sync_job(
+    project_id: int,
+    *,
+    queue: str = SYNC_QUEUE_NAME,
+    source: str = "manual",
+) -> dict:
     """Push a CommCare sync job onto the queue. Returns the job payload.
 
     The worker reads this payload and calls ``run_sync(project_id)``. The job
     body is intentionally minimal — the sync function already pulls its own
     config (credentials, form list, watermark) from the database.
+
+    ``source`` is logged by the worker on pickup so auto-sync runs can be
+    distinguished from admin-triggered ones in the container logs. Default
+    is ``"manual"``; the scheduler passes ``"auto"``.
     """
     job = {
         "project_id":  int(project_id),
         "enqueued_at": datetime.now(timezone.utc).isoformat(),
+        "source":      source,
     }
     client = get_async_redis()
     await client.rpush(queue, json.dumps(job))
     qlen = await client.llen(queue)
-    logger.info("Enqueued sync job for project %s — queue depth now %d", project_id, qlen)
+    logger.info(
+        "Enqueued sync job for project %s (source=%s) — queue depth now %d",
+        project_id, source, qlen,
+    )
     return {**job, "queue": queue, "queue_depth": int(qlen)}
 
 
