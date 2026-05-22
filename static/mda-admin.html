@@ -1776,6 +1776,25 @@
       statusEl.textContent = 'Idle';
       btn.disabled = false;
     }
+    // Local-only gate: when MIRROR_RUNS_LOCAL isn't set on the API (i.e.
+    // production), the on-prem target is unreachable from this server and
+    // the backend will refuse the request anyway. Disable the button and
+    // surface a clear message so users know to run from the dev stack.
+    if (s.runs_local === false) {
+      btn.disabled = true;
+      btn.title = 'Disabled on this deployment — run from your VPN-connected dev stack';
+      btn.innerHTML = '<i class="fa-solid fa-laptop"></i> Local-only';
+      statusEl.innerHTML = '<span class="chip info" style="background:#DBEAFE;color:#1E3A8A">Local-only feature</span>';
+      // Add an inline notice under the row if we haven't already
+      const cardBody = btn.closest('div').parentElement;
+      if (cardBody && !document.getElementById('onprem-mirror-local-only-note')) {
+        const note = document.createElement('div');
+        note.id = 'onprem-mirror-local-only-note';
+        note.style.cssText = 'margin-top:10px;font-size:11.5px;color:#1E3A8A;background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;line-height:1.55';
+        note.innerHTML = '<i class="fa-solid fa-circle-info"></i> The on-prem target is on the office network (only reachable via VPN). To push data to on-prem, run <code style="font-family:monospace;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px">./scripts/dev-aws.sh up</code> on your VPN-connected laptop and trigger the mirror from <code style="font-family:monospace;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px">http://localhost:8090/mda-admin</code>.';
+        cardBody.appendChild(note);
+      }
+    }
     document.getElementById('onprem-mirror-last-run').textContent  = _fmtTs(s.last_run_at);
     document.getElementById('onprem-mirror-watermark').textContent = _fmtTs(s.last_mirror_at);
     document.getElementById('onprem-mirror-rows').textContent      = (s.last_row_count || 0).toLocaleString();
