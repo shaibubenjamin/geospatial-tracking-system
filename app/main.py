@@ -155,29 +155,12 @@ async def lifespan(app: FastAPI):
             db.add(admin)
             logger.info("Created default admin user (admin/admin123)")
 
-        # Seed viewer user
-        result = await db.execute(select(User).where(User.username == "viewer"))
-        if not result.scalar_one_or_none():
-            viewer = User(
-                username="viewer",
-                email="viewer@geospatial.local",
-                hashed_password=hash_password("viewer123"),
-                is_admin=False,
-            )
-            db.add(viewer)
-            logger.info("Created viewer user (viewer/viewer123)")
-
-        # Seed analyst user
-        result = await db.execute(select(User).where(User.username == "analyst"))
-        if not result.scalar_one_or_none():
-            analyst = User(
-                username="analyst",
-                email="analyst@geospatial.local",
-                hashed_password=hash_password("analyst123"),
-                is_admin=False,
-            )
-            db.add(analyst)
-            logger.info("Created analyst user (analyst/analyst123)")
+        # Note: previously seeded "viewer" and "analyst" demo users here.
+        # Removed 2026-05-22 because the analyst/viewer presentation tier
+        # was retired (PR #14) and the seed would silently recreate the
+        # accounts every container restart after a superadmin deleted them.
+        # If anyone needs analyst/viewer back as a tier, the right move is
+        # to add a real role column; don't reintroduce silent reseeding.
 
         # Seed / migrate Sokoto Round 4 project
         result = await db.execute(select(GeoProject).where(GeoProject.slug == "sokoto"))
