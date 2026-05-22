@@ -919,8 +919,8 @@ tbody tr:hover{background:var(--pale)}
                   <span id="geo-bc-lga" onclick="geoGoLGA()" style="display:none;cursor:pointer;color:var(--blue);font-weight:600"></span>
                   <span id="geo-bc-ward-sep" style="display:none;color:var(--muted)">›</span>
                   <span id="geo-bc-ward" style="display:none;color:var(--navy);font-weight:700"></span>
-                  <button id="geo-view-cov-btn" onclick="geoViewCoverage()" style="display:none;margin-left:8px;padding:3px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-size:11px;font-weight:600" title="View LGA-level treatment coverage for this LGA">
-                    <i class="fa-solid fa-table-cells-large"></i> Coverage
+                  <button id="geo-view-cov-btn" onclick="geoViewCoverage()" style="display:none;align-items:center;gap:5px;margin-left:8px;padding:3px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-size:11px;font-weight:600;line-height:1;vertical-align:middle" title="View LGA-level treatment coverage for this LGA">
+                    <i class="fa-solid fa-table-cells-large" style="font-size:10.5px"></i><span>Coverage</span>
                   </button>
                 </div>
                 <span id="geo-nav-count" style="font-size:11px;color:var(--muted)"></span>
@@ -3742,6 +3742,16 @@ tbody tr:hover{background:var(--pale)}
     const covBtn  = document.getElementById('geo-view-cov-btn');
     if (!lgaEl) return;
 
+    // Pull the names out once. We tag each crumb with " LGA" / " Ward"
+    // suffix when the LGA name and Ward name collide — common in Nigerian
+    // admin geography where the headquarters ward shares the LGA's name
+    // (Ajingi LGA contains Ajingi Ward, Wamakko LGA contains Wamakko Ward,
+    // etc.). Without the suffix the breadcrumb just reads "Ajingi > Ajingi"
+    // which looks like a duplication bug.
+    const lgaName  = geoCurrentLGA  ? geoCurrentLGA.lga_name   : '';
+    const wardName = geoCurrentWard ? geoCurrentWard.ward_name : '';
+    const collide  = lgaName && wardName && lgaName.toLowerCase().trim() === wardName.toLowerCase().trim();
+
     if (geoNavLevel === 'lga') {
       if (lgaSep)  lgaSep.style.display  = 'none';
       if (lgaEl)   lgaEl.style.display   = 'none';
@@ -3750,16 +3760,16 @@ tbody tr:hover{background:var(--pale)}
       if (covBtn)  covBtn.style.display  = 'none';
     } else if (geoNavLevel === 'ward') {
       if (lgaSep)  { lgaSep.style.display  = 'inline'; }
-      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
+      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = lgaName; }
       if (wardSep) { wardSep.style.display = 'none'; }
       if (wardEl)  { wardEl.style.display  = 'none'; }
-      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (geoCurrentLGA?.lga_name || 'this LGA'); }
+      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (lgaName || 'this LGA'); }
     } else {
       if (lgaSep)  { lgaSep.style.display  = 'inline'; }
-      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = geoCurrentLGA ? geoCurrentLGA.lga_name : ''; }
+      if (lgaEl)   { lgaEl.style.display   = 'inline'; lgaEl.textContent = collide ? (lgaName + ' LGA') : lgaName; }
       if (wardSep) { wardSep.style.display = 'inline'; }
-      if (wardEl)  { wardEl.style.display  = 'inline'; wardEl.textContent = geoCurrentWard ? geoCurrentWard.ward_name : ''; }
-      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (geoCurrentLGA?.lga_name || 'this LGA'); }
+      if (wardEl)  { wardEl.style.display  = 'inline'; wardEl.textContent = collide ? (wardName + ' Ward') : wardName; }
+      if (covBtn)  { covBtn.style.display  = 'inline-flex'; covBtn.title = 'View coverage for ' + (lgaName || 'this LGA'); }
     }
   }
 
