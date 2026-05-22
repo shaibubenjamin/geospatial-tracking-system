@@ -11,6 +11,7 @@ uploads/
 venv/
 .idea/
 .vscode/
+.claude/
 *.egg-info/
 dist/
 build/

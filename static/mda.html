@@ -368,7 +368,6 @@ tbody tr:hover{background:var(--pale)}
         <option value="">Loading…</option>
       </select>
       <div class="search"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search LGA, ward, team&hellip;"></div>
-      <div class="icon-btn auth-only" onclick="openUploadModal()" title="Upload Data"><i class="fa-solid fa-cloud-arrow-up"></i></div>
       <div class="icon-btn auth-only" onclick="handleLogout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></div>
       <a id="public-portal-link" href="/login" style="display:none;align-items:center;gap:6px;background:var(--blue);color:#fff;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 2px 8px rgba(0,107,46,.25)" title="Sign in for admin access">
         <i class="fa-solid fa-right-to-bracket"></i> Admin Portal
@@ -1217,37 +1216,6 @@ tbody tr:hover{background:var(--pale)}
     </div>
   </div>
 
-  <!-- ============ UPLOAD MODAL ============ -->
-  <div id="upload-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center">
-    <div style="background:#fff;border-radius:14px;padding:28px;width:480px;max-width:95vw">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-        <h3 style="font-size:16px;font-weight:700;color:#003D1A">Upload Campaign Data</h3>
-        <button onclick="closeUploadModal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:#5B6B82">&#x2715;</button>
-      </div>
-      <div style="background:#FEF3C7;border:1px solid #D97706;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:18px">
-        &#x26A0; Uploading replaces all existing data for that category
-      </div>
-
-      <div style="margin-bottom:16px">
-        <label style="font-size:12px;font-weight:600;color:#5B6B82;text-transform:uppercase;letter-spacing:.6px;display:block;margin-bottom:6px">MDA Household Data (.xlsx)</label>
-        <input type="file" id="mda-file-input" accept=".xlsx" style="width:100%;border:1px solid #DCE6F2;padding:8px;border-radius:7px;font-size:13px">
-        <button onclick="uploadMDA()" class="btn btn-primary" style="margin-top:8px;width:100%">
-          <i class="fa-solid fa-upload"></i> Upload MDA Data
-        </button>
-      </div>
-
-      <div>
-        <label style="font-size:12px;font-weight:600;color:#5B6B82;text-transform:uppercase;letter-spacing:.6px;display:block;margin-bottom:6px">Baseline / Target Data (.xlsx)</label>
-        <input type="file" id="baseline-file-input" accept=".xlsx" style="width:100%;border:1px solid #DCE6F2;padding:8px;border-radius:7px;font-size:13px">
-        <button onclick="uploadBaseline()" class="btn btn-primary" style="margin-top:8px;width:100%">
-          <i class="fa-solid fa-upload"></i> Upload Baseline
-        </button>
-      </div>
-
-      <div id="upload-status" style="margin-top:12px;font-size:13px;display:none"></div>
-    </div>
-  </div>
-
 </div><!-- /.app -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -1597,8 +1565,12 @@ tbody tr:hover{background:var(--pale)}
     _refusalsCache = data;
 
     // Build summary tiles — active round only, no R4 comparisons.
+    // Pick the selected project's row deterministically. The endpoint marks
+    // exactly one row with is_selected; older fallbacks (is_active /
+    // last-row) misfired across states because the rounds list contained
+    // every project (e.g. Sokoto R5 always landed as "last").
     const rounds = data.rounds || [];
-    const r5 = rounds.find(r => r.is_active) || rounds.slice(-1)[0] || {};
+    const r5 = rounds.find(r => r.is_selected) || rounds.find(r => r.is_active) || rounds.slice(-1)[0] || {};
     const summaryEl = document.getElementById('refusals-summary-row');
     if (summaryEl) {
       summaryEl.className = 'kpi-grid cols-3';
@@ -4406,43 +4378,7 @@ tbody tr:hover{background:var(--pale)}
   });
   window.switchView = switchView;
 
-  /* ── UPLOAD MODAL ── */
-  function openUploadModal(){ document.getElementById('upload-modal').style.display='flex'; }
-  function closeUploadModal(){ document.getElementById('upload-modal').style.display='none'; }
-  window.openUploadModal=openUploadModal;
-  window.closeUploadModal=closeUploadModal;
   window.handleLogout=handleLogout;
-
-  async function uploadFile(inputId, endpoint) {
-    const input = document.getElementById(inputId);
-    const statusEl = document.getElementById('upload-status');
-    if (!input.files.length) { alert('Please select a file first'); return; }
-    const fd = new FormData();
-    fd.append('file', input.files[0]);
-    statusEl.style.display='block';
-    statusEl.style.color='#006B2E';
-    statusEl.textContent='Uploading…';
-    try {
-      const r = await fetch(endpoint, { method:'POST', headers:{ Authorization:'Bearer '+token }, body:fd });
-      const d = await r.json();
-      if (r.ok) {
-        statusEl.style.color='#16A34A';
-        statusEl.textContent='✓ ' + JSON.stringify(d);
-        Object.keys(built).forEach(k=>delete built[k]);
-        await loadOverview();
-        populateLGAFilter();
-        buildCharts('overview');
-      } else {
-        statusEl.style.color='#DC2626';
-        statusEl.textContent='Error: ' + (d.detail||'Upload failed');
-      }
-    } catch(e) {
-      statusEl.style.color='#DC2626';
-      statusEl.textContent='Network error';
-    }
-  }
-  window.uploadMDA=()=>uploadFile('mda-file-input','/api/mda/upload');
-  window.uploadBaseline=()=>uploadFile('baseline-file-input','/api/mda/upload-baseline');
 
   /* ── INIT ── */
   Chart.register(ChartDataLabels);
