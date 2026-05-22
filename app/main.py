@@ -85,6 +85,11 @@ async def lifespan(app: FastAPI):
             # per-set loop in run_sync polls it between sets and exits cleanly
             # if true. Cleared at sync start.
             "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN DEFAULT FALSE",
+            # Count of NEW (post-watermark-filter) rows actually written this
+            # run — vs sync_history.rows_fetched which is the raw CommCare
+            # row count. The UI shows rows_new on the history table because
+            # that's the number the operator cares about.
+            "ALTER TABLE sync_history ADD COLUMN IF NOT EXISTS rows_new INTEGER DEFAULT 0",
         ]:
             try:
                 await db.execute(text(stmt))
