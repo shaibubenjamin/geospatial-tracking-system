@@ -1269,9 +1269,13 @@
     const active = projects.find(p => p.is_active) || projects[0];
     if (UPLOAD_PROJECT_ID == null) UPLOAD_PROJECT_ID = active ? active.id : null;
     sel.innerHTML = projects.map(p => {
-      const round = p.round_number != null ? ` Round ${p.round_number}` : '';
-      const lbl   = p.state_name ? `${p.state_name}${round}${p.is_active ? ' (live)' : ''}` : (p.name || `Project ${p.id}`);
-      const s     = p.id === UPLOAD_PROJECT_ID ? ' selected' : '';
+      // Use the user-set project name authoritatively. Falls back to a
+      // composed "State Round N" only if name is missing.
+      const status   = p.is_active ? ' (live)' : '';
+      const round    = p.round_number != null ? `Round ${p.round_number}` : null;
+      const fallback = p.state_name && round ? `${p.state_name} ${round}` : (p.state_name || `Project ${p.id}`);
+      const lbl      = (p.name || fallback) + status;
+      const s        = p.id === UPLOAD_PROJECT_ID ? ' selected' : '';
       return `<option value="${p.id}"${s}>${lbl}</option>`;
     }).join('');
     sel.onchange = () => { UPLOAD_PROJECT_ID = parseInt(sel.value, 10) || null; };
@@ -1447,9 +1451,13 @@
     const active = projects.find(p => p.is_active) || projects[0];
     SYNC_PROJECT_ID = SYNC_PROJECT_ID || (active && active.id) || null;
     sel.innerHTML = projects.map(p => {
-      const lbl = p.state_name && p.round_number != null
-        ? `${p.state_name} Round ${p.round_number}${p.is_active ? ' (live)' : ''}`
-        : p.name;
+      // Use the user-set project name authoritatively (e.g. "Kano Pilot"
+      // shows as named, not auto-composed into "Kano Round 1"). Falls back
+      // to a composed label only when name is missing.
+      const status   = p.is_active ? ' (live)' : '';
+      const round    = p.round_number != null ? `Round ${p.round_number}` : null;
+      const fallback = p.state_name && round ? `${p.state_name} ${round}` : (p.state_name || `Project ${p.id}`);
+      const lbl      = (p.name || fallback) + status;
       return `<option value="${p.id}"${p.id === SYNC_PROJECT_ID ? ' selected' : ''}>${lbl}</option>`;
     }).join('');
     sel.onchange = () => { SYNC_PROJECT_ID = parseInt(sel.value, 10); loadSyncConfig(); };
