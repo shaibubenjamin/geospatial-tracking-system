@@ -358,11 +358,14 @@ tbody tr:hover{background:var(--pale)}
         <span style="color:var(--muted);margin-left:6px;font-size:11px">(<span id="crumb-start">&mdash;</span> to <span id="crumb-end">&mdash;</span>)</span>
       </div>
       <div class="spacer"></div>
-      <!-- Project switching is handled from the Admin panel ("Set Active" on
-           the Projects page). The dashboard always renders the project where
-           is_active = TRUE so that public + admin + superadmin all see the
-           same story without per-session context drift. -->
-
+      <!-- State / Round selector. Lets the user switch which project the
+           dashboard renders. Selection is per-session (localStorage); the
+           server still has a global is_active project that powers the
+           public, unauthenticated view. -->
+      <select id="project-selector" title="Switch between states and rounds"
+              style="border:1px solid var(--line);background:#fff;color:var(--ink);font-size:12.5px;font-weight:600;padding:7px 28px 7px 12px;border-radius:8px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M1 1l4 4 4-4%22 stroke=%22%234A6852%22 stroke-width=%221.5%22 fill=%22none%22 stroke-linecap=%22round%22/></svg>');background-repeat:no-repeat;background-position:right 10px center">
+        <option value="">Loading…</option>
+      </select>
       <div class="search"><i class="fa-solid fa-magnifying-glass"></i><input placeholder="Search LGA, ward, team&hellip;"></div>
       <div class="icon-btn auth-only" onclick="openUploadModal()" title="Upload Data"><i class="fa-solid fa-cloud-arrow-up"></i></div>
       <div class="icon-btn auth-only" onclick="handleLogout()" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></div>
@@ -1278,20 +1281,20 @@ tbody tr:hover{background:var(--pale)}
 
   function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
 
-  /* ── PROJECT SCOPE ──
-     Dashboard scope = whatever ``is_active = TRUE`` on the server. Admins
-     switch via the Admin panel's "Set Active" button. This used to be a
-     per-session selector in the topbar, but it caused confusion (people
-     would land on Kano-Pilot mid-explore and see stale or empty cards) so
-     we removed it in favour of the single source of truth. SELECTED_PID
-     and its localStorage entry are retained as a future hook in case we
-     ever bring back per-session scoping, but they're always null today. */
-  let SELECTED_PID = null;
-  try { localStorage.removeItem('selected_project_id'); } catch (_) {}
+  /* ── PROJECT SCOPE (state + round) ── */
+  // The selector value is the project_id the user is viewing. null = use server-side active default.
+  let SELECTED_PID = (function() {
+    const stored = localStorage.getItem('selected_project_id');
+    return stored && /^\d+$/.test(stored) ? parseInt(stored, 10) : null;
+  })();
 
+  // List of /api/mda/* endpoints that accept ?project_id=. Other endpoints (notably the
+  // boundary/analytics routes under /api/projects/{pid}/...) take pid in the URL path and
+  // are not scoped via this helper.
   function _withProjectScope(path) {
-    // No-op: every /api/mda/* endpoint will resolve_pid → is_active.
-    return path;
+    if (SELECTED_PID == null) return path;
+    if (!/^\/api\/mda\//.test(path)) return path;
+    return path + (path.includes('?') ? '&' : '?') + 'project_id=' + SELECTED_PID;
   }
 
   /* ── API HELPER ── */
@@ -3045,6 +3048,23 @@ tbody tr:hover{background:var(--pale)}
     }
 
     if (view === 'coverage') {
+      // KPI tiles read from overviewData (baseline_total, total_treated,
+      // coverage_pct). They render unconditionally so a project with no
+      // LGA-level coverage data yet (e.g. a new state pilot like Kano with
+      // no synced households + no boundaries) still shows the headline
+      // totals from /api/mda/overview instead of looking like an outage.
+      if (overviewData) {
+        const ovPct0 = overviewData.coverage_pct || 0;
+        setEl('cov-kpi-baseline', fmt(overviewData.baseline_total));
+        setEl('cov-kpi-treated',  fmt(overviewData.total_treated));
+        setEl('cov-kpi-pct',      ovPct0.toFixed(1) + '%');
+      }
+      // Render the coverage-by-age and refusals-analysis cards regardless
+      // of LGA coverage availability — both endpoints handle empty data
+      // gracefully.
+      renderCoverageByAge();
+      renderRefusalsAnalysis();
+
       if (lgaCovData.length) {
         const sorted = [...lgaCovData].sort((a,b)=>b.coverage_pct-a.coverage_pct);
         const maxCov = Math.max(...sorted.map(l => parseFloat(l.coverage_pct)||0), 1);
