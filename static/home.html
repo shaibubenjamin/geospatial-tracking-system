@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SARMAAN MDA — Sokoto State</title>
+  <title>SARMAAN MDA</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -440,7 +441,7 @@
       <div class="topbar-logo"><i class="fa-solid fa-leaf"></i></div>
       <div>
         <div class="topbar-name">SARMAAN MDA</div>
-        <div class="topbar-sub">Sokoto State</div>
+        <div class="topbar-sub" data-active-state-label>&mdash;</div>
       </div>
     </a>
     <div class="topbar-spacer"></div>
@@ -467,7 +468,7 @@
       <div class="welcome-greeting" id="welcome-greeting"><strong>Public view</strong> &mdash; no sign-in required</div>
       <div class="hero-eyebrow">
         <i class="fa-solid fa-circle-dot" style="font-size:8px"></i>
-        Active Campaign &nbsp;·&nbsp; Sokoto State 2026
+        Active Campaign &nbsp;·&nbsp; <span data-active-campaign-label>&mdash;</span>
       </div>
       <h1 class="hero-title">
         <span class="accent">SARMAAN</span> MDA<br>
@@ -475,7 +476,7 @@
       </h1>
       <p class="hero-sub">
         Sightsavers' real-time platform for monitoring Mass Drug Administration coverage,
-        data quality, and team performance across all 23 LGAs of Sokoto State.
+        data quality, and team performance across every LGA of the campaign states.
       </p>
 
       <div class="action-cards">
@@ -542,9 +543,11 @@
         <div class="card-body">
           <div class="about-text">
             <p>
-              <strong>SARMAAN</strong> — Sokoto Annual Routine Mass Administration of
-              Azithromycin — is Sokoto State's flagship preventive health
-              campaign targeting children aged 1–59 months across all 23 Local Government Areas.
+              <strong>SARMAAN</strong> &mdash; an annual mass administration of
+              azithromycin &mdash; is a state-led preventive health campaign
+              targeting children aged 1&ndash;59 months across every Local
+              Government Area in the campaign states. Originally launched in
+              Sokoto, the platform now hosts multiple states' rounds side-by-side.
             </p>
             <p>
               The campaign delivers <strong>Mass Drug Administration (MDA)</strong>, a
@@ -670,7 +673,7 @@
   </div>
 
   <footer class="footer">
-    <strong>Sightsavers</strong> &nbsp;·&nbsp; SARMAAN &nbsp;·&nbsp; Sokoto State Ministry of Health &nbsp;·&nbsp; 2026
+    <strong>Sightsavers</strong> &nbsp;·&nbsp; SARMAAN &nbsp;·&nbsp; State Ministries of Health &nbsp;·&nbsp; 2026
   </footer>
 
   <script>
@@ -730,7 +733,30 @@
       } catch(e) { console.warn('Stats load failed', e); }
       finally   { document.getElementById('stats-loading').style.display = 'none'; }
     }
+
+    async function loadActiveProjectLabel() {
+      try {
+        const res = await fetch('/api/projects');
+        if (!res.ok) return;
+        const projects = await res.json();
+        if (!Array.isArray(projects) || !projects.length) return;
+        const active = projects.find(p => p.is_active) || projects[0];
+        if (!active) return;
+        const state = active.state_name || 'State';
+        const round = active.round_number != null ? `Round ${active.round_number}` : null;
+        const yr    = (new Date()).getFullYear();
+        document.querySelectorAll('[data-active-state-label]').forEach(el => {
+          el.textContent = `${state} State`;
+        });
+        document.querySelectorAll('[data-active-campaign-label]').forEach(el => {
+          el.textContent = round ? `${state} ${round} ${yr}` : `${state} ${yr}`;
+        });
+        document.title = `SARMAAN MDA — ${state}`;
+      } catch (_) {}
+    }
+
     loadStats();
+    loadActiveProjectLabel();
   </script>
 </body>
 </html>
