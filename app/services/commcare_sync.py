@@ -954,3 +954,72 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
         """,
         {"mda_pid": project_id, "boundary_pid": boundary_pid, "visit_threshold": 70},
     )
+
+
+def recompute_spatial_for_project(project_id: int) -> Dict[str, Any]:
+    """Standalone spatial QC + settlement_analytics rebuild for one project.
+
+    Same logic that runs at the end of a successful sync, but invokable
+    independently — needed when boundaries are imported (or re-imported)
+    *after* household forms have already been synced. Without this, the
+    spatial QC flags reflect a stale boundary state (everything marked
+    "outside LGA" because the LGA polygons didn't exist when the sync ran)
+    and settlement_analytics is missing or empty (so the Geographic View
+    shows 0% completeness for every settlement).
+
+    Idempotent: re-running clears the spatial flags and rebuilds them from
+    current geometries; settlement_analytics is upserted by
+    (project_id, settlement_id). Safe to call at any time; takes seconds for
+    a small state and ~30–60s for a large grid (~600k cells).
+    """
+    conn = psycopg2.connect(DATABASE_URL_SYNC)
+    try:
+        conn.autocommit = False
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Resolve the canonical boundary project for this project's state —
+        # same lookup the sync uses so multi-round states (Sokoto R4/R5)
+        # share one set of polygons.
+        cur.execute("""
+            SELECT MIN(p2.id) AS bp FROM geo_projects p1
+            JOIN geo_projects p2 ON p2.state_name = p1.state_name
+            WHERE p1.id = %s
+              AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id)
+        """, (project_id,))
+        row = cur.fetchone()
+        boundary_pid = (row["bp"] if row and row.get("bp") else project_id)
+
+        # Clear stale flags before re-running QC so rows whose status flipped
+        # from "outside" to "inside" actually get cleared (the QC step only
+        # *sets* flags TRUE; without a reset, a row stuck outside-lga from a
+        # pre-boundary sync would stay flagged forever).
+        cur.execute("""
+            UPDATE mda_households
+               SET flag_gps_outside_lga   = FALSE,
+                   flag_gps_outside_ward  = FALSE,
+                   flag_gps_outside_state = FALSE,
+                   flag_duplicate_gps     = FALSE
+             WHERE project_id = %s
+        """, (project_id,))
+
+        _run_spatial_qc(cur, project_id=project_id, boundary_pid=boundary_pid)
+        _recompute_settlement_analytics(cur, project_id=project_id, boundary_pid=boundary_pid)
+        conn.commit()
+
+        # Surface counts so the caller can show "X settlements, Y outside-LGA flags after rebuild".
+        cur.execute("SELECT COUNT(*) AS n FROM settlement_analytics WHERE project_id = %s", (project_id,))
+        n_settle = cur.fetchone()["n"]
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM mda_households WHERE project_id = %s AND flag_gps_outside_lga = TRUE",
+            (project_id,),
+        )
+        n_outside = cur.fetchone()["n"]
+
+        return {
+            "project_id":             project_id,
+            "boundary_pid":           boundary_pid,
+            "settlement_analytics":   int(n_settle),
+            "outside_lga_after_qc":   int(n_outside),
+        }
+    finally:
+        conn.close()

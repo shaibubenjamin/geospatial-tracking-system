@@ -508,6 +508,31 @@
           @keyframes bndPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
         </style>
 
+        <!-- Recompute geographic analytics — needed after a boundary
+             import when household forms are already in place. Without this,
+             the Geographic View shows 0% completeness everywhere because
+             the spatial QC + settlement_analytics jobs that normally run at
+             the end of a sync are stuck on the pre-boundary state. -->
+        <div class="card" style="margin-bottom:18px">
+          <div class="card-head">
+            <div class="card-title"><i class="fa-solid fa-bullseye"></i> Recompute Geographic Analytics</div>
+          </div>
+          <div class="card-body">
+            <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.55">
+              Re-runs spatial QC and rebuilds the settlement completeness rollup
+              for the selected project. Run this after uploading or re-uploading
+              boundaries when forms are already in the database — otherwise the
+              Geographic View will show 0% completeness and household forms will
+              stay flagged as “GPS outside LGA” from a stale state.
+              Idempotent and safe to re-run; takes 10–60 seconds depending on grid size.
+            </p>
+            <button class="btn btn-primary" id="bnd-recompute-btn" onclick="recomputeSpatial()">
+              <i class="fa-solid fa-bullseye"></i> Recompute for selected project
+            </button>
+            <div class="inline-feedback" id="bnd-recompute-feedback"></div>
+          </div>
+        </div>
+
         <!-- Upload History -->
         <div class="card">
           <div class="card-head">
@@ -1545,6 +1570,41 @@
     }
   }
   window.uploadBoundaryBundle = uploadBoundaryBundle;
+
+  /* ── SPATIAL RECOMPUTE ── */
+  // Re-runs spatial QC + settlement_analytics for the upload-target project.
+  // Necessary after a boundary import when households are already in place,
+  // because the end-of-sync analytics step never re-runs on its own.
+  async function recomputeSpatial() {
+    const pid = UPLOAD_PROJECT_ID;
+    const fb  = 'bnd-recompute-feedback';
+    const btn = document.getElementById('bnd-recompute-btn');
+    if (!pid) { setFeedback(fb, 'Pick a target project at the top of the page first.', 'err'); return; }
+    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+    setFeedback(fb, 'Running spatial QC and settlement-analytics rebuild — this can take 30–60 seconds for a state-sized grid…', 'info');
+    try {
+      const res = await fetch('/api/projects/' + pid + '/boundaries/recompute', {
+        method: 'POST',
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+      });
+      const ct = res.headers.get('content-type') || '';
+      const body = ct.includes('json') ? await res.json() : null;
+      if (res.ok && body) {
+        setFeedback(fb,
+          `✓ Recompute complete — ${body.settlement_analytics.toLocaleString()} settlements analysed, ` +
+          `${body.outside_lga_after_qc.toLocaleString()} households still flagged "GPS outside LGA" after rebuild ` +
+          `(legitimate misplacements, not the stale-boundary artefact).`,
+          'ok');
+      } else {
+        setFeedback(fb, 'Error: ' + (body && body.detail ? body.detail : `HTTP ${res.status}`), 'err');
+      }
+    } catch (e) {
+      setFeedback(fb, 'Network error: ' + e.message, 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    }
+  }
+  window.recomputeSpatial = recomputeSpatial;
 
   /* ── UPLOAD HISTORY ── */
   async function loadUploadHistory() {

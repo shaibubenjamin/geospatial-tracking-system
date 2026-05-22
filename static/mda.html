@@ -606,7 +606,7 @@ tbody tr:hover{background:var(--pale)}
         </div>
 
         <div class="kpi-grid cols-5">
-          <div class="kpi"><div class="lbl">Baseline Total</div><div class="val" id="cov-kpi-baseline">&mdash;</div><div class="sub">Children 1–59 months targeted for treatment this round (from the R5 baseline)</div></div>
+          <div class="kpi"><div class="lbl">Baseline Total</div><div class="val" id="cov-kpi-baseline">&mdash;</div><div class="sub">Children 1–59 months targeted for treatment this round (from this round's baseline target file)</div></div>
           <div class="kpi accent"><div class="lbl">Total Treated</div><div class="val" id="cov-kpi-treated">&mdash;</div><div class="sub">Children treated so far, across all submitted forms</div></div>
           <div class="kpi good"><div class="lbl">Overall Coverage</div><div class="val" id="cov-kpi-pct">&mdash;</div><div class="sub">Total treated ÷ baseline target, campaign to date</div></div>
           <div class="kpi good"><div class="lbl">LGAs on Target &ge;80%</div><div class="val" id="cov-kpi-good">&mdash;</div><div class="sub" id="cov-kpi-good-sub">LGAs that have reached the WHO 80% protective threshold</div></div>
@@ -1087,8 +1087,8 @@ tbody tr:hover{background:var(--pale)}
                 <tr style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2">
                   <th style="padding:10px 14px;text-align:left">LGA</th>
                   <th style="padding:10px 14px;text-align:right">Target (Baseline)</th>
-                  <th style="padding:10px 14px;text-align:right">R5 Treated</th>
-                  <th style="padding:10px 14px;text-align:right">R5 Coverage</th>
+                  <th style="padding:10px 14px;text-align:right">Treated</th>
+                  <th style="padding:10px 14px;text-align:right">Coverage</th>
                 </tr>
               </thead>
               <tbody id="lga-compare-tbody">
@@ -1354,7 +1354,7 @@ tbody tr:hover{background:var(--pale)}
     try { data = await api('/api/mda/coverage/lga-by-age'); }
     catch (e) { data = null; }
     if (!Array.isArray(data) || data.length === 0) {
-      if (summaryEl) summaryEl.innerHTML = '<div class="kpi" style="padding:10px 14px"><div class="sub">No age-band targets in the active baseline — upload the R5 Target file under Admin → Data Uploads to enable this view.</div></div>';
+      if (summaryEl) summaryEl.innerHTML = '<div class="kpi" style="padding:10px 14px"><div class="sub">No age-band targets in this project’s baseline yet — upload a baseline target file with per-LGA 1–11 / 12–59 month targets under Admin → Data Uploads to enable this view.</div></div>';
       return;
     }
     // Top-line summary (state-wide) above the chart
@@ -1532,7 +1532,7 @@ tbody tr:hover{background:var(--pale)}
 
   function dlLGACompareCSV() {
     if (!_lgaCompareCache) return;
-    const rows = [['LGA','Target (Baseline)','R5 Treated','R5 Coverage %']];
+    const rows = [['LGA','Target (Baseline)','Treated','Coverage %']];
     _lgaCompareCache.lgas.forEach(r => {
       const r5 = r.rounds['5'] || {};
       rows.push([r.lga, r5.baseline || 0, r5.treated || 0, r5.coverage_pct ?? '']);
