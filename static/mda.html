@@ -3464,8 +3464,15 @@ tbody tr:hover{background:var(--pale)}
   async function loadGeoProject() {
     const projects = await api('/api/projects');
     if (!projects || !projects.length) return;
-    const active = projects.find(p => p.is_active) || projects[0];
-    geoPid = active.id;
+    // Honour the dashboard's SELECTED_PID first so the map follows the
+    // chosen project (Kano vs Sokoto). Falls back to the globally-active
+    // project only when no selection is stored.
+    let target = null;
+    if (SELECTED_PID != null) {
+      target = projects.find(p => p.id === SELECTED_PID);
+    }
+    if (!target) target = projects.find(p => p.is_active) || projects[0];
+    geoPid = target.id;
     await Promise.all([
       loadGeoBoundariesLGA(),
       loadGeoBoundariesWard(null),
