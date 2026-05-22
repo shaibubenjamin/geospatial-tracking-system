@@ -1,3 +1,4 @@
+import asyncio
 import io
 import os
 import tempfile
@@ -16,6 +17,7 @@ from app.services.boundary_importer import (
     import_settlement_shapefile,
     import_grid_shapefile,
 )
+from app.services.commcare_sync import recompute_spatial_for_project
 from app.services.spatial_engine import (
     get_lga_geojson,
     get_ward_geojson,
@@ -229,6 +231,35 @@ async def upload_boundary_bundle(
             "results":          results,
             "errors":           errors,
         }
+
+
+# ─── Maintenance: rebuild spatial QC + settlement_analytics ───────────────────
+
+
+@router.post("/recompute")
+async def recompute_spatial(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Recompute spatial QC flags + settlement_analytics for this project.
+
+    Use this after importing or re-importing boundaries when household forms
+    are already in place — without it, the spatial flags reflect a stale
+    boundary state (everything flagged "outside LGA") and the Geographic
+    View shows 0% completeness for every settlement.
+
+    The operation is run in a thread pool because it uses the sync psycopg2
+    connection (matching the sync code's transaction semantics) and can take
+    30–60 seconds on a state-sized grid. The HTTP call blocks until it
+    finishes — there's no progress wire — but it's bounded by the SQL.
+    """
+    await _get_project(project_id, db)
+    try:
+        result = await asyncio.to_thread(recompute_spatial_for_project, project_id)
+    except Exception as e:  # noqa: BLE001 — surface SQL/connect errors to the operator
+        raise HTTPException(500, f"Spatial recompute failed: {e}")
+    return {"message": "Spatial recompute completed", **result}
 
 
 # ─── GeoJSON endpoints ────────────────────────────────────────────────────────
