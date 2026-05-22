@@ -419,12 +419,11 @@
           </div>
           <div class="card-body">
             <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.55">
-              Upload <strong>one ZIP</strong> containing all four boundary levels for the state:
-              LGA, Ward, Settlement, and Grid. Each layer is recognised by its <code>.shp</code> filename
-              (case-insensitive substring match — <code>lga</code>, <code>ward</code>, <code>settlement</code>,
-              <code>grid</code> / <code>gridded</code>). Companion sidecars (<code>.shx</code>,
-              <code>.dbf</code>, <code>.prj</code>, optional <code>.cpg</code>) must share the same basename.
-              Boundaries are shared across all rounds in the same state.
+              Upload <strong>one ZIP</strong> containing all four boundary levels (LGA, Ward, Settlement, Grid).
+              Each layer is recognised case-insensitively by its <code>.shp</code> filename
+              (<code>lga</code>, <code>ward</code>, <code>settlement</code>, <code>grid</code> / <code>gridded</code>),
+              with sidecars (<code>.shx</code>, <code>.dbf</code>, <code>.prj</code>, optional <code>.cpg</code>)
+              sharing the same basename. Boundaries are shared across all rounds in the state.
             </p>
             <div class="upload-zone" id="bnd-bundle-drop" onclick="document.getElementById('bnd-bundle-file').click()">
               <i class="fa-solid fa-file-zipper"></i>
@@ -433,12 +432,81 @@
               <input type="file" id="bnd-bundle-file" accept=".zip" onchange="onFileSelected('bnd-bundle-file','bnd-bundle-label')">
             </div>
             <div id="bnd-bundle-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600;min-height:16px"></div>
-            <button class="btn btn-primary" style="margin-top:12px" onclick="uploadBoundaryBundle()">
+            <button class="btn btn-primary" id="bnd-bundle-btn" style="margin-top:12px" onclick="uploadBoundaryBundle()">
               <i class="fa-solid fa-upload"></i> Upload Bundle
             </button>
+
+            <!-- Progress panel — hidden until upload starts. Two phases:
+                 1) bytes upload (real %),
+                 2) server-side import — we don't have streaming progress
+                    from the endpoint, so each layer is shown as "pending →
+                    working → done/failed" once the response comes back. While
+                    the import is in flight we step the active marker through
+                    the layers on a rough ETA schedule so the user can see
+                    *something* moving and understand which layer is the
+                    slow one. -->
+            <div id="bnd-bundle-progress" style="display:none;margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:#FBFDFC">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div style="font-size:12.5px;font-weight:700;color:var(--deep)" id="bnd-bundle-phase">Uploading…</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--muted)">
+                  <span><i class="fa-regular fa-clock"></i> <span id="bnd-bundle-elapsed">0s</span></span>
+                  <span id="bnd-bundle-pct">0%</span>
+                </div>
+              </div>
+              <div style="background:#E8EEEB;height:6px;border-radius:99px;overflow:hidden">
+                <div id="bnd-bundle-bar" style="background:var(--deep);height:100%;width:0%;transition:width .25s ease"></div>
+              </div>
+              <!-- Per-layer checklist with status pips. Each row shows the
+                   typical wait so the operator knows the long ones are
+                   Settlement + Grid (largest geometries / row counts), not
+                   network. -->
+              <div style="margin-top:14px;display:grid;gap:8px" id="bnd-bundle-layers">
+                <div class="bnd-layer" data-layer="lga"><span class="bnd-pip" data-state="pending"></span>
+                  <span class="bnd-name">LGA boundary</span>
+                  <span class="bnd-eta">~ a few seconds</span><span class="bnd-status">Pending</span></div>
+                <div class="bnd-layer" data-layer="ward"><span class="bnd-pip" data-state="pending"></span>
+                  <span class="bnd-name">Ward boundary</span>
+                  <span class="bnd-eta">~ 10–30 seconds</span><span class="bnd-status">Pending</span></div>
+                <div class="bnd-layer" data-layer="settlement"><span class="bnd-pip" data-state="pending"></span>
+                  <span class="bnd-name">Settlement boundary</span>
+                  <span class="bnd-eta">~ 1–2 minutes (~15k features)</span><span class="bnd-status">Pending</span></div>
+                <div class="bnd-layer" data-layer="grid"><span class="bnd-pip" data-state="pending"></span>
+                  <span class="bnd-name">Grid boundary</span>
+                  <span class="bnd-eta">~ 4–10 minutes (~600k features)</span><span class="bnd-status">Pending</span></div>
+              </div>
+              <!-- Inline explainer — answers the perennial "why is this so
+                   slow?" question without the operator having to ask. -->
+              <div style="margin-top:12px;padding:10px 12px;background:#F1F6F3;border-left:3px solid var(--deep);border-radius:6px;font-size:11.5px;color:var(--ink);line-height:1.55">
+                <strong>Why it takes time:</strong> the server reads every polygon in your ZIP, re-projects it
+                to the dashboard's coordinate system (EPSG:4326), and writes one row per feature into PostgreSQL.
+                Grid is by far the largest layer (≈600k 30×30 m cells for a state) so it dominates the wall-time —
+                LGA and Ward finish almost instantly, Settlement takes a minute or two, and Grid runs in the
+                background for several more minutes. You can leave this tab open or come back later — the import
+                continues server-side and won't restart.
+              </div>
+            </div>
+
             <div class="inline-feedback" id="bnd-bundle-feedback"></div>
           </div>
         </div>
+
+        <style>
+          .bnd-layer { display:grid; grid-template-columns:14px 1fr auto auto; align-items:center; gap:10px; font-size:12px; padding:6px 8px; border-radius:6px; }
+          .bnd-layer .bnd-name { font-weight:600; color:var(--ink); }
+          .bnd-layer .bnd-eta  { font-size:11px; color:var(--muted); }
+          .bnd-layer .bnd-status { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); padding:2px 8px; border-radius:99px; background:#EEF2EE; min-width:64px; text-align:center; }
+          .bnd-pip { width:10px; height:10px; border-radius:50%; background:#D5DCD7; display:inline-block; }
+          .bnd-layer[data-state="active"]   { background:#F2F9F4; }
+          .bnd-layer[data-state="active"]   .bnd-pip { background:var(--deep); box-shadow:0 0 0 4px rgba(0,107,46,.18); animation:bndPulse 1.2s ease-in-out infinite; }
+          .bnd-layer[data-state="active"]   .bnd-status { background:#DDEBE0; color:var(--deep); }
+          .bnd-layer[data-state="done"]     .bnd-pip { background:var(--deep); }
+          .bnd-layer[data-state="done"]     .bnd-status { background:#DDEBE0; color:var(--deep); }
+          .bnd-layer[data-state="missing"]  .bnd-pip { background:#C7CFC9; }
+          .bnd-layer[data-state="missing"]  .bnd-status { background:#EEF2EE; color:var(--muted); }
+          .bnd-layer[data-state="failed"]   .bnd-pip { background:#C0392B; }
+          .bnd-layer[data-state="failed"]   .bnd-status { background:#FBE6E3; color:#C0392B; }
+          @keyframes bndPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+        </style>
 
         <!-- Upload History -->
         <div class="card">
@@ -663,7 +731,7 @@
                     <tr style="background:var(--pale);color:var(--deep);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px">
                       <th style="padding:10px 14px;text-align:left">When</th>
                       <th style="padding:10px 14px;text-align:left">Result</th>
-                      <th style="padding:10px 14px;text-align:right">Rows</th>
+                      <th style="padding:10px 14px;text-align:right">New rows added</th>
                       <th style="padding:10px 14px;text-align:left">Duration</th>
                     </tr>
                   </thead>
@@ -1308,45 +1376,122 @@
   // Boundary bundle upload: one ZIP, all four levels. Hits
   // /api/projects/{pid}/boundaries/bundle which extracts the ZIP, classifies
   // each .shp by basename, and calls the per-level importer.
+  //
+  // The backend response is one-shot (no streaming progress), so the UI uses
+  // two visible phases: real-% bytes upload, then an animated "working on
+  // layer X" marker that walks through LGA → Ward → Settlement → Grid on a
+  // rough ETA schedule while we wait for the response. When the response
+  // returns, the layer statuses snap to the truth (uploaded / missing /
+  // failed) from the server.
+  const BND_LAYERS = ['lga', 'ward', 'settlement', 'grid'];
+  // Rough seconds-per-layer for the import-phase animation. These don't
+  // change the actual work — they just pace the UI so the "active" pip
+  // moves at a plausible rate. Tuned to roughly match what a Nigerian state
+  // bundle takes (Grid is by far the slowest).
+  const BND_LAYER_ETAS = { lga: 5, ward: 20, settlement: 90, grid: 360 };
+
+  function _bndSetLayer(level, state, statusText) {
+    const row = document.querySelector(`.bnd-layer[data-layer="${level}"]`);
+    if (!row) return;
+    row.setAttribute('data-state', state);
+    const lbl = row.querySelector('.bnd-status');
+    if (lbl && statusText) lbl.textContent = statusText;
+  }
+
+  function _bndResetUI() {
+    BND_LAYERS.forEach(l => _bndSetLayer(l, 'pending', 'Pending'));
+    const bar = document.getElementById('bnd-bundle-bar');
+    const pct = document.getElementById('bnd-bundle-pct');
+    if (bar) bar.style.width = '0%';
+    if (pct) pct.textContent = '0%';
+    const phase = document.getElementById('bnd-bundle-phase');
+    if (phase) phase.textContent = 'Uploading…';
+  }
+
   async function uploadBoundaryBundle() {
     const pid = UPLOAD_PROJECT_ID;
-    const fb = 'bnd-bundle-feedback';
+    const fb  = 'bnd-bundle-feedback';
     if (!pid) { setFeedback(fb, 'Pick a target project at the top of the page first.', 'err'); return; }
     const fileEl = document.getElementById('bnd-bundle-file');
     if (!fileEl || !fileEl.files.length) { setFeedback(fb, 'Select a ZIP first.', 'err'); return; }
     const fd = new FormData(); fd.append('file', fileEl.files[0]);
 
-    // Phase 1: upload bytes (XHR so we can show real progress)
-    // Phase 2: server-side extract + import (no progress wire — show indeterminate)
-    setFeedback(fb, 'Uploading… 0%', 'info');
-    let phaseTimer = null;
+    // Reset + show progress panel; lock the button so it can't be re-clicked.
+    const btn      = document.getElementById('bnd-bundle-btn');
+    const panel    = document.getElementById('bnd-bundle-progress');
+    const phaseEl  = document.getElementById('bnd-bundle-phase');
+    const barEl    = document.getElementById('bnd-bundle-bar');
+    const pctEl    = document.getElementById('bnd-bundle-pct');
+    const elapsedEl = document.getElementById('bnd-bundle-elapsed');
+    _bndResetUI();
+    panel.style.display = 'block';
+    setFeedback(fb, '', '');
+    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; btn.style.pointerEvents = 'none'; }
+
+    const t0 = Date.now();
+    const elapsedTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      const m = Math.floor(s / 60);
+      elapsedEl.textContent = m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+    }, 1000);
+
+    // Import-phase animation: walks the active marker through layers based
+    // on the rough ETAs above. Runs until the server responds.
+    let layerWalker = null;
+    function startLayerWalk() {
+      let lvlIdx = 0;
+      let accSec = 0;
+      _bndSetLayer(BND_LAYERS[0], 'active', 'Working');
+      phaseEl.textContent = 'Importing layers (server-side)…';
+      layerWalker = setInterval(() => {
+        const cur = BND_LAYERS[lvlIdx];
+        accSec += 1;
+        // Cap the import-phase progress bar at 95% — we don't *know* the
+        // server is done until the response comes back; reaching 100% would
+        // lie if Grid is still running.
+        const totalEta = BND_LAYERS.reduce((s, l) => s + BND_LAYER_ETAS[l], 0);
+        const elapsedAcrossLayers = BND_LAYERS.slice(0, lvlIdx).reduce((s, l) => s + BND_LAYER_ETAS[l], 0) + accSec;
+        const pct = Math.min(95, Math.round(100 * elapsedAcrossLayers / totalEta));
+        barEl.style.width = pct + '%';
+        pctEl.textContent = pct + '%';
+        if (accSec >= BND_LAYER_ETAS[cur] && lvlIdx < BND_LAYERS.length - 1) {
+          _bndSetLayer(cur, 'done', 'Likely done');
+          lvlIdx += 1;
+          accSec = 0;
+          _bndSetLayer(BND_LAYERS[lvlIdx], 'active', 'Working');
+        }
+      }, 1000);
+    }
+
+    function stopAnimations() {
+      if (layerWalker) { clearInterval(layerWalker); layerWalker = null; }
+      clearInterval(elapsedTimer);
+    }
+
     try {
       const result = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/projects/' + pid + '/boundaries/bundle');
         if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
         xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            setFeedback(fb, `Uploading… ${pct}%`, 'info');
-            if (e.loaded === e.total) {
-              // Transition to processing phase — server is now extracting +
-              // importing four layers; this takes 30s–5min for a state bundle.
-              let dots = 0;
-              setFeedback(fb, 'Processing four layers on the server (this can take a few minutes)…', 'info');
-              phaseTimer = setInterval(() => {
-                dots = (dots + 1) % 4;
-                setFeedback(fb, 'Processing four layers on the server' + '.'.repeat(dots + 1) + ' (still working)', 'info');
-              }, 2500);
-            }
+          if (!e.lengthComputable) return;
+          // First half of the bar (0–50%) tracks bytes upload; second half
+          // tracks the server-side import phase. Keeps the bar useful even
+          // for big ZIPs where the upload itself takes 30s+.
+          const uploadPct = Math.round((e.loaded / e.total) * 50);
+          barEl.style.width = uploadPct + '%';
+          pctEl.textContent = uploadPct + '%';
+          phaseEl.textContent = uploadPct < 50 ? 'Uploading ZIP…' : 'Upload complete — waiting for server…';
+          if (e.loaded === e.total) {
+            startLayerWalk();
           }
         };
         xhr.onload = () => {
-          if (phaseTimer) { clearInterval(phaseTimer); phaseTimer = null; }
+          stopAnimations();
           resolve({ status: xhr.status, body: xhr.responseText, type: xhr.getResponseHeader('content-type') || '' });
         };
         xhr.onerror = () => {
-          if (phaseTimer) { clearInterval(phaseTimer); phaseTimer = null; }
+          stopAnimations();
           reject(new Error('Network failure (possibly an ALB timeout or connection drop). The server may still be processing — check the boundary counts on the Geographic View before retrying.'));
         };
         xhr.send(fd);
@@ -1360,26 +1505,43 @@
       }
 
       if (result.status >= 200 && result.status < 300 && d) {
-        const ok      = (d.levels_uploaded || []).join(', ') || 'none';
-        const missing = (d.levels_missing  || []).join(', ');
-        const failed  = (d.levels_failed   || []).join(', ');
-        let msg = `✓ Uploaded: ${ok}.`;
-        if (missing) msg += ` Missing in zip: ${missing}.`;
-        if (failed)  msg += ` Failed: ${failed} — see server logs for the per-row error.`;
-        setFeedback(fb, msg, failed ? 'warn' : 'ok');
+        const ok      = new Set(d.levels_uploaded || []);
+        const missing = new Set(d.levels_missing  || []);
+        const failed  = new Set(d.levels_failed   || []);
+        BND_LAYERS.forEach(l => {
+          if (failed.has(l))       _bndSetLayer(l, 'failed',  'Failed');
+          else if (ok.has(l))      _bndSetLayer(l, 'done',    'Imported');
+          else if (missing.has(l)) _bndSetLayer(l, 'missing', 'Not in ZIP');
+          else                     _bndSetLayer(l, 'missing', 'Skipped');
+        });
+        barEl.style.width = '100%';
+        pctEl.textContent = '100%';
+        const okList     = [...ok].join(', ') || 'none';
+        const missingArr = [...missing];
+        const failedArr  = [...failed];
+        phaseEl.textContent = failedArr.length
+          ? `Finished with errors on: ${failedArr.join(', ')}`
+          : `Done — imported ${okList}`;
+        let msg = `✓ Imported: ${okList}.`;
+        if (missingArr.length) msg += ` Missing in ZIP: ${missingArr.join(', ')}.`;
+        if (failedArr.length)  msg += ` Failed: ${failedArr.join(', ')} — see server logs for the per-row error.`;
+        setFeedback(fb, msg, failedArr.length ? 'warn' : 'ok');
       } else if (result.status === 502 || result.status === 504 || !d) {
-        // Gateway timeout / non-JSON: the import probably IS still running on the
-        // server. Tell the user to verify rather than blindly retrying.
+        phaseEl.textContent = `Server didn't return cleanly (HTTP ${result.status || '?'}) — import may still be running`;
         setFeedback(fb,
           `Server didn't return a clean response (HTTP ${result.status || '?'}). The import may have partially succeeded — refresh and check the Geographic View. Don't re-upload until you've verified what landed.`,
           'warn');
       } else {
         const detail = d && d.detail ? d.detail : `HTTP ${result.status}`;
+        phaseEl.textContent = 'Error: ' + detail;
         setFeedback(fb, 'Error: ' + detail, 'err');
       }
     } catch(e) {
-      if (phaseTimer) { clearInterval(phaseTimer); }
+      stopAnimations();
+      phaseEl.textContent = 'Failed: ' + e.message;
       setFeedback(fb, 'Network error: ' + e.message, 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.pointerEvents = ''; }
     }
   }
   window.uploadBoundaryBundle = uploadBoundaryBundle;
@@ -1584,7 +1746,7 @@
       // operator: "how many records did this sync add to the dashboard?"
       const newN     = r.rows_new != null ? r.rows_new : 0;
       const fetchedN = r.rows_fetched != null ? r.rows_fetched : 0;
-      const rowsCell = `<span title="Pulled ${fetchedN.toLocaleString()} rows from CommCare, ${newN.toLocaleString()} were new after the watermark filter">${newN.toLocaleString()} new</span>`;
+      const rowsCell = `<span title="Pulled ${fetchedN.toLocaleString()} rows from CommCare, ${newN.toLocaleString()} were new after the watermark filter">${newN.toLocaleString()}</span>`;
       const dur = _humanDuration(r.started_at, r.ended_at);
       return `<tr style="border-top:1px solid var(--line)">
         <td style="padding:10px 14px;color:var(--ink);font-size:12.5px;font-variant-numeric:tabular-nums">${when}</td>

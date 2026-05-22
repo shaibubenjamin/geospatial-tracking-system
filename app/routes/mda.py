@@ -1601,60 +1601,80 @@ async def mda_coverage_lga(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Coverage per LGA — driven by baseline, so every LGA in the round's
-    target appears even if no field forms have come in yet (coverage_pct=0,
-    forms=0, treated=0). This makes "LGAs below 60% → mop-up" and "LGAs on
-    target ≥80%" KPIs reflect the full campaign universe, not just whichever
-    LGAs happened to submit so far.
+    """Coverage per LGA. The universe of LGAs is the union of
+    baseline-targeted LGAs and LGAs that have submitted at least one form.
+
+    Why a union: pre-rollout (no baseline yet) a state still wants the LGA
+    bar chart to show the forms it's already syncing. Post-baseline a
+    targeted LGA must still appear even if zero forms have arrived (so the
+    "below 60% → mop-up" lens is honest about coverage gaps).
     """
-    # Filters that apply on the household side of the join (date/ward).
-    hh_extra_filters: list = ["h.project_id = :pid"]
+    # Filters that apply on the household side (date/ward). pid is added
+    # separately because it gates the household subquery directly.
+    hh_filters: list = ["h.project_id = :pid"]
     params: dict = {"pid": pid}
     if ward:
-        hh_extra_filters.append("h.ward_name = :ward")
+        hh_filters.append("h.ward_name = :ward")
         params["ward"] = ward
     if date_from:
-        hh_extra_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
         params["date_from"] = date_from
     if date_to:
-        hh_extra_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
         params["date_to"] = date_to
-    hh_on_clause = "h.project_id = :pid AND UPPER(TRIM(h.lga)) = b.lga_key" + "".join(
-        " AND " + f for f in hh_extra_filters if f != "h.project_id = :pid"
-    )
+    hh_where = " AND ".join(hh_filters)
 
-    # Optional LGA-name filter applies on the baseline (drives which LGAs appear).
-    baseline_filter = ""
+    # Optional LGA-name filter applies to both baseline and households.
+    lga_filter_baseline = ""
+    lga_filter_hh = ""
     if lga:
-        baseline_filter = "AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga))"
+        lga_filter_baseline = "AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga))"
+        lga_filter_hh = "AND UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))"
         params["lga"] = lga
 
     result = await db.execute(text(f"""
         WITH baseline AS (
           SELECT
-            -- Display the baseline-supplied LGA name (title-cased to match boundary names)
             INITCAP(LOWER(TRIM(lga))) AS lga,
             UPPER(TRIM(lga))          AS lga_key,
             SUM(total_treated)        AS baseline_total
           FROM mda_baseline
-          WHERE project_id = :pid {baseline_filter}
-          GROUP BY INITCAP(LOWER(TRIM(lga))), UPPER(TRIM(lga))
+          WHERE project_id = :pid {lga_filter_baseline}
+            AND lga IS NOT NULL AND TRIM(lga) <> ''
+          GROUP BY 1, 2
+        ),
+        hh AS (
+          SELECT
+            INITCAP(LOWER(TRIM(h.lga))) AS lga,
+            UPPER(TRIM(h.lga))          AS lga_key,
+            COUNT(h.id)                 AS forms,
+            COALESCE(SUM(h.number_of_treated), 0) AS actual_treated,
+            COUNT(DISTINCT h.hq_user)   AS teams,
+            COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_reported
+          FROM mda_households h
+          WHERE {hh_where} {lga_filter_hh}
+            AND h.lga IS NOT NULL AND TRIM(h.lga) <> ''
+          GROUP BY 1, 2
+        ),
+        universe AS (
+          SELECT lga_key, lga FROM baseline
+          UNION
+          SELECT lga_key, lga FROM hh
         )
         SELECT
-          b.lga,
-          COUNT(h.id)                                AS forms,
-          COALESCE(SUM(h.number_of_treated), 0)      AS actual_treated,
-          b.baseline_total,
-          CASE WHEN b.baseline_total > 0
-               THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
-               ELSE 0 END                            AS coverage_pct,
-          COUNT(DISTINCT h.hq_user)                  AS teams,
-          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_reported
-        FROM baseline b
-        LEFT JOIN mda_households h
-          ON {hh_on_clause}
-        GROUP BY b.lga, b.baseline_total
-        ORDER BY coverage_pct DESC, b.lga
+          u.lga,
+          COALESCE(hh.forms, 0)                  AS forms,
+          COALESCE(hh.actual_treated, 0)         AS actual_treated,
+          COALESCE(b.baseline_total, 0)          AS baseline_total,
+          CASE WHEN COALESCE(b.baseline_total, 0) > 0
+               THEN ROUND(100.0 * COALESCE(hh.actual_treated, 0) / b.baseline_total, 1)
+               ELSE 0 END                        AS coverage_pct,
+          COALESCE(hh.teams, 0)                  AS teams,
+          COALESCE(hh.days_reported, 0)          AS days_reported
+        FROM universe u
+        LEFT JOIN baseline b  ON b.lga_key  = u.lga_key
+        LEFT JOIN hh          ON hh.lga_key = u.lga_key
+        ORDER BY coverage_pct DESC, u.lga
     """), params)
     rows = result.fetchall()
     keys = ["lga","forms","actual_treated","baseline_total","coverage_pct","teams","days_reported"]
@@ -1796,9 +1816,14 @@ async def coverage_refusals_analysis(
     # Per-round figures are bounded by each project's campaign_start_date when
     # set, so pre-campaign test rows don't inflate refusal totals or pull the
     # mean-children-per-household ratio off.
+    # Scope rounds to the same state as the selected project — round-over-round
+    # comparisons only make sense within a state (Kano Pilot is not "the round
+    # before Sokoto R4"). Each row carries `is_selected` so the frontend can
+    # pick the active project's summary deterministically rather than guessing.
     rounds_res = await db.execute(text("""
         SELECT
           p.id, p.round_number,
+          (p.id = :pid) AS is_selected,
           (SELECT COUNT(*) FROM mda_households h
              WHERE h.project_id = p.id
                AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
@@ -1817,8 +1842,9 @@ async def coverage_refusals_analysis(
                AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                    >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS consenting_households
         FROM geo_projects p
+        WHERE p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)
         ORDER BY p.round_number NULLS LAST, p.id
-    """))
+    """), {"pid": pid})
     rounds_rows = []
     for r in rounds_res.fetchall():
         tf = int(r.total_forms or 0)
@@ -1827,6 +1853,8 @@ async def coverage_refusals_analysis(
         consenting_hh  = int(r.consenting_households or 0)
         avg_children_per_hh = (consenting_ind / consenting_hh) if consenting_hh > 0 else 0
         rounds_rows.append({
+            "project_id":   r.id,
+            "is_selected":  bool(r.is_selected),
             "round_number": r.round_number,
             "round_label":  f"Round {r.round_number}" if r.round_number is not None else f"P#{r.id}",
             "total_forms":  tf,
