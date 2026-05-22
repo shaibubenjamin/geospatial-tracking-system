@@ -682,7 +682,14 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/rounds/summary")
-async def rounds_summary(db: AsyncSession = Depends(get_db)):
+async def rounds_summary(
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-round summary. When ``project_id`` is supplied, the query scopes
+    to that project's state — so switching to "Kano Round 1" only returns
+    Kano rounds, not Sokoto. With no ``project_id`` it returns every round
+    of every state (the original cross-state view)."""
     # Every per-project subquery filters received_on >= the project's official
     # campaign_start_date (when set) so pre-campaign test submissions are
     # excluded from period dates, totals, refusal counts and QC totals.
@@ -691,6 +698,13 @@ async def rounds_summary(db: AsyncSession = Depends(get_db)):
         AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
             >= COALESCE(p.campaign_start_date, '1900-01-01'::date)
     """
+    state_filter_sql = ""
+    params: dict = {}
+    if project_id is not None:
+        state_filter_sql = """
+        WHERE p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)
+        """
+        params["pid"] = project_id
     res = await db.execute(text(f"""
         WITH per_project AS (
             SELECT
@@ -715,13 +729,14 @@ async def rounds_summary(db: AsyncSession = Depends(get_db)):
                 + (CASE WHEN h.flag_slow_form          THEN 1 ELSE 0 END)
               ),0) FROM mda_households h WHERE h.project_id = p.id {DATE_CLAUSE}) AS qc_flags
             FROM geo_projects p
+            {state_filter_sql}
         )
         SELECT id, state_name, round_number, is_active,
                targeted, administered, period_start, period_end,
                refusals, total_forms, qc_flags
         FROM per_project
         ORDER BY round_number NULLS LAST, id
-    """))
+    """), params)
     out = []
     for r in res.fetchall():
         targeted = int(r.targeted or 0)
@@ -756,11 +771,22 @@ async def rounds_summary(db: AsyncSession = Depends(get_db)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/trends/daily-by-round")
-async def trends_daily_by_round(db: AsyncSession = Depends(get_db)):
+async def trends_daily_by_round(
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Daily series per round. When ``project_id`` is supplied, the response
+    is scoped to that project's state — so switching to Kano returns only
+    Kano rounds, not Sokoto."""
     # Daily series is also bounded by the project's campaign_start_date so the
     # Day-1 alignment used by the Campaign Trends charts matches the official
     # campaign start (e.g. R5 begins Day-1 on 19 May, not the 18 May test).
-    res = await db.execute(text("""
+    state_filter_sql = ""
+    params: dict = {}
+    if project_id is not None:
+        state_filter_sql = "AND p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)"
+        params["pid"] = project_id
+    res = await db.execute(text(f"""
         WITH per_day AS (
             SELECT h.project_id,
                    (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS day,
@@ -771,6 +797,7 @@ async def trends_daily_by_round(db: AsyncSession = Depends(get_db)):
             WHERE h.received_on IS NOT NULL
               AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                   >= COALESCE(p.campaign_start_date, '1900-01-01'::date)
+              {state_filter_sql}
             GROUP BY h.project_id, (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
         ),
         per_project AS (
@@ -785,7 +812,7 @@ async def trends_daily_by_round(db: AsyncSession = Depends(get_db)):
         JOIN per_day d ON d.project_id = p.id
         JOIN per_project pp ON pp.project_id = p.id
         ORDER BY p.round_number NULLS LAST, p.id, d.day
-    """))
+    """), params)
     by_round: dict = {}
     for r in res.fetchall():
         key = r.round_number if r.round_number is not None else f"P{r.project_id}"
@@ -813,8 +840,21 @@ async def trends_daily_by_round(db: AsyncSession = Depends(get_db)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/rounds/lga-compare")
-async def rounds_lga_compare(db: AsyncSession = Depends(get_db)):
-    res = await db.execute(text("""
+async def rounds_lga_compare(
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-LGA cross-round comparison. When ``project_id`` is supplied, the
+    query is scoped to that project's state — so switching to Kano returns
+    only Kano LGAs, not Sokoto."""
+    state_filter_pr = ""  # in per_round CTE (p is geo_projects)
+    state_filter_tr = ""  # in treated CTE   (p is geo_projects, joined)
+    params: dict = {}
+    if project_id is not None:
+        state_filter_pr = "WHERE p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)"
+        state_filter_tr = "AND p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)"
+        params["pid"] = project_id
+    res = await db.execute(text(f"""
         WITH per_round AS (
             SELECT p.id AS project_id,
                    p.round_number,
@@ -822,6 +862,7 @@ async def rounds_lga_compare(db: AsyncSession = Depends(get_db)):
                    COALESCE(SUM(b.total_treated), 0) AS baseline_total
             FROM geo_projects p
             JOIN mda_baseline b ON b.project_id = p.id
+            {state_filter_pr}
             GROUP BY p.id, p.round_number, INITCAP(TRIM(b.lga))
         ),
         treated AS (
@@ -833,6 +874,7 @@ async def rounds_lga_compare(db: AsyncSession = Depends(get_db)):
             WHERE h.lga IS NOT NULL
               AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                   >= COALESCE(p.campaign_start_date, '1900-01-01'::date)
+              {state_filter_tr}
             GROUP BY h.project_id, INITCAP(TRIM(h.lga))
         )
         SELECT pr.project_id, pr.round_number, pr.lga, pr.baseline_total,
@@ -841,7 +883,7 @@ async def rounds_lga_compare(db: AsyncSession = Depends(get_db)):
         FROM per_round pr
         LEFT JOIN treated t ON t.project_id = pr.project_id AND t.lga = pr.lga
         ORDER BY pr.lga, pr.round_number NULLS LAST
-    """))
+    """), params)
     rounds_ordered: list = []
     by_lga: dict = {}
     seen_rounds = []

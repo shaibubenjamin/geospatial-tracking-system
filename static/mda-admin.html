@@ -312,13 +312,22 @@
         <div class="page-head">
           <div>
             <div class="page-title">Data Uploads</div>
-            <div class="page-sub">Upload MDA household data, baseline targets, or supplementary CSV files</div>
+            <div class="page-sub">Upload MDA household data, baseline targets, settlements, or boundary shapefiles</div>
+          </div>
+          <!-- Target-project selector. Every upload on this page scopes to
+               whichever project is selected here (not the globally active
+               one). Defaults to the active project on load. -->
+          <div class="actions" style="display:flex;align-items:center;gap:10px">
+            <label for="uploads-project-selector" style="font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.3px">Upload target:</label>
+            <select id="uploads-project-selector" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;background:#fff;cursor:pointer;min-width:200px">
+              <option value="">Loading projects…</option>
+            </select>
           </div>
         </div>
 
         <div class="alert alert-warn">
           <i class="fa-solid fa-triangle-exclamation"></i>
-          <div><strong>Replace mode:</strong> Each upload replaces all existing records for that data type. This action cannot be undone.</div>
+          <div><strong>Replace mode:</strong> Each upload replaces all existing records for that data type, scoped to the <strong>selected project</strong> above. This action cannot be undone.</div>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
@@ -404,12 +413,9 @@
         <div class="card" style="margin-bottom:18px">
           <div class="card-head">
             <div class="card-title"><i class="fa-solid fa-draw-polygon"></i> Boundary Shapefiles</div>
-            <div class="card-head-right" style="display:flex;gap:8px;align-items:center">
-              <label style="font-size:11.5px;color:var(--muted)">Project</label>
-              <select id="bnd-project-selector" style="border:1.5px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12.5px;background:#fff;cursor:pointer">
-                <option value="">Loading…</option>
-              </select>
-            </div>
+            <!-- Per-card project selector removed; boundary uploads now use
+                 the page-level "Upload target" selector at the top, same as
+                 every other upload on this page. -->
           </div>
           <div class="card-body">
             <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
@@ -641,7 +647,26 @@
               </div>
             </div>
 
-            <div class="card">
+          </div>
+
+          <div>
+            <div class="card" style="margin-bottom:14px">
+              <div class="card-head">
+                <div class="card-title"><i class="fa-solid fa-terminal"></i> Sync Log</div>
+                <div class="card-head-right">
+                  <button class="btn btn-ghost btn-sm" onclick="clearLog()"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </div>
+              <div class="card-body" style="padding:14px">
+                <div class="log-box" id="sync-log">
+<span class="log-entry info">[INFO]  Select a project and configure CommCare credentials to begin.</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sync History — moved under the Sync Log so it's visible
+                 without scrolling past the (long) left-column config cards. -->
+            <div class="card" style="margin-bottom:14px">
               <div class="card-head">
                 <div class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Sync History</div>
                 <div class="card-head-right" style="color:var(--muted);font-size:11.5px">Last 5 runs</div>
@@ -664,23 +689,6 @@
               <div id="sync-last-err-wrap" style="display:none;background:var(--bad-bg);border-top:1px solid #FECACA;padding:10px 18px">
                 <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Latest error</div>
                 <div style="color:var(--bad);font-size:12.5px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace" id="sync-last-err">—</div>
-              </div>
-            </div>
-
-          </div>
-
-          <div>
-            <div class="card" style="margin-bottom:14px">
-              <div class="card-head">
-                <div class="card-title"><i class="fa-solid fa-terminal"></i> Sync Log</div>
-                <div class="card-head-right">
-                  <button class="btn btn-ghost btn-sm" onclick="clearLog()"><i class="fa-solid fa-trash"></i></button>
-                </div>
-              </div>
-              <div class="card-body" style="padding:14px">
-                <div class="log-box" id="sync-log">
-<span class="log-entry info">[INFO]  Select a project and configure CommCare credentials to begin.</span>
-                </div>
               </div>
             </div>
 
@@ -721,17 +729,16 @@
                 <label>Project Name</label>
                 <input type="text" id="proj-name" placeholder="e.g. Sokoto State 2026">
               </div>
-              <div class="form-group">
-                <label>Slug (URL key)</label>
-                <input type="text" id="proj-slug" placeholder="e.g. sokoto-2026">
-              </div>
+              <!-- Slug input removed — the server auto-generates a URL-safe
+                   slug from the name (lowercase, dash-separated, suffixed
+                   with -2/-3 on clash). Power users can PATCH it later. -->
               <div class="form-row">
                 <div class="form-group">
                   <label>State Name</label>
                   <input type="text" id="proj-state" placeholder="e.g. Sokoto">
                 </div>
                 <div class="form-group">
-                  <label>Round #</label>
+                  <label>Round # <span style="color:var(--muted);font-weight:400">(optional)</span></label>
                   <input type="number" id="proj-round" placeholder="e.g. 5" min="1" max="99">
                 </div>
               </div>
@@ -958,6 +965,12 @@
       <div style="flex:1;min-width:0">
         <div id="app-modal-title" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px;letter-spacing:-.2px">Confirm action</div>
         <div id="app-modal-message" style="font-size:13.5px;color:var(--muted);line-height:1.55;word-break:break-word"></div>
+        <!-- Text input shown only by promptDialog. Hidden by default so the
+             same modal element serves alertDialog + confirmDialog without
+             reserving vertical space. -->
+        <input id="app-modal-input" type="text"
+               style="display:none;width:100%;margin-top:14px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;color:var(--ink);background:#f8fafc;outline:none;font-family:inherit"
+               autocomplete="off">
       </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;padding:18px 22px 22px 22px;background:var(--pale);border-top:1px solid var(--line);margin-top:18px">
@@ -1000,6 +1013,9 @@
   }
 
   // Default landing view: superadmin sees Data Uploads; admin sees Users.
+  // Defer the loader call to the end of this IIFE so onViewActivated is in
+  // scope (it's defined later in this script).
+  let _initialView = null;
   (function setDefaultView() {
     const target = isSuperadmin ? 'uploads' : 'users';
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1010,38 +1026,53 @@
     if (viewEl) viewEl.classList.add('active');
     const crumb = document.getElementById('crumb-section');
     if (crumb) crumb.textContent = target === 'uploads' ? 'Data Uploads' : 'Users';
+    _initialView = target;
   })();
 
   function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
   window.handleLogout = handleLogout;
 
-  /* ── Custom confirm / alert modal ── */
+  /* ── Custom confirm / alert / prompt modal ── */
   let _modalCleanup = null;
-  function _openModal({ title, message, confirmLabel, cancelLabel, danger, alertOnly }) {
+  function _openModal({ title, message, confirmLabel, cancelLabel, danger, alertOnly, prompt, promptType, promptValue, promptPlaceholder }) {
     return new Promise(resolve => {
       const el = document.getElementById('app-modal');
       const titleEl = document.getElementById('app-modal-title');
       const msgEl   = document.getElementById('app-modal-message');
+      const inputEl = document.getElementById('app-modal-input');
       const confirmBtn = document.getElementById('app-modal-confirm');
       const cancelBtn  = document.getElementById('app-modal-cancel');
       const iconEl  = document.getElementById('app-modal-icon');
 
-      titleEl.textContent = title || (alertOnly ? 'Notice' : 'Confirm action');
+      titleEl.textContent = title || (alertOnly ? 'Notice' : prompt ? 'Enter value' : 'Confirm action');
       msgEl.textContent   = message || '';
 
-      // Icon + colour: danger → red, alert → amber, default → blue
+      // Prompt mode: show the input, set type + initial value + placeholder.
+      if (prompt) {
+        inputEl.type        = promptType || 'text';
+        inputEl.value       = promptValue || '';
+        inputEl.placeholder = promptPlaceholder || '';
+        inputEl.style.display = '';
+      } else {
+        inputEl.style.display = 'none';
+      }
+
+      // Icon + colour: prompt → blue pencil, danger → red, alert → amber, default → blue ?
       if (danger) {
         iconEl.style.background = 'var(--bad-bg)'; iconEl.style.color = 'var(--bad)';
         iconEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
       } else if (alertOnly) {
         iconEl.style.background = 'var(--warn-bg)'; iconEl.style.color = 'var(--warn)';
         iconEl.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+      } else if (prompt) {
+        iconEl.style.background = 'var(--mist)'; iconEl.style.color = 'var(--blue)';
+        iconEl.innerHTML = '<i class="fa-solid fa-pen-to-square"></i>';
       } else {
         iconEl.style.background = 'var(--mist)'; iconEl.style.color = 'var(--blue)';
         iconEl.innerHTML = '<i class="fa-solid fa-circle-question"></i>';
       }
 
-      confirmBtn.innerHTML = (danger ? '<i class="fa-solid fa-trash"></i> ' : '<i class="fa-solid fa-check"></i> ') + (confirmLabel || (alertOnly ? 'OK' : 'Confirm'));
+      confirmBtn.innerHTML = (danger ? '<i class="fa-solid fa-trash"></i> ' : '<i class="fa-solid fa-check"></i> ') + (confirmLabel || (alertOnly ? 'OK' : prompt ? 'Save' : 'Confirm'));
       confirmBtn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
       cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ' + (cancelLabel || 'Cancel');
       cancelBtn.style.display = alertOnly ? 'none' : '';
@@ -1055,17 +1086,17 @@
         _modalCleanup = null;
         resolve(result);
       };
-      const onOk      = () => close(true);
-      const onCancel  = () => close(false);
-      const onBackdrop= (e) => { if (e.target === el) close(false); };
+      const onOk      = () => close(prompt ? inputEl.value : true);
+      const onCancel  = () => close(prompt ? null : false);
+      const onBackdrop= (e) => { if (e.target === el) onCancel(); };
       const onKey     = (e) => {
-        if (e.key === 'Escape') close(false);
-        if (e.key === 'Enter')  close(true);
+        if (e.key === 'Escape') onCancel();
+        if (e.key === 'Enter')  onOk();
       };
 
       // If a previous modal is mid-flight, force-close it first
       if (_modalCleanup) _modalCleanup();
-      _modalCleanup = () => close(false);
+      _modalCleanup = onCancel;
 
       confirmBtn.addEventListener('click', onOk);
       cancelBtn.addEventListener('click', onCancel);
@@ -1073,11 +1104,14 @@
       document.addEventListener('keydown', onKey);
 
       el.style.display = 'flex';
-      setTimeout(() => confirmBtn.focus(), 30);
+      setTimeout(() => (prompt ? inputEl.focus() : confirmBtn.focus()), 30);
+      if (prompt) setTimeout(() => inputEl.select(), 60);
     });
   }
   window.confirmDialog = (opts) => _openModal({ alertOnly: false, ...opts });
   window.alertDialog   = (opts) => _openModal({ alertOnly: true,  ...opts });
+  // Returns the string the user typed, or null on cancel / backdrop click.
+  window.promptDialog  = (opts) => _openModal({ prompt: true, alertOnly: false, ...opts });
 
   /* ── API HELPER ── */
   async function api(path, opts = {}) {
@@ -1110,7 +1144,7 @@
   });
 
   function onViewActivated(v) {
-    if (v === 'uploads')  { loadUploadHistory(); _populateBoundaryProjectSelector(); }
+    if (v === 'uploads')  { loadUploadHistory(); loadUploadProjectSelector(); }
     if (v === 'projects') { loadProjects(); }
     if (v === 'users')    { loadUsers(); }
     if (v === 'system')   { loadSystemStatus(); }
@@ -1122,6 +1156,12 @@
       stopSyncQueuePolling();
     }
   }
+
+  // Now that onViewActivated is defined, fire the loaders for the default
+  // view selected at boot. Previously these only ran on a nav click, so the
+  // initial render of Data Uploads / Users had blank tables until the user
+  // clicked something.
+  if (_initialView) onViewActivated(_initialView);
 
   /* ── ACCOUNT: change-password form ── */
   function resetPasswordForm() {
@@ -1207,14 +1247,55 @@
   }
   window.onFileSelected = onFileSelected;
 
+  // Per-page target-project state for the Data Uploads section. Set by the
+  // selector at the top of that view; every upload routes through this pid
+  // so a sync run never bleeds into the wrong project.
+  let UPLOAD_PROJECT_ID = null;
+
+  async function loadUploadProjectSelector() {
+    const sel = document.getElementById('uploads-project-selector');
+    if (!sel) return;
+    const res = await api('/api/projects');
+    if (!res || !res.ok) { sel.innerHTML = '<option value="">Failed to load</option>'; return; }
+    const projects = await res.json();
+    if (!projects.length) { sel.innerHTML = '<option value="">No projects</option>'; return; }
+    // Active first, state ASC, round DESC (matches the dashboard's sort).
+    projects.sort((a, b) => {
+      if (a.is_active && !b.is_active) return -1;
+      if (!a.is_active && b.is_active) return 1;
+      const sa = (a.state_name || '').localeCompare(b.state_name || '');
+      if (sa !== 0) return sa;
+      return (b.round_number || 0) - (a.round_number || 0);
+    });
+    const active = projects.find(p => p.is_active) || projects[0];
+    if (UPLOAD_PROJECT_ID == null) UPLOAD_PROJECT_ID = active ? active.id : null;
+    sel.innerHTML = projects.map(p => {
+      const round = p.round_number != null ? ` Round ${p.round_number}` : '';
+      const lbl   = p.state_name ? `${p.state_name}${round}${p.is_active ? ' (live)' : ''}` : (p.name || `Project ${p.id}`);
+      const s     = p.id === UPLOAD_PROJECT_ID ? ' selected' : '';
+      return `<option value="${p.id}"${s}>${lbl}</option>`;
+    }).join('');
+    sel.onchange = () => { UPLOAD_PROJECT_ID = parseInt(sel.value, 10) || null; };
+  }
+  window.loadUploadProjectSelector = loadUploadProjectSelector;
+
+  function _withUploadPid(endpoint) {
+    if (UPLOAD_PROJECT_ID == null) return endpoint;
+    return endpoint + (endpoint.includes('?') ? '&' : '?') + 'project_id=' + UPLOAD_PROJECT_ID;
+  }
+
   async function uploadFile(fileInputId, endpoint, feedbackId) {
     const input = document.getElementById(fileInputId);
     if (!input.files.length) { setFeedback(feedbackId, 'Please select a file first.', 'err'); return; }
+    if (!UPLOAD_PROJECT_ID) {
+      setFeedback(feedbackId, 'Pick a target project at the top of the page first.', 'err');
+      return;
+    }
     setFeedback(feedbackId, 'Uploading…', 'info');
     const fd = new FormData();
     fd.append('file', input.files[0]);
     try {
-      const res = await api(endpoint, { method: 'POST', body: fd });
+      const res = await api(_withUploadPid(endpoint), { method: 'POST', body: fd });
       if (!res) return;
       const d = await res.json();
       if (res.ok) {
@@ -1236,33 +1317,14 @@
   window.uploadMLOS     = () => uploadFile('mlos-file', '/api/mda/upload-mlos',    'mlos-feedback');
 
   /* ── BOUNDARY SHAPEFILE UPLOADS ── */
-  // Boundary endpoints live under /api/projects/{id}/boundaries/{level} and
-  // require a project_id (state-scoped, not active-round-scoped). We populate
-  // the selector with all projects and POST a ZIP per level.
-  async function _populateBoundaryProjectSelector() {
-    const sel = document.getElementById('bnd-project-selector');
-    if (!sel) return;
-    try {
-      const res = await api('/api/projects');
-      if (!res || !res.ok) { sel.innerHTML = '<option value="">Failed to load</option>'; return; }
-      const projects = await res.json();
-      if (!projects.length) { sel.innerHTML = '<option value="">No projects yet</option>'; return; }
-      sel.innerHTML = '';
-      projects.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name + (p.is_active ? ' (active)' : '');
-        if (p.is_active) opt.selected = true;
-        sel.appendChild(opt);
-      });
-    } catch(e) { sel.innerHTML = '<option value="">Failed to load</option>'; }
-  }
-
+  // Boundary endpoints live under /api/projects/{id}/boundaries/{level}.
+  // They now share the page-level UPLOAD_PROJECT_ID rather than having
+  // their own selector — one selector at the top governs every upload on
+  // the Data Uploads page.
   async function uploadBoundary(level) {
-    const sel = document.getElementById('bnd-project-selector');
-    const pid = sel?.value;
+    const pid = UPLOAD_PROJECT_ID;
     const fb = 'bnd-' + (level === 'settlement' ? 'sett' : level) + '-feedback';
-    if (!pid) { setFeedback(fb, 'Select a project first.', 'err'); return; }
+    if (!pid) { setFeedback(fb, 'Pick a target project at the top of the page first.', 'err'); return; }
     const fileEl = document.getElementById('bnd-' + (level === 'settlement' ? 'sett' : level) + '-file');
     if (!fileEl || !fileEl.files.length) { setFeedback(fb, 'Select a ZIP first.', 'err'); return; }
     const fd = new FormData(); fd.append('file', fileEl.files[0]);
@@ -1374,7 +1436,14 @@
     const res = await api('/api/projects');
     if (!res || !res.ok) { sel.innerHTML = '<option value="">Failed to load</option>'; return; }
     const projects = await res.json();
-    projects.sort((a,b) => (a.state_name||'').localeCompare(b.state_name||'') || (a.round_number||0) - (b.round_number||0));
+    // Active project first, then state ASC, then round DESC (newest round per state).
+    projects.sort((a,b) => {
+      if (a.is_active && !b.is_active) return -1;
+      if (!a.is_active && b.is_active) return 1;
+      const sa = (a.state_name||'').localeCompare(b.state_name||'');
+      if (sa !== 0) return sa;
+      return (b.round_number||0) - (a.round_number||0);
+    });
     // Default: active project
     const active = projects.find(p => p.is_active) || projects[0];
     SYNC_PROJECT_ID = SYNC_PROJECT_ID || (active && active.id) || null;
@@ -1940,12 +2009,13 @@
 
   window.createProject = async function() {
     const name = document.getElementById('proj-name').value.trim();
-    const slug = document.getElementById('proj-slug').value.trim();
     const desc = document.getElementById('proj-desc').value.trim();
     const stateVal = (document.getElementById('proj-state')?.value || '').trim();
     const roundRaw = (document.getElementById('proj-round')?.value || '').trim();
-    if (!name || !slug) { setFeedback('proj-feedback', 'Name and slug are required.', 'err'); return; }
-    const body = { name, slug, description: desc };
+    if (!name) { setFeedback('proj-feedback', 'Project name is required.', 'err'); return; }
+    // Slug is server-derived from the name (lowercase, dash-separated,
+    // suffixed -2/-3 on clash). No client-side input needed.
+    const body = { name, description: desc };
     if (stateVal) body.state_name = stateVal;
     if (roundRaw)  body.round_number = parseInt(roundRaw, 10);
     try {
@@ -1954,7 +2024,7 @@
       const d = await res.json();
       if (res.ok) {
         setFeedback('proj-feedback', '✓ Project "' + name + '" created.', 'ok');
-        ['proj-name','proj-slug','proj-desc','proj-state','proj-round'].forEach(id => {
+        ['proj-name','proj-desc','proj-state','proj-round'].forEach(id => {
           const el = document.getElementById(id); if (el) el.value = '';
         });
         loadProjects();
@@ -1977,12 +2047,24 @@
   };
 
   window.editProject = async function(id, currentName, currentDesc) {
-    // Prompt-driven inline editor — keeps the UI simple and works for the
-    // two fields the backend's ProjectUpdate schema accepts (name, description).
-    const newName = window.prompt('Project name:', currentName || '');
+    // Custom modal-driven inline editor — keeps the UX consistent with the
+    // rest of the admin panel (no browser-chrome "site says" dialogs).
+    const newName = await promptDialog({
+      title:        'Edit project name',
+      message:      'Update the display name shown across the dashboard.',
+      promptValue:  currentName || '',
+      promptPlaceholder: 'e.g. Sokoto Round 5',
+      confirmLabel: 'Next',
+    });
     if (newName === null) return;
     if (!newName.trim()) { await alertDialog({ title: 'Validation', message: 'Project name cannot be empty.' }); return; }
-    const newDesc = window.prompt('Description (optional):', currentDesc || '');
+    const newDesc = await promptDialog({
+      title:        'Edit description',
+      message:      'Optional — a short note about this project (state, round, scope).',
+      promptValue:  currentDesc || '',
+      promptPlaceholder: 'Optional description',
+      confirmLabel: 'Save',
+    });
     if (newDesc === null) return;
     const body = { name: newName.trim(), description: newDesc };
     const res = await api('/api/projects/' + id, {
@@ -2175,11 +2257,14 @@
 
   window.resetUserPassword = async function(id, uname) {
     // Superadmin override — bypasses the current-password check.
-    // Prompted instead of a custom modal because we only need one input.
-    const newPw = window.prompt(
-      `Set a new password for "${uname}". They'll need to use this on their next sign-in. Minimum 8 characters.`,
-      ''
-    );
+    const newPw = await promptDialog({
+      title:             `Reset password for "${uname}"`,
+      message:           "They'll need to use this on their next sign-in. Minimum 8 characters.",
+      promptType:        'password',
+      promptValue:       '',
+      promptPlaceholder: 'New password (≥ 8 chars)',
+      confirmLabel:      'Next',
+    });
     if (newPw === null) return;
     if (newPw.length < 8) {
       await alertDialog({ title: 'Too short', message: 'Password must be at least 8 characters.', danger: true });
