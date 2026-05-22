@@ -332,6 +332,11 @@ class SyncConfig(Base):
     # Live progress for the currently-running sync (polled by the admin panel)
     last_progress_step = Column(Integer)   # feeds processed so far in this run
     last_progress_total = Column(Integer)  # total feeds for this run (= len(form_ids) * 2)
+    # Auto-sync scheduler. When auto_sync_enabled is TRUE, sync_worker's
+    # scheduler_loop enqueues a job for this project every
+    # auto_sync_interval_minutes (measured from last_synced_at). Opt-in.
+    auto_sync_enabled          = Column(Boolean, default=False, server_default='false', nullable=False)
+    auto_sync_interval_minutes = Column(Integer, default=60,    server_default='60',    nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
