@@ -43,6 +43,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+import asyncio
 import httpx
 import psycopg2
 import psycopg2.extras
@@ -442,24 +443,38 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                 set_feeds: List[Dict[str, Any]] = []
 
                 try:
-                    # 4a. Fetch both record types for this set
-                    for rt in ("household", "individual"):
-                        cur.execute("""
-                            SELECT last_received_on FROM sync_feed_state
-                            WHERE project_id=%s AND form_id=%s AND record_type=%s
-                        """, (project_id, form_id, rt))
-                        wm_row = cur.fetchone()
-                        since = wm_row["last_received_on"] if wm_row else None
+                    # 4a. Read both watermarks (cheap DB lookups), then fetch
+                    #     household + individual feeds CONCURRENTLY. Sequential
+                    #     fetch was the dominant cost in steady-state syncs —
+                    #     each set's two feeds add up to ~2 min wall-time;
+                    #     running them in parallel halves that. We still
+                    #     persist sequentially set-by-set so the transaction
+                    #     discipline (and the "cancel between sets" semantics)
+                    #     don't change.
+                    cur.execute("""
+                        SELECT record_type, last_received_on FROM sync_feed_state
+                        WHERE project_id=%s AND form_id=%s AND record_type IN ('household','individual')
+                    """, (project_id, form_id))
+                    wm_by_rt = {row["record_type"]: row["last_received_on"] for row in cur.fetchall()}
+                    hh_since   = wm_by_rt.get("household")
+                    indv_since = wm_by_rt.get("individual")
 
-                        url = _feed_url(cfg["base_url"], cfg["app_slug"], form_id, rt)
-                        try:
-                            rows = await _fetch_all_pages(url, auth, since, client)
-                        except httpx.HTTPStatusError as e:
-                            # Convert to RuntimeError tagged with set/rt so the outer
-                            # set-level except catches it and we record per-set failure.
-                            raise RuntimeError(
-                                f"{set_name}/{rt} HTTP {e.response.status_code}: {e.response.text[:200]}"
-                            ) from e
+                    hh_url   = _feed_url(cfg["base_url"], cfg["app_slug"], form_id, "household")
+                    indv_url = _feed_url(cfg["base_url"], cfg["app_slug"], form_id, "individual")
+
+                    try:
+                        hh_rows, indv_rows = await asyncio.gather(
+                            _fetch_all_pages(hh_url,   auth, hh_since,   client),
+                            _fetch_all_pages(indv_url, auth, indv_since, client),
+                        )
+                    except httpx.HTTPStatusError as e:
+                        raise RuntimeError(
+                            f"{set_name}/{'household' if e.request.url.path.endswith('/feed') else 'individual'} HTTP {e.response.status_code}: {e.response.text[:200]}"
+                        ) from e
+
+                    # Iterate the two record types using the in-memory results.
+                    for rt, rows, since in (("household", hh_rows, hh_since),
+                                            ("individual", indv_rows, indv_since)):
 
                         # Client-side incremental filter.
                         #
@@ -546,6 +561,16 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                     )
                     conn.commit()
                     sets_succeeded.append(set_name)
+                    # Stash the count of rows that actually got written this
+                    # run so we can report "X new" on the history table —
+                    # the user said the existing "rows fetched" number is
+                    # misleading after the watermark filter started skipping
+                    # most rows in each fetch.
+                    for f in set_feeds:
+                        if f["record_type"] == "household":
+                            f["new_rows"] = len(set_households)
+                        elif f["record_type"] == "individual":
+                            f["new_rows"] = len(set_individuals)
                     per_feed.extend(set_feeds)
                     logger.info(
                         "Set %s persisted: %d households + %d individuals",
@@ -594,7 +619,11 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
         #    wins when the user pressed Stop — even if some sets succeeded,
         #    we report that the run was cut short so the UI can show the
         #    right chip + tooltip.
-        total_fetched = sum(f["fetched"] for f in per_feed)
+        # ``total_fetched`` counts rows from CommCare. ``total_new`` counts
+        # the rows that actually got written to the DB after the watermark
+        # filter (the meaningful number for the operator).
+        total_fetched = sum(f["fetched"]               for f in per_feed)
+        total_new     = sum(f.get("new_rows", 0)       for f in per_feed)
         if cancelled:
             final_status = "cancelled"
             final_error  = f"Stopped by user after {len(sets_succeeded)} set(s) completed."
@@ -608,18 +637,22 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
             final_status = "ok"
             final_error = None
 
+        # last_row_count on sync_config = NEW rows written this run (what
+        # the operator cares about). rows_fetched on sync_history stays as
+        # the raw CommCare row count for audit; we also store rows_new in
+        # a new column the UI reads.
         ph_cur.execute("""
             UPDATE sync_config SET
               last_status=%s, last_synced_at=NOW(),
               last_row_count=%s, last_error=%s,
               last_progress_step=last_progress_total
             WHERE project_id=%s
-        """, (final_status, total_fetched, final_error, project_id))
+        """, (final_status, total_new, final_error, project_id))
         ph_cur.execute("""
             UPDATE sync_history SET
-              status=%s, ended_at=NOW(), rows_fetched=%s, error_message=%s
+              status=%s, ended_at=NOW(), rows_fetched=%s, rows_new=%s, error_message=%s
             WHERE id=%s
-        """, (final_status, total_fetched, final_error, history_id))
+        """, (final_status, total_fetched, total_new, final_error, history_id))
         conn.commit()
 
         return {

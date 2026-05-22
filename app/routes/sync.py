@@ -156,7 +156,9 @@ async def get_history(
     """Most-recent N sync runs for this project (default 5)."""
     limit = max(1, min(limit, 50))  # safety cap
     res = await db.execute(text("""
-        SELECT id, started_at, ended_at, status, rows_fetched, error_message
+        SELECT id, started_at, ended_at, status,
+               rows_fetched, COALESCE(rows_new, 0) AS rows_new,
+               error_message
         FROM sync_history
         WHERE project_id = :pid
         ORDER BY started_at DESC
