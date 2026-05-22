@@ -9,8 +9,13 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
 
-  idle_timeout = 120 # the app's longest request (sync trigger) returns sub-second now;
-  # 120s is enough headroom for the longest dashboard query too.
+  idle_timeout = 600 # Bumped 2026-05-22 from 120s. The state-boundary
+  # bundle upload extracts a ~30 MB ZIP, reprojects four shapefiles, and
+  # inserts up to ~200k polygon rows into PostGIS — clearly more than 120s
+  # for a state with grid cells. The sync trigger itself is still sub-
+  # second (it just enqueues); 600s only matters for the bundle upload
+  # and the occasional very large geo export. Idle timeout is only billed
+  # while a request is actually open; no cost impact at rest.
 
   tags = { Name = "${var.project_name}-alb" }
 }
