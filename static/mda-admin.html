@@ -340,13 +340,13 @@
             </div>
             <div class="card-body">
               <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
-                Upload the MDA workbook (<code>.xlsx</code>). Must contain a <b>Forms</b> sheet and optionally a <b>Repeat-group_indv</b> sheet.
+                Upload the MDA file (<code>.xlsx</code> or <code>.csv</code>). For <code>.xlsx</code>: must contain a <b>Forms</b> sheet and optionally a <b>Repeat-group_indv</b> sheet. For <code>.csv</code>: treated as the Forms sheet only — individuals stay at their current values (use <code>.xlsx</code> if you also need to refresh individuals).
               </p>
               <div class="upload-zone" id="mda-drop" onclick="document.getElementById('mda-file').click()">
                 <i class="fa-solid fa-file-excel"></i>
-                <div class="uz-title">Click to select MDA workbook</div>
-                <div class="uz-sub">Accepts .xlsx &bull; Excel format</div>
-                <input type="file" id="mda-file" accept=".xlsx" onchange="onFileSelected('mda-file','mda-file-label')">
+                <div class="uz-title">Click to select MDA file</div>
+                <div class="uz-sub">Accepts .xlsx or .csv</div>
+                <input type="file" id="mda-file" accept=".xlsx,.csv" onchange="onFileSelected('mda-file','mda-file-label')">
               </div>
               <div id="mda-file-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600"></div>
               <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="uploadMDA()">
@@ -363,13 +363,13 @@
             </div>
             <div class="card-body">
               <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
-                Upload the baseline enumeration workbook (<code>.xlsx</code>) with State, LGA, Ward, Settlement, and Total Treated columns.
+                Upload the baseline enumeration file (<code>.xlsx</code> or <code>.csv</code>) with <b>State, LGA, Ward, Settlement, Total Treated</b> columns. The R5 Target multi-sheet format requires <code>.xlsx</code>; CSV uploads use the simpler single-sheet pivot.
               </p>
               <div class="upload-zone" id="bl-drop" onclick="document.getElementById('bl-file').click()">
                 <i class="fa-solid fa-file-circle-check"></i>
                 <div class="uz-title">Click to select baseline file</div>
-                <div class="uz-sub">Accepts .xlsx &bull; Excel format</div>
-                <input type="file" id="bl-file" accept=".xlsx" onchange="onFileSelected('bl-file','bl-file-label')">
+                <div class="uz-sub">Accepts .xlsx or .csv</div>
+                <input type="file" id="bl-file" accept=".xlsx,.csv" onchange="onFileSelected('bl-file','bl-file-label')">
               </div>
               <div id="bl-file-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600"></div>
               <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="uploadBaseline()">
@@ -396,9 +396,9 @@
             </p>
             <div class="upload-zone" id="mlos-drop" onclick="document.getElementById('mlos-file').click()">
               <i class="fa-solid fa-file-excel"></i>
-              <div class="uz-title">Click to select MLOS workbook</div>
-              <div class="uz-sub">Accepts .xlsx &bull; SARMAAN MLOS workbook</div>
-              <input type="file" id="mlos-file" accept=".xlsx" onchange="onFileSelected('mlos-file','mlos-file-label')">
+              <div class="uz-title">Click to select MLOS file</div>
+              <div class="uz-sub">Accepts .xlsx or .csv</div>
+              <input type="file" id="mlos-file" accept=".xlsx,.csv" onchange="onFileSelected('mlos-file','mlos-file-label')">
             </div>
             <div id="mlos-file-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600"></div>
             <button class="btn btn-primary" style="margin-top:12px" onclick="uploadMLOS()">
@@ -408,56 +408,35 @@
           </div>
         </div>
 
-        <!-- Boundary Shapefiles — per-project shapefile ZIPs for LGA / Ward /
-             Settlement / Grid layers. Required once per state (shared across
-             rounds in that state). -->
+        <!-- Boundary Shapefiles — single ZIP containing all four levels:
+             LGA, Ward, Settlement, Grid. Required once per state (shared
+             across rounds in that state). The backend identifies each
+             layer case-insensitively from the .shp basename inside the
+             ZIP (e.g. lga.shp, ward.shp, Settlement.shp, Gridded.shp). -->
         <div class="card" style="margin-bottom:18px">
           <div class="card-head">
-            <div class="card-title"><i class="fa-solid fa-draw-polygon"></i> Boundary Shapefiles</div>
-            <!-- Per-card project selector removed; boundary uploads now use
-                 the page-level "Upload target" selector at the top, same as
-                 every other upload on this page. -->
+            <div class="card-title"><i class="fa-solid fa-draw-polygon"></i> State Boundary Shapefiles</div>
           </div>
           <div class="card-body">
-            <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
-              Upload <b>shapefile ZIPs</b> (each must contain .shp, .shx, .dbf, .prj for one boundary level).
-              Upload them in order — LGA first, then Ward, then Settlement, then Grid. Boundaries are
-              shared across rounds in the same state.
+            <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.55">
+              Upload <strong>one ZIP</strong> containing all four boundary levels for the state:
+              LGA, Ward, Settlement, and Grid. Each layer is recognised by its <code>.shp</code> filename
+              (case-insensitive substring match — <code>lga</code>, <code>ward</code>, <code>settlement</code>,
+              <code>grid</code> / <code>gridded</code>). Companion sidecars (<code>.shx</code>,
+              <code>.dbf</code>, <code>.prj</code>, optional <code>.cpg</code>) must share the same basename.
+              Boundaries are shared across all rounds in the same state.
             </p>
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
-              <!-- LGA -->
-              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
-                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-1"></i> LGA Boundaries</div>
-                <input type="file" id="bnd-lga-file" accept=".zip" onchange="onFileSelected('bnd-lga-file','bnd-lga-label')" style="font-size:12px;width:100%">
-                <div id="bnd-lga-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
-                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('lga')"><i class="fa-solid fa-upload"></i> Upload LGA ZIP</button>
-                <div class="inline-feedback" id="bnd-lga-feedback"></div>
-              </div>
-              <!-- Ward -->
-              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
-                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-2"></i> Ward Boundaries</div>
-                <input type="file" id="bnd-ward-file" accept=".zip" onchange="onFileSelected('bnd-ward-file','bnd-ward-label')" style="font-size:12px;width:100%">
-                <div id="bnd-ward-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
-                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('ward')"><i class="fa-solid fa-upload"></i> Upload Ward ZIP</button>
-                <div class="inline-feedback" id="bnd-ward-feedback"></div>
-              </div>
-              <!-- Settlement -->
-              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
-                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-3"></i> Settlement Boundaries</div>
-                <input type="file" id="bnd-sett-file" accept=".zip" onchange="onFileSelected('bnd-sett-file','bnd-sett-label')" style="font-size:12px;width:100%">
-                <div id="bnd-sett-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
-                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('settlement')"><i class="fa-solid fa-upload"></i> Upload Settlement ZIP</button>
-                <div class="inline-feedback" id="bnd-sett-feedback"></div>
-              </div>
-              <!-- Grid -->
-              <div style="border:1px solid var(--line);border-radius:10px;padding:12px">
-                <div style="font-weight:600;font-size:13px;margin-bottom:8px"><i class="fa-solid fa-4"></i> Grid Boundaries</div>
-                <input type="file" id="bnd-grid-file" accept=".zip" onchange="onFileSelected('bnd-grid-file','bnd-grid-label')" style="font-size:12px;width:100%">
-                <div id="bnd-grid-label" style="font-size:11px;color:var(--blue);margin-top:6px;font-weight:600;min-height:14px"></div>
-                <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="uploadBoundary('grid')"><i class="fa-solid fa-upload"></i> Upload Grid ZIP</button>
-                <div class="inline-feedback" id="bnd-grid-feedback"></div>
-              </div>
+            <div class="upload-zone" id="bnd-bundle-drop" onclick="document.getElementById('bnd-bundle-file').click()">
+              <i class="fa-solid fa-file-zipper"></i>
+              <div class="uz-title">Click to select state boundaries ZIP</div>
+              <div class="uz-sub">Accepts .zip &bull; LGA + Ward + Settlement + Grid in one file</div>
+              <input type="file" id="bnd-bundle-file" accept=".zip" onchange="onFileSelected('bnd-bundle-file','bnd-bundle-label')">
             </div>
+            <div id="bnd-bundle-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600;min-height:16px"></div>
+            <button class="btn btn-primary" style="margin-top:12px" onclick="uploadBoundaryBundle()">
+              <i class="fa-solid fa-upload"></i> Upload Bundle
+            </button>
+            <div class="inline-feedback" id="bnd-bundle-feedback"></div>
           </div>
         </div>
 
@@ -1320,25 +1299,29 @@
   window.uploadMLOS     = () => uploadFile('mlos-file', '/api/mda/upload-mlos',    'mlos-feedback');
 
   /* ── BOUNDARY SHAPEFILE UPLOADS ── */
-  // Boundary endpoints live under /api/projects/{id}/boundaries/{level}.
-  // They now share the page-level UPLOAD_PROJECT_ID rather than having
-  // their own selector — one selector at the top governs every upload on
-  // the Data Uploads page.
-  async function uploadBoundary(level) {
+  // Boundary bundle upload: one ZIP, all four levels. Hits
+  // /api/projects/{pid}/boundaries/bundle which extracts the ZIP, classifies
+  // each .shp by basename, and calls the per-level importer.
+  async function uploadBoundaryBundle() {
     const pid = UPLOAD_PROJECT_ID;
-    const fb = 'bnd-' + (level === 'settlement' ? 'sett' : level) + '-feedback';
+    const fb = 'bnd-bundle-feedback';
     if (!pid) { setFeedback(fb, 'Pick a target project at the top of the page first.', 'err'); return; }
-    const fileEl = document.getElementById('bnd-' + (level === 'settlement' ? 'sett' : level) + '-file');
+    const fileEl = document.getElementById('bnd-bundle-file');
     if (!fileEl || !fileEl.files.length) { setFeedback(fb, 'Select a ZIP first.', 'err'); return; }
     const fd = new FormData(); fd.append('file', fileEl.files[0]);
-    setFeedback(fb, 'Uploading…', 'info');
+    setFeedback(fb, 'Uploading and processing four layers (may take a minute)…', 'info');
     try {
-      const res = await api('/api/projects/' + pid + '/boundaries/' + level, { method: 'POST', body: fd });
+      const res = await api('/api/projects/' + pid + '/boundaries/bundle', { method: 'POST', body: fd });
       if (!res) return;
       const d = await res.json();
       if (res.ok) {
-        const inserted = d.inserted ?? d.rows_inserted ?? d.imported ?? '';
-        setFeedback(fb, '✓ Uploaded' + (inserted !== '' ? ' (' + Number(inserted).toLocaleString() + ' rows)' : '') + '.', 'ok');
+        const ok      = (d.levels_uploaded || []).join(', ') || 'none';
+        const missing = (d.levels_missing  || []).join(', ');
+        const failed  = (d.levels_failed   || []).join(', ');
+        let msg = `✓ Uploaded: ${ok}.`;
+        if (missing) msg += ` Missing in zip: ${missing}.`;
+        if (failed)  msg += ` Failed: ${failed}.`;
+        setFeedback(fb, msg, failed ? 'warn' : 'ok');
       } else {
         setFeedback(fb, 'Error: ' + (d.detail || 'Upload failed'), 'err');
       }
@@ -1346,7 +1329,7 @@
       setFeedback(fb, 'Network error: ' + e.message, 'err');
     }
   }
-  window.uploadBoundary = uploadBoundary;
+  window.uploadBoundaryBundle = uploadBoundaryBundle;
 
   /* ── UPLOAD HISTORY ── */
   async function loadUploadHistory() {

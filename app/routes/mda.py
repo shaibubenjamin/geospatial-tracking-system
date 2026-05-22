@@ -181,29 +181,43 @@ async def upload_mda(
     Parses Forms sheet (households) and Repeat-group_indv sheet (individuals).
     Returns QC flag summary counts.
     """
-    if not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="File must be an .xlsx workbook")
+    fname = (file.filename or "").lower()
+    if not (fname.endswith(".xlsx") or fname.endswith(".csv")):
+        raise HTTPException(status_code=400, detail="File must be .xlsx or .csv")
 
     raw_bytes = await file.read()
 
-    # ── Parse workbook ──────────────────────────────────────────────────────
-    try:
-        wb = openpyxl.load_workbook(
-            io.BytesIO(raw_bytes), read_only=True, data_only=True
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Cannot open workbook: {exc}")
+    # ── Read input ──────────────────────────────────────────────────────────
+    # CSV path treats the whole file as the Forms sheet (households only — no
+    # individual repeat-group). For full ingest with individuals, the user
+    # should upload an .xlsx with Forms + Repeat-group_indv sheets.
+    wb = None  # only set for xlsx path; used later for individuals parse
+    if fname.endswith(".csv"):
+        import csv as _csv
+        try:
+            text_blob = raw_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text_blob = raw_bytes.decode("latin-1")
+        reader = _csv.reader(io.StringIO(text_blob))
+        rows_forms = [tuple(r) for r in reader]
+    else:
+        try:
+            wb = openpyxl.load_workbook(
+                io.BytesIO(raw_bytes), read_only=True, data_only=True
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Cannot open workbook: {exc}")
 
-    sheet_names = wb.sheetnames
-    if "Forms" not in sheet_names:
-        raise HTTPException(status_code=400, detail="Workbook must contain a 'Forms' sheet")
+        sheet_names = wb.sheetnames
+        if "Forms" not in sheet_names:
+            raise HTTPException(status_code=400, detail="Workbook must contain a 'Forms' sheet")
 
-    # ── Parse Forms (households) ─────────────────────────────────────────────
-    ws_forms = wb["Forms"]
+        # ── Parse Forms (households) ─────────────────────────────────────────────
+        ws_forms = wb["Forms"]
+        rows_forms = list(ws_forms.iter_rows(values_only=True))
+
     households: List[Dict[str, Any]] = []
     seen_formids: Dict[str, int] = {}   # formid → first occurrence index
-
-    rows_forms = list(ws_forms.iter_rows(values_only=True))
     # Row 0 is the header — skip it
     for row_idx, row in enumerate(rows_forms[1:], start=1):
         def cell(idx):
@@ -335,10 +349,13 @@ async def upload_mda(
         })
 
     # ── Parse Repeat-group_indv (individuals) ────────────────────────────────
+    # CSV uploads can't carry the individuals repeat-group — they're a separate
+    # sheet in the canonical SARMAAN workbook. CSV path skips this section so
+    # households still upsert; individuals stay at whatever's currently in the DB.
     individuals: List[Dict[str, Any]] = []
     valid_hh_formids = {h["formid"] for h in households if not h["flag_duplicate"]}
 
-    if "Repeat- group_indv" in sheet_names:
+    if wb is not None and "Repeat- group_indv" in wb.sheetnames:
         ws_indv = wb["Repeat- group_indv"]
         rows_indv = list(ws_indv.iter_rows(values_only=True))
         for row in rows_indv[1:]:
@@ -386,7 +403,8 @@ async def upload_mda(
                 "flag_orphan": flag_orphan,
             })
 
-    wb.close()
+    if wb is not None:
+        wb.close()
 
     # ── Bulk insert via psycopg2 ─────────────────────────────────────────────
     conn = _get_sync_conn()
@@ -2425,29 +2443,41 @@ async def upload_mlos(
     confirm/enrich ward_name from the authoritative polygon geometry.
     Replaces mlos_settlements rows for the active project only.
     """
-    if not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(400, "File must be .xlsx")
+    fname = (file.filename or "").lower()
+    if not (fname.endswith(".xlsx") or fname.endswith(".csv")):
+        raise HTTPException(400, "File must be .xlsx or .csv")
     raw = await file.read()
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-    except Exception as e:
-        raise HTTPException(400, f"Cannot open workbook: {e}")
 
-    ws = wb[wb.sheetnames[0]]
-    rows_raw = list(ws.iter_rows(min_row=2, values_only=True))
-    wb.close()
+    # Read either flavour into a uniform list-of-tuples (skipping header)
+    if fname.endswith(".csv"):
+        import csv as _csv
+        try:
+            text_blob = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text_blob = raw.decode("latin-1")
+        reader = _csv.reader(io.StringIO(text_blob))
+        all_rows = list(reader)
+        rows_raw = [tuple(r) for r in all_rows[1:]] if all_rows else []
+    else:
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        except Exception as e:
+            raise HTTPException(400, f"Cannot open workbook: {e}")
+        ws = wb[wb.sheetnames[0]]
+        rows_raw = list(ws.iter_rows(min_row=2, values_only=True))
+        wb.close()
 
     # Detect header row position — first row after header
     records = []
     for row in rows_raw:
-        if not row or all(v is None for v in row):
+        if not row or all(v is None or (isinstance(v, str) and not v.strip()) for v in row):
             continue
-        state   = _str(row[0])
-        lga     = _str(row[1])
-        ward_r  = _str(row[2])
-        sett    = _str(row[3])
-        lat     = _float_safe(row[4])
-        lon     = _float_safe(row[5])
+        state   = _str(row[0]) if len(row) > 0 else None
+        lga     = _str(row[1]) if len(row) > 1 else None
+        ward_r  = _str(row[2]) if len(row) > 2 else None
+        sett    = _str(row[3]) if len(row) > 3 else None
+        lat     = _float_safe(row[4]) if len(row) > 4 else None
+        lon     = _float_safe(row[5]) if len(row) > 5 else None
         source  = _str(row[6]) if len(row) > 6 else None
         if not lga:
             continue
@@ -2538,13 +2568,28 @@ async def upload_baseline(
     3. **Legacy R4 settlement pivot** — first sheet has columns:
        ``state, lga, ward, settlement, total_treated``.
     """
-    if not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(400, "File must be .xlsx")
+    fname = (file.filename or "").lower()
+    if not (fname.endswith(".xlsx") or fname.endswith(".csv")):
+        raise HTTPException(400, "File must be .xlsx or .csv")
     raw = await file.read()
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-    except Exception as e:
-        raise HTTPException(400, f"Cannot open workbook: {e}")
+
+    # CSV path: treat as a single-sheet "Raw Data" or "legacy settlement
+    # pivot" baseline. The multi-sheet R5 Target + Raw Data combo is xlsx-
+    # only because CSV can't carry two sheets in one file.
+    csv_rows: list = []
+    wb = None
+    if fname.endswith(".csv"):
+        import csv as _csv
+        try:
+            text_blob = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text_blob = raw.decode("latin-1")
+        csv_rows = list(_csv.reader(io.StringIO(text_blob)))
+    else:
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        except Exception as e:
+            raise HTTPException(400, f"Cannot open workbook: {e}")
 
     def strip_q(v):
         if v is None: return None
@@ -2562,9 +2607,12 @@ async def upload_baseline(
         except Exception: return None
 
     def find_sheet(name_lc: str) -> str | None:
+        if wb is None:
+            return None
         return next((s for s in wb.sheetnames if s.strip().lower() == name_lc), None)
 
-    # Sheets we look for
+    # Sheets we look for. CSV has no sheet concept → both come back None and
+    # the function falls through to the single-sheet branch below.
     target_sheet = find_sheet("r5 target (ward)")
     raw_sheet = find_sheet("raw data")
 
@@ -2686,8 +2734,14 @@ async def upload_baseline(
         chosen_format = "raw_data_only"
     else:
         # ── Legacy format: settlement pivot ────────────────────────────────
-        ws = wb[wb.sheetnames[0]]
-        rows = list(ws.iter_rows(min_row=2, values_only=True))
+        # Single-sheet, also the path CSV uploads land in. Columns expected:
+        #   state, lga, ward, settlement, total_treated
+        if wb is not None:
+            ws = wb[wb.sheetnames[0]]
+            rows = list(ws.iter_rows(min_row=2, values_only=True))
+        else:
+            # CSV path — skip header (first row)
+            rows = [tuple(r) for r in csv_rows[1:]] if csv_rows else []
         for row in rows:
             state = strip_q(row[0]) if len(row) > 0 else None
             lga = strip_q(row[1]) if len(row) > 1 else None
@@ -2698,7 +2752,8 @@ async def upload_baseline(
                 records.append((state, lga, ward, sett, total, None, None, None, None))
         chosen_format = "legacy_settlement_pivot"
 
-    wb.close()
+    if wb is not None:
+        wb.close()
 
     conn = _get_sync_conn()
     try:
