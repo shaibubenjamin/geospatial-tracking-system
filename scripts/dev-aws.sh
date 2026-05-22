@@ -165,6 +165,12 @@ SYNC_ENCRYPTION_KEY=$(aws secretsmanager get-secret-value --region "$REGION" --s
 # When this is blank (Secrets Manager unreachable, etc.) the mirror card
 # stays hidden gracefully.
 ONPREM_BACKUP_DATABASE_URL=${onprem_url}
+
+# Allow the on-prem mirror to actually RUN on this container. Prod doesn't
+# set this — the AWS VPC has no route to the on-prem network at 10.11.52.x,
+# so the mirror has to originate from a VPN-connected laptop (here). The
+# API refuses POST /api/sync/run-onprem-mirror when this is unset.
+MIRROR_RUNS_LOCAL=true
 ENVEOF
     chmod 600 .env
     echo "  Wrote .env (RDS connection via app_dev / read-write)"
