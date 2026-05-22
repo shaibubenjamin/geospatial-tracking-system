@@ -23,6 +23,36 @@ from sqlalchemy import text
 _transformer_3857_to_4326 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
 
 
+def _pick_field(row: dict, *candidates: str) -> str:
+    """Case-insensitive flexible lookup for boundary attribute fields.
+
+    Different states' shapefiles use different DBF column conventions
+    (``lgacode_`` vs ``LGACODE`` vs ``lga_code`` vs ``Code``). For each
+    candidate name we try:
+      1. Exact case-insensitive match against any key in ``row``.
+      2. Substring match (``"lgacode" in "stateLGACODE2024"``).
+    Returns the stringified value of the first match, stripped, or
+    empty string when nothing matches.
+
+    The first candidate that resolves wins, so callers should list
+    candidates from most-specific to least-specific.
+    """
+    # Build a normalised lookup once per row.
+    keys_lower = {str(k).strip().lower(): k for k in row.keys()}
+    for cand in candidates:
+        cand_l = cand.lower()
+        # Pass 1: exact case-insensitive
+        if cand_l in keys_lower:
+            v = row[keys_lower[cand_l]]
+            return "" if v is None else str(v).strip()
+        # Pass 2: substring (e.g. "lgacode" in "lgacode_" or "lga_code")
+        for key_l, orig in keys_lower.items():
+            if cand_l in key_l:
+                v = row[orig]
+                return "" if v is None else str(v).strip()
+    return ""
+
+
 def _reproject_geom(geom_dict: dict) -> dict:
     """Reproject a GeoJSON geometry dict from EPSG:3857 to EPSG:4326."""
     geom = shape(geom_dict)
@@ -85,11 +115,14 @@ async def import_lga_shapefile(
 
         for i, (rec, shp) in enumerate(zip(records, shapes)):
             row = dict(zip(fields, rec))
-            lgacode = str(row.get("lgacode_", row.get("LGACODE", row.get("lgacode", "")))).strip()
-            lga_name = str(row.get("LGA_Name", row.get("lga_name", row.get("NAME", f"LGA_{i}")))).strip()
+            # Most specific first — "lgacode" usually wins. Fall back to
+            # generic "code" only if no LGA-specific code column exists.
+            lgacode  = _pick_field(row, "lgacode", "lga_code", "adm2_pcode", "adm2code", "code") or f"LGA_{i}"
+            lga_name = _pick_field(row, "lga_name", "lganame", "adm2_en", "adm2name", "name") or f"LGA_{i}"
 
-            if not lgacode:
-                errors.append(f"Row {i}: missing lgacode")
+            if not lgacode or lgacode.startswith("LGA_"):
+                errors.append(f"Row {i}: no LGA code column matched. Available fields: {fields[:10]}")
+                skipped += 1
                 continue
 
             try:
@@ -132,13 +165,14 @@ async def import_ward_shapefile(
 
         for i, (rec, shp) in enumerate(zip(records, shapes)):
             row = dict(zip(fields, rec))
-            lgacode = str(row.get("lgacode_", row.get("LGACODE", row.get("lgacode", "")))).strip()
-            wardcode = str(row.get("Wardcode", row.get("WARDCODE", row.get("wardcode", "")))).strip()
-            ward_name = str(row.get("Ward_Name", row.get("ward_name", row.get("NAME", f"Ward_{i}")))).strip()
-            lga_name = str(row.get("LGA_Name", row.get("lga_name", ""))).strip() or None
+            wardcode  = _pick_field(row, "wardcode", "ward_code", "adm3_pcode", "adm3code") or f"WARD_{i}"
+            ward_name = _pick_field(row, "ward_name", "wardname", "adm3_en", "adm3name", "name") or f"Ward_{i}"
+            lgacode   = _pick_field(row, "lgacode", "lga_code", "adm2_pcode", "adm2code") or None
+            lga_name  = _pick_field(row, "lga_name", "lganame", "adm2_en", "adm2name") or None
 
-            if not wardcode:
-                errors.append(f"Row {i}: missing wardcode")
+            if not wardcode or wardcode.startswith("WARD_"):
+                errors.append(f"Row {i}: no ward code column matched. Available fields: {fields[:10]}")
+                skipped += 1
                 continue
 
             try:
@@ -187,15 +221,19 @@ async def import_settlement_shapefile(
 
         for i, (rec, shp) in enumerate(zip(records, shapes)):
             row = dict(zip(fields, rec))
-            lgacode = str(row.get("lgacode_", row.get("LGACODE", row.get("lgacode", "")))).strip()
-            wardcode = str(row.get("Wardcode", row.get("WARDCODE", row.get("wardcode", "")))).strip()
-            unique_cod = str(row.get("unique_cod", row.get("UNIQUE_COD", row.get("unique_code", "")))).strip()
-            settlement_name = str(row.get("Settlemen", row.get("settlement", row.get("NAME", f"Settlement_{i}")))).strip() or None
-            lga_name = str(row.get("LGA_Name", row.get("lga_name", ""))).strip() or None
-            ward_name = str(row.get("Ward_Name", row.get("ward_name", ""))).strip() or None
+            # Most-specific first. unique_cod is the canonical settlement ID
+            # used downstream by household-to-settlement spatial joins, but
+            # if a state's shapefile uses a different name we fall back.
+            unique_cod      = _pick_field(row, "unique_cod", "unique_code", "settlement_code", "sett_code") or ""
+            lgacode         = _pick_field(row, "lgacode", "lga_code", "adm2_pcode") or ""
+            wardcode        = _pick_field(row, "wardcode", "ward_code", "adm3_pcode") or ""
+            settlement_name = _pick_field(row, "settlement_name", "settlemen", "settlement", "name") or None
+            lga_name        = _pick_field(row, "lga_name", "lganame", "adm2_en") or None
+            ward_name       = _pick_field(row, "ward_name", "wardname", "adm3_en") or None
 
             if not unique_cod:
-                errors.append(f"Row {i}: missing unique_cod")
+                errors.append(f"Row {i}: no settlement code (unique_cod/code/settlement_code). Available fields: {fields[:10]}")
+                skipped += 1
                 continue
 
             try:
@@ -250,13 +288,14 @@ async def import_grid_shapefile(
 
         for i, (rec, shp) in enumerate(zip(records, shapes)):
             row = dict(zip(fields, rec))
-            lgacode = str(row.get("lgacode_", row.get("LGACODE", row.get("lgacode", "")))).strip()
-            wardcode = str(row.get("Wardcode", row.get("WARDCODE", row.get("wardcode", "")))).strip()
-            unique_cod = str(row.get("unique_cod", row.get("UNIQUE_COD", row.get("unique_code", "")))).strip()
-            settlement_name = str(row.get("Settlemen", row.get("settlement", row.get("NAME", "")))).strip() or None
+            unique_cod      = _pick_field(row, "unique_cod", "unique_code", "grid_code", "grid_id") or ""
+            lgacode         = _pick_field(row, "lgacode", "lga_code", "adm2_pcode") or ""
+            wardcode        = _pick_field(row, "wardcode", "ward_code", "adm3_pcode") or ""
+            settlement_name = _pick_field(row, "settlement_name", "settlemen", "settlement", "name") or None
 
             if not unique_cod:
-                errors.append(f"Row {i}: missing unique_cod")
+                errors.append(f"Row {i}: no grid code (unique_cod/grid_code/grid_id). Available fields: {fields[:10]}")
+                skipped += 1
                 continue
 
             try:

@@ -475,6 +475,12 @@
               <option value="">Loading projects…</option>
             </select>
             <button class="btn btn-primary" onclick="runSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
+            <!-- Stop button: visible only while a sync is in progress. Sets
+                 sync_config.cancel_requested so the per-set loop exits
+                 cleanly after the current set, no rollback. -->
+            <button id="sync-stop-btn" class="btn btn-danger" style="display:none" onclick="stopSync()">
+              <i class="fa-solid fa-stop"></i> Stop
+            </button>
           </div>
         </div>
 
@@ -1309,23 +1315,70 @@
     const fileEl = document.getElementById('bnd-bundle-file');
     if (!fileEl || !fileEl.files.length) { setFeedback(fb, 'Select a ZIP first.', 'err'); return; }
     const fd = new FormData(); fd.append('file', fileEl.files[0]);
-    setFeedback(fb, 'Uploading and processing four layers (may take a minute)…', 'info');
+
+    // Phase 1: upload bytes (XHR so we can show real progress)
+    // Phase 2: server-side extract + import (no progress wire — show indeterminate)
+    setFeedback(fb, 'Uploading… 0%', 'info');
+    let phaseTimer = null;
     try {
-      const res = await api('/api/projects/' + pid + '/boundaries/bundle', { method: 'POST', body: fd });
-      if (!res) return;
-      const d = await res.json();
-      if (res.ok) {
+      const result = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/projects/' + pid + '/boundaries/bundle');
+        if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            setFeedback(fb, `Uploading… ${pct}%`, 'info');
+            if (e.loaded === e.total) {
+              // Transition to processing phase — server is now extracting +
+              // importing four layers; this takes 30s–5min for a state bundle.
+              let dots = 0;
+              setFeedback(fb, 'Processing four layers on the server (this can take a few minutes)…', 'info');
+              phaseTimer = setInterval(() => {
+                dots = (dots + 1) % 4;
+                setFeedback(fb, 'Processing four layers on the server' + '.'.repeat(dots + 1) + ' (still working)', 'info');
+              }, 2500);
+            }
+          }
+        };
+        xhr.onload = () => {
+          if (phaseTimer) { clearInterval(phaseTimer); phaseTimer = null; }
+          resolve({ status: xhr.status, body: xhr.responseText, type: xhr.getResponseHeader('content-type') || '' });
+        };
+        xhr.onerror = () => {
+          if (phaseTimer) { clearInterval(phaseTimer); phaseTimer = null; }
+          reject(new Error('Network failure (possibly an ALB timeout or connection drop). The server may still be processing — check the boundary counts on the Geographic View before retrying.'));
+        };
+        xhr.send(fd);
+      });
+
+      // Parse response defensively — a 502/504 from the ALB returns HTML,
+      // not JSON, and JSON.parse would otherwise throw "Unexpected token <"
+      let d = null;
+      if (result.type.includes('json')) {
+        try { d = JSON.parse(result.body); } catch (_) { d = null; }
+      }
+
+      if (result.status >= 200 && result.status < 300 && d) {
         const ok      = (d.levels_uploaded || []).join(', ') || 'none';
         const missing = (d.levels_missing  || []).join(', ');
         const failed  = (d.levels_failed   || []).join(', ');
         let msg = `✓ Uploaded: ${ok}.`;
         if (missing) msg += ` Missing in zip: ${missing}.`;
-        if (failed)  msg += ` Failed: ${failed}.`;
+        if (failed)  msg += ` Failed: ${failed} — see server logs for the per-row error.`;
         setFeedback(fb, msg, failed ? 'warn' : 'ok');
+      } else if (result.status === 502 || result.status === 504 || !d) {
+        // Gateway timeout / non-JSON: the import probably IS still running on the
+        // server. Tell the user to verify rather than blindly retrying.
+        setFeedback(fb,
+          `Server didn't return a clean response (HTTP ${result.status || '?'}). The import may have partially succeeded — refresh and check the Geographic View. Don't re-upload until you've verified what landed.`,
+          'warn');
       } else {
-        setFeedback(fb, 'Error: ' + (d.detail || 'Upload failed'), 'err');
+        const detail = d && d.detail ? d.detail : `HTTP ${result.status}`;
+        setFeedback(fb, 'Error: ' + detail, 'err');
       }
     } catch(e) {
+      if (phaseTimer) { clearInterval(phaseTimer); }
       setFeedback(fb, 'Network error: ' + e.message, 'err');
     }
   }
@@ -1540,7 +1593,11 @@
     const bar  = document.getElementById('sync-progress-bar');
     const label= document.getElementById('sync-progress-label');
     const ctr  = document.getElementById('sync-progress-counter');
+    const stopBtn = document.getElementById('sync-stop-btn');
     const isRunning = cfg.last_status === 'running' && cfg.last_progress_total;
+    // Stop button mirrors running state — visible only when a sync is in
+    // flight, hidden the moment it transitions to ok/partial/error/cancelled.
+    if (stopBtn) stopBtn.style.display = cfg.last_status === 'running' ? '' : 'none';
     if (!isRunning) {
       // Animate to 100% briefly on completion, then hide
       if (card.style.display === 'block') {
@@ -1560,6 +1617,25 @@
     label.textContent = `Pulling feed ${step} of ${total} from CommCare…`;
     ctr.textContent = `${pct}% · ${step}/${total}`;
   }
+
+  window.stopSync = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) return;
+    const ok = await confirmDialog({
+      title: 'Stop the running sync?',
+      message: 'The current form set will finish (so no DB writes are aborted mid-flight) and the sync will exit. The next sync starts fresh.',
+      confirmLabel: 'Stop sync',
+      danger: true,
+    });
+    if (!ok) return;
+    const res = await api('/api/sync/stop?project_id=' + pid, { method: 'POST' });
+    if (!res || !res.ok) {
+      const d = res ? await res.json().catch(() => ({})) : {};
+      appendLog('sync-log', 'Stop signal failed: ' + (d.detail || `HTTP ${res ? res.status : '?'}`), 'err');
+      return;
+    }
+    appendLog('sync-log', 'Stop signal sent. Sync will exit after the current form set.', 'info');
+  };
 
   let _syncPollTimer = null;
   let _lastPollStatus = null;

@@ -51,6 +51,45 @@ def _float_safe(val) -> Optional[float]:
         return None
 
 
+def _map_columns(header_row: List, schema: Dict[str, tuple]) -> Dict[str, Optional[int]]:
+    """Build a {target_field → column_index} map from a workbook header row.
+
+    Designed for upload endpoints (MLOS, baseline, MDA) that receive
+    spreadsheets whose column names vary between data partners ("State"
+    vs "state_name", "Ward" vs "wardname", "Lat" vs "latitude" …). For
+    each target field the caller passes a tuple of candidate names; the
+    first column whose header (case-insensitively) equals one of the
+    candidates wins. A substring match falls back next (so "wardname"
+    matches "ward_name" or "wardName").
+
+    Returns a dict mapping every target field to either a column index
+    or ``None`` if no header matched any candidate. Callers can detect
+    missing required columns by checking for ``None``.
+    """
+    norm = [(str(h or "").strip().lower(), i) for i, h in enumerate(header_row)]
+    out: Dict[str, Optional[int]] = {}
+    for field, candidates in schema.items():
+        idx: Optional[int] = None
+        for cand in candidates:
+            cand_l = cand.lower()
+            # exact case-insensitive match
+            for hdr_l, i in norm:
+                if cand_l == hdr_l:
+                    idx = i
+                    break
+            if idx is not None:
+                break
+            # substring fallback
+            for hdr_l, i in norm:
+                if cand_l in hdr_l:
+                    idx = i
+                    break
+            if idx is not None:
+                break
+        out[field] = idx
+    return out
+
+
 def _parse_gps(raw: Optional[str]):
     """
     Parse '12.7209383 5.0116833 343.2 4.58' → (lat, lon, alt, accuracy).
@@ -2448,37 +2487,58 @@ async def upload_mlos(
         raise HTTPException(400, "File must be .xlsx or .csv")
     raw = await file.read()
 
-    # Read either flavour into a uniform list-of-tuples (skipping header)
+    # Read into a uniform (header_row, body_rows) shape regardless of format.
     if fname.endswith(".csv"):
         import csv as _csv
         try:
             text_blob = raw.decode("utf-8-sig")
         except UnicodeDecodeError:
             text_blob = raw.decode("latin-1")
-        reader = _csv.reader(io.StringIO(text_blob))
+        reader   = _csv.reader(io.StringIO(text_blob))
         all_rows = list(reader)
-        rows_raw = [tuple(r) for r in all_rows[1:]] if all_rows else []
+        header   = [str(c or "").strip() for c in (all_rows[0] if all_rows else [])]
+        rows_raw = [tuple(r) for r in all_rows[1:]] if len(all_rows) > 1 else []
     else:
         try:
             wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
         except Exception as e:
             raise HTTPException(400, f"Cannot open workbook: {e}")
-        ws = wb[wb.sheetnames[0]]
-        rows_raw = list(ws.iter_rows(min_row=2, values_only=True))
+        ws       = wb[wb.sheetnames[0]]
+        all_rows = list(ws.iter_rows(values_only=True))
+        header   = [str(c or "").strip() for c in (all_rows[0] if all_rows else [])]
+        rows_raw = all_rows[1:] if len(all_rows) > 1 else []
         wb.close()
 
-    # Detect header row position — first row after header
+    # Header-driven column resolution. Different partners send MLOS with
+    # slightly different column names — be tolerant of underscores, case,
+    # and short/long forms. Each entry below: (target_field, candidate_names).
+    col_idx = _map_columns(header, {
+        "state":      ("state_name", "state", "statename"),
+        "lga":        ("lga_name", "lga", "lganame", "adm2_en"),
+        "ward":       ("ward_name", "ward", "wardname", "adm3_en"),
+        "settlement": ("settlement_name", "settlement", "settlemen", "name"),
+        "lat":        ("latitude", "lat", "y_coord", "y"),
+        "lon":        ("longitude", "lon", "long", "lng", "x_coord", "x"),
+        "source":     ("source",),
+    })
+
+    def cell(row, field):
+        idx = col_idx.get(field)
+        if idx is None or idx >= len(row):
+            return None
+        return row[idx]
+
     records = []
     for row in rows_raw:
         if not row or all(v is None or (isinstance(v, str) and not v.strip()) for v in row):
             continue
-        state   = _str(row[0]) if len(row) > 0 else None
-        lga     = _str(row[1]) if len(row) > 1 else None
-        ward_r  = _str(row[2]) if len(row) > 2 else None
-        sett    = _str(row[3]) if len(row) > 3 else None
-        lat     = _float_safe(row[4]) if len(row) > 4 else None
-        lon     = _float_safe(row[5]) if len(row) > 5 else None
-        source  = _str(row[6]) if len(row) > 6 else None
+        state   = _str(cell(row, "state"))
+        lga     = _str(cell(row, "lga"))
+        ward_r  = _str(cell(row, "ward"))
+        sett    = _str(cell(row, "settlement"))
+        lat     = _float_safe(cell(row, "lat"))
+        lon     = _float_safe(cell(row, "lon"))
+        source  = _str(cell(row, "source"))
         if not lga:
             continue
         geom_wkt = f"SRID=4326;POINT({lon} {lat})" if lat and lon and not (lat == 0 and lon == 0) else None
@@ -2734,20 +2794,40 @@ async def upload_baseline(
         chosen_format = "raw_data_only"
     else:
         # ── Legacy format: settlement pivot ────────────────────────────────
-        # Single-sheet, also the path CSV uploads land in. Columns expected:
-        #   state, lga, ward, settlement, total_treated
+        # Single-sheet, also the path CSV uploads land in. Columns are now
+        # resolved by header name (flexible matching) instead of positional
+        # access, so a workbook with slightly different column ordering or
+        # naming (e.g. "State Name" vs "state", "LGA Name" vs "lga") still
+        # uploads cleanly.
         if wb is not None:
             ws = wb[wb.sheetnames[0]]
-            rows = list(ws.iter_rows(min_row=2, values_only=True))
+            all_rows = list(ws.iter_rows(values_only=True))
         else:
-            # CSV path — skip header (first row)
-            rows = [tuple(r) for r in csv_rows[1:]] if csv_rows else []
-        for row in rows:
-            state = strip_q(row[0]) if len(row) > 0 else None
-            lga = strip_q(row[1]) if len(row) > 1 else None
-            ward = strip_q(row[2]) if len(row) > 2 else None
-            sett = strip_q(row[3]) if len(row) > 3 else None
-            total = to_int(row[4]) if len(row) > 4 else None
+            all_rows = [tuple(r) for r in csv_rows] if csv_rows else []
+        header_row   = list(all_rows[0]) if all_rows else []
+        body_rows    = all_rows[1:] if len(all_rows) > 1 else []
+        col_idx_base = _map_columns(header_row, {
+            "state":      ("state_name", "state"),
+            "lga":        ("lga_name", "lga"),
+            "ward":       ("ward_name", "ward", "wardname"),
+            "settlement": ("settlement_name", "settlement", "settlemen"),
+            "total":      ("total_treated", "total", "target", "r5 target", "r4 target"),
+        })
+
+        def bcell(row, field):
+            idx = col_idx_base.get(field)
+            if idx is None or idx >= len(row):
+                return None
+            return row[idx]
+
+        for row in body_rows:
+            if not row:
+                continue
+            state = strip_q(bcell(row, "state"))
+            lga   = strip_q(bcell(row, "lga"))
+            ward  = strip_q(bcell(row, "ward"))
+            sett  = strip_q(bcell(row, "settlement"))
+            total = to_int(bcell(row, "total"))
             if lga and total is not None:
                 records.append((state, lga, ward, sett, total, None, None, None, None))
         chosen_format = "legacy_settlement_pivot"
