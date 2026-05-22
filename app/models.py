@@ -351,8 +351,9 @@ class SyncHistory(Base):
     project_id = Column(Integer, ForeignKey("geo_projects.id"), index=True)
     started_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     ended_at = Column(DateTime(timezone=True))
-    status = Column(Text, default="running")  # 'running' / 'ok' / 'partial' / 'error'
-    rows_fetched = Column(Integer, default=0)
+    status = Column(Text, default="running")  # 'running' / 'ok' / 'partial' / 'error' / 'cancelled'
+    rows_fetched = Column(Integer, default=0)    # raw rows pulled from CommCare
+    rows_new     = Column(Integer, default=0)    # rows actually written after watermark filter
     error_message = Column(Text)
 
 

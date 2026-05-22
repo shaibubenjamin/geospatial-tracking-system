@@ -1571,18 +1571,25 @@
       return;
     }
     tb.innerHTML = rows.map(r => {
-      const chip = r.status === 'ok'      ? '<span class="chip good">✓ OK</span>'
-                 : r.status === 'partial' ? '<span class="chip warn">Partial</span>'
-                 : r.status === 'running' ? '<span class="chip warn">Running…</span>'
-                 : r.status === 'error'   ? '<span class="chip bad">Error</span>'
+      const chip = r.status === 'ok'        ? '<span class="chip good">✓ OK</span>'
+                 : r.status === 'partial'   ? '<span class="chip warn">Partial</span>'
+                 : r.status === 'cancelled' ? '<span class="chip info">Cancelled</span>'
+                 : r.status === 'running'   ? '<span class="chip warn">Running…</span>'
+                 : r.status === 'error'     ? '<span class="chip bad">Error</span>'
                  : `<span class="chip info">${r.status || '—'}</span>`;
       const when = r.started_at ? new Date(r.started_at).toLocaleString() : '—';
-      const rows_f = (r.rows_fetched != null) ? r.rows_fetched.toLocaleString() : '—';
+      // "Rows" column now shows the count of NEW rows actually written this
+      // run, not raw rows fetched from CommCare. The fetched count is in
+      // the tooltip for audit. This is the number that matters to the
+      // operator: "how many records did this sync add to the dashboard?"
+      const newN     = r.rows_new != null ? r.rows_new : 0;
+      const fetchedN = r.rows_fetched != null ? r.rows_fetched : 0;
+      const rowsCell = `<span title="Pulled ${fetchedN.toLocaleString()} rows from CommCare, ${newN.toLocaleString()} were new after the watermark filter">${newN.toLocaleString()} new</span>`;
       const dur = _humanDuration(r.started_at, r.ended_at);
       return `<tr style="border-top:1px solid var(--line)">
         <td style="padding:10px 14px;color:var(--ink);font-size:12.5px;font-variant-numeric:tabular-nums">${when}</td>
         <td style="padding:10px 14px">${chip}</td>
-        <td style="padding:10px 14px;text-align:right;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums">${rows_f}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums">${rowsCell}</td>
         <td style="padding:10px 14px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums">${dur}</td>
       </tr>`;
     }).join('');
