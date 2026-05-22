@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,12 +12,41 @@ from app.routes.auth import get_current_user, get_current_user_optional, require
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+def _slugify(name: str) -> str:
+    """Lowercase, drop non-alphanumerics, collapse to single dashes."""
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return s or "project"
+
+
+async def _unique_slug(base: str, db: AsyncSession) -> str:
+    """Return ``base`` if free, else ``base-2``, ``base-3``, …"""
+    candidate = base
+    n = 2
+    while True:
+        existing = await db.execute(select(GeoProject).where(GeoProject.slug == candidate))
+        if not existing.scalar_one_or_none():
+            return candidate
+        candidate = f"{base}-{n}"
+        n += 1
+
+
 @router.get("", response_model=List[ProjectOut])
 async def list_projects(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    result = await db.execute(select(GeoProject).order_by(GeoProject.name))
+    # Active project first so default selections land on the live round.
+    # Within the same state, newest round (highest round_number) before
+    # older ones. NULL round_numbers sort last. Frontend re-sorts the same
+    # way, but ordering here avoids a flash of mis-ordered options.
+    result = await db.execute(
+        select(GeoProject).order_by(
+            GeoProject.is_active.desc(),
+            GeoProject.state_name.asc(),
+            GeoProject.round_number.desc().nullslast(),
+            GeoProject.id.asc(),
+        )
+    )
     return result.scalars().all()
 
 
@@ -26,13 +56,17 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     _super: User = Depends(require_superadmin),
 ):
-    existing = await db.execute(select(GeoProject).where(GeoProject.slug == data.slug))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Project slug already exists")
+    # Slug: caller-supplied or server-derived from name. Either way, we
+    # disambiguate against existing rows by appending -2, -3 … as needed
+    # rather than failing the create.
+    if data.slug:
+        slug = await _unique_slug(_slugify(data.slug), db)
+    else:
+        slug = await _unique_slug(_slugify(data.name), db)
 
     project = GeoProject(
         name=data.name,
-        slug=data.slug,
+        slug=slug,
         description=data.description or "",
         state_name=data.state_name,
         round_number=data.round_number,

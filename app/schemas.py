@@ -44,7 +44,9 @@ class UserOut(BaseModel):
 
 class ProjectCreate(BaseModel):
     name: str
-    slug: str
+    # Optional: if omitted, the server derives a URL-safe slug from the
+    # name (lowercased, dash-separated, suffixed with -2/-3 on clash).
+    slug: Optional[str] = None
     description: Optional[str] = ""
     state_name: Optional[str] = None
     round_number: Optional[int] = None
