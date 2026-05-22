@@ -4443,15 +4443,20 @@ tbody tr:hover{background:var(--pale)}
      with a data-* attribute below. */
   function applyProjectLabels(p) {
     if (!p) return;
-    const state = p.state_name || 'State';
-    const round = p.round_number != null ? `Round ${p.round_number}` : null;
-    const stateRound = round ? `${state} ${round}` : state;
+    const state    = p.state_name || 'State';
+    const round    = p.round_number != null ? `Round ${p.round_number}` : null;
+    const composed = round ? `${state} ${round}` : state;
+    // Prefer the user-set project name for any label that surfaces the
+    // project as a whole (browser tab, sidebar footer). State-only labels
+    // (sidebar brand, breadcrumb, map title) stay state-only because they
+    // describe geography, not the project.
+    const projectLabel = p.name || composed;
 
     document.querySelectorAll('[data-state-label]').forEach(el => {
       el.textContent = state;
     });
     document.querySelectorAll('[data-state-round-label]').forEach(el => {
-      el.textContent = `${stateRound} · Sightsavers`;
+      el.textContent = `${projectLabel} · Sightsavers`;
     });
     document.querySelectorAll('[data-state-mda-label]').forEach(el => {
       el.textContent = `${state} MDA`;
@@ -4459,9 +4464,9 @@ tbody tr:hover{background:var(--pale)}
     document.querySelectorAll('[data-state-map-label]').forEach(el => {
       el.textContent = `${state} State`;
     });
-    // Update browser tab title too — easy to spot which state when many
-    // tabs are open.
-    document.title = `SARMAAN MDA — ${stateRound}`;
+    // Browser tab — use the project name so "Kano Pilot" shows as named,
+    // not auto-composed into "Kano Round 1".
+    document.title = `SARMAAN MDA — ${projectLabel}`;
   }
 
   /* ── PROJECT SELECTOR (topbar) ──
@@ -4494,11 +4499,16 @@ tbody tr:hover{background:var(--pale)}
     const selectedProject = projects.find(p => p.id === SELECTED_PID) || active;
     applyProjectLabels(selectedProject);
     sel.innerHTML = projects.map(p => {
-      const state  = p.state_name || 'Unknown state';
-      const round  = p.round_number != null ? `Round ${p.round_number}` : null;
       const status = p.is_active ? ' (live)' : '';
-      const label  = round ? `${state} ${round}${status}` : (p.name || `Project ${p.id}`) + status;
-      const sl     = p.id === SELECTED_PID ? ' selected' : '';
+      // Use the user-set project NAME (e.g. "Kano Pilot") authoritatively.
+      // Only fall back to a composed "State Round N" label when name is
+      // missing — keeps the dropdown consistent with the admin Projects
+      // table which shows the raw name.
+      const round    = p.round_number != null ? `Round ${p.round_number}` : null;
+      const state    = p.state_name || 'Unknown state';
+      const fallback = round ? `${state} ${round}` : `Project ${p.id}`;
+      const label    = (p.name || fallback) + status;
+      const sl       = p.id === SELECTED_PID ? ' selected' : '';
       return `<option value="${p.id}"${sl}>${label}</option>`;
     }).join('');
     sel.disabled = false;
