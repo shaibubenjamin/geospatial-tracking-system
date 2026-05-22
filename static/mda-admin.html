@@ -773,9 +773,11 @@
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:320px 1fr;gap:18px">
+        <div id="users-page-grid" style="display:grid;grid-template-columns:320px 1fr;gap:18px">
           <!-- Create user: superadmin-only. Regular admins can list/delete
-               users but not create new accounts. -->
+               users but not create new accounts. The parent grid above
+               collapses to a single column for admin (see init JS) so the
+               table doesn't end up squeezed into the hidden 320px slot. -->
           <div class="card super-only" style="display:none;height:fit-content">
             <div class="card-head">
               <div class="card-title"><i class="fa-solid fa-user-plus"></i> Add User</div>
@@ -989,6 +991,12 @@
     if (lbl) lbl.textContent = 'Superadmin Access';
     const badge = document.getElementById('role-badge');
     if (badge) badge.style.background = 'rgba(200,160,0,.18)';
+  } else {
+    // For admin (non-superadmin), collapse 2-column page grids that had a
+    // super-only sidecar (e.g. Users → "Add User" form). Without this the
+    // table item lands in the hidden 320px column and looks squeezed.
+    const usersGrid = document.getElementById('users-page-grid');
+    if (usersGrid) usersGrid.style.gridTemplateColumns = '1fr';
   }
 
   // Default landing view: superadmin sees Data Uploads; admin sees Users.
