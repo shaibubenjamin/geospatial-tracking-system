@@ -580,6 +580,44 @@
               </div>
             </div>
 
+            <!-- Auto-Sync scheduler: superadmin-only. When enabled, the
+                 sync_worker enqueues a job every interval_minutes measured
+                 from last_synced_at. Skips when a job is already queued or
+                 running. -->
+            <div class="card super-only" style="display:none">
+              <div class="card-head">
+                <div class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Auto-Sync</div>
+              </div>
+              <div class="card-body">
+                <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.55">
+                  When enabled, the platform automatically pulls new rows from CommCare on a schedule. Skips if a sync is already queued or running, so back-to-back ticks can&rsquo;t pile up. Interval is measured from the last successful sync &mdash; manual runs reset the timer.
+                </p>
+                <div class="form-row">
+                  <div class="form-group" style="flex:1.2">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                      <input type="checkbox" id="auto-sync-enabled" style="width:18px;height:18px;cursor:pointer">
+                      <span>Enable auto-sync</span>
+                    </label>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5">
+                      Off by default. Turn on to let the worker keep the dashboard fresh without anyone clicking.
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Interval (minutes)</label>
+                    <input type="number" id="auto-sync-interval" min="15" max="360" step="5" value="60">
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:4px">15&ndash;360 min. Default 60.</div>
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+                  <div id="auto-sync-status" style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums"></div>
+                  <button class="btn btn-primary" onclick="saveAutoSync()">
+                    <i class="fa-solid fa-floppy-disk"></i> Save
+                  </button>
+                </div>
+                <div class="inline-feedback" id="auto-sync-feedback"></div>
+              </div>
+            </div>
+
             <!-- Form IDs editor: superadmin-only. -->
             <div class="card super-only" style="display:none">
               <div class="card-head">
@@ -1503,6 +1541,30 @@
     pw.value = ''; pw.placeholder = cfg.has_password ? '•••••••• (saved — leave blank to keep)' : 'CommCare password';
     renderFormIdRows(cfg.form_ids || []);
 
+    // Auto-sync card (superadmin-only — the inputs exist in DOM only for them)
+    const autoChk = document.getElementById('auto-sync-enabled');
+    const autoInt = document.getElementById('auto-sync-interval');
+    const autoSt  = document.getElementById('auto-sync-status');
+    if (autoChk && autoInt) {
+      autoChk.checked = !!cfg.auto_sync_enabled;
+      autoInt.value   = cfg.auto_sync_interval_minutes || 60;
+    }
+    if (autoSt) {
+      if (cfg.auto_sync_enabled && cfg.last_synced_at) {
+        const interval = (cfg.auto_sync_interval_minutes || 60) * 60 * 1000;
+        const last     = new Date(cfg.last_synced_at).getTime();
+        const next     = last + interval;
+        const minLeft  = Math.max(0, Math.round((next - Date.now()) / 60000));
+        autoSt.textContent = minLeft === 0
+          ? 'Next auto-sync: any minute now…'
+          : `Next auto-sync in ~${minLeft} min`;
+      } else if (cfg.auto_sync_enabled) {
+        autoSt.textContent = 'Next auto-sync: any minute now (no prior sync)';
+      } else {
+        autoSt.textContent = '';
+      }
+    }
+
     // Latest error inline below the history table
     const errWrap = document.getElementById('sync-last-err-wrap');
     const errEl   = document.getElementById('sync-last-err');
@@ -1518,6 +1580,39 @@
     // On-prem mirror card (auto-hides when ONPREM_BACKUP_DATABASE_URL is unset)
     await loadOnpremMirrorState();
   }
+
+  window.saveAutoSync = async function() {
+    const pid = SYNC_PROJECT_ID || syncProjectId();
+    if (!pid) { setFeedback('auto-sync-feedback', 'Pick a project first.', 'err'); return; }
+    const enabled  = document.getElementById('auto-sync-enabled').checked;
+    const interval = parseInt(document.getElementById('auto-sync-interval').value, 10);
+    if (!Number.isFinite(interval) || interval < 15 || interval > 360) {
+      setFeedback('auto-sync-feedback', 'Interval must be between 15 and 360 minutes.', 'err');
+      return;
+    }
+    setFeedback('auto-sync-feedback', 'Saving…', 'info');
+    const res = await api('/api/sync/config?project_id=' + pid, {
+      method: 'PUT',
+      body: JSON.stringify({
+        auto_sync_enabled:          enabled,
+        auto_sync_interval_minutes: interval,
+      }),
+    });
+    if (res && res.ok) {
+      setFeedback('auto-sync-feedback', enabled
+        ? `✓ Auto-sync enabled — every ${interval} min.`
+        : '✓ Auto-sync disabled.',
+        'ok');
+      appendLog('sync-log', enabled
+        ? `Auto-sync turned ON for project ${pid} (every ${interval} min)`
+        : `Auto-sync turned OFF for project ${pid}`,
+        'ok');
+      await loadSyncConfig();
+    } else {
+      const detail = res ? (await res.json().catch(() => ({})))?.detail : 'Network error';
+      setFeedback('auto-sync-feedback', 'Save failed: ' + detail, 'err');
+    }
+  };
 
   window.saveSyncConfig = async function() {
     const pid = SYNC_PROJECT_ID || syncProjectId();
