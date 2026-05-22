@@ -81,6 +81,10 @@ async def lifespan(app: FastAPI):
             # when (now - last_synced_at) >= interval). Opt-in per project.
             "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS auto_sync_enabled BOOLEAN DEFAULT FALSE",
             "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS auto_sync_interval_minutes INTEGER DEFAULT 60",
+            # Cooperative stop signal. Set TRUE by /api/sync/stop; the
+            # per-set loop in run_sync polls it between sets and exits cleanly
+            # if true. Cleared at sync start.
+            "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 await db.execute(text(stmt))
