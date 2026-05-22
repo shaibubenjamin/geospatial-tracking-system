@@ -1157,11 +1157,9 @@
     }
   }
 
-  // Now that onViewActivated is defined, fire the loaders for the default
-  // view selected at boot. Previously these only ran on a nav click, so the
-  // initial render of Data Uploads / Users had blank tables until the user
-  // clicked something.
-  if (_initialView) onViewActivated(_initialView);
+  // (Initial-view loader trigger moved to the bottom of this IIFE — all
+  //  `let` state vars (UPLOAD_PROJECT_ID, SYNC_PROJECT_ID, …) must finish
+  //  initialising before any view-loader runs, otherwise TDZ blows up.)
 
   /* ── ACCOUNT: change-password form ── */
   function resetPasswordForm() {
