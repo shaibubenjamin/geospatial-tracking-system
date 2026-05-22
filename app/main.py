@@ -77,6 +77,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS campaign_start_date DATE",
             # Project's official campaign end (for "Day X of N" displays)
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS campaign_end_date DATE",
+            # Auto-sync scheduler (sync_worker checks every minute and enqueues
+            # when (now - last_synced_at) >= interval). Opt-in per project.
+            "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS auto_sync_enabled BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE sync_config ADD COLUMN IF NOT EXISTS auto_sync_interval_minutes INTEGER DEFAULT 60",
         ]:
             try:
                 await db.execute(text(stmt))

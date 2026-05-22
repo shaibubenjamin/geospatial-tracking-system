@@ -69,6 +69,11 @@ class SyncConfigIn(BaseModel):
     commcare_username: Optional[str] = None
     commcare_password: Optional[str] = None   # set to None to keep existing; '' to clear
     form_ids: Optional[List[FormEntry]] = None
+    # Auto-sync toggle + interval. Omitted = keep existing. ``None`` is
+    # treated the same as omitted (the partial-update pattern the rest of
+    # this schema already uses).
+    auto_sync_enabled:          Optional[bool] = None
+    auto_sync_interval_minutes: Optional[int]  = None
 
 
 class SyncConfigOut(BaseModel):
@@ -84,6 +89,10 @@ class SyncConfigOut(BaseModel):
     last_row_count: Optional[int]
     last_progress_step: Optional[int] = None
     last_progress_total: Optional[int] = None
+    # Auto-sync — always exposed (admin can see whether it's on; only
+    # superadmin can change it via PUT).
+    auto_sync_enabled:          bool = False
+    auto_sync_interval_minutes: int  = 60
 
 
 async def _get_config(project_id: int, db: AsyncSession) -> Optional[SyncConfig]:
@@ -115,6 +124,7 @@ async def get_config(
             has_password=False,
             form_ids=[],
             last_synced_at=None, last_status=None, last_error=None, last_row_count=None,
+            auto_sync_enabled=False, auto_sync_interval_minutes=60,
         )
     is_super = bool(getattr(user, "is_superadmin", False))
     return SyncConfigOut(
@@ -130,6 +140,8 @@ async def get_config(
         last_row_count=cfg.last_row_count,
         last_progress_step=cfg.last_progress_step,
         last_progress_total=cfg.last_progress_total,
+        auto_sync_enabled=bool(getattr(cfg, "auto_sync_enabled", False)),
+        auto_sync_interval_minutes=int(getattr(cfg, "auto_sync_interval_minutes", 60) or 60),
     )
 
 
@@ -187,6 +199,13 @@ async def put_config(
                 raise HTTPException(500, str(e))
     if data.form_ids is not None:
         cfg.form_ids = [e.model_dump() for e in data.form_ids]
+    if data.auto_sync_enabled is not None:
+        cfg.auto_sync_enabled = bool(data.auto_sync_enabled)
+    if data.auto_sync_interval_minutes is not None:
+        # Clamp 15..360 so an accidental "5" can't hammer CommCare and a
+        # typo'd "9999" doesn't silently disable auto-sync for a week.
+        v = int(data.auto_sync_interval_minutes)
+        cfg.auto_sync_interval_minutes = max(15, min(360, v))
 
     await db.commit()
     return {"ok": True}
