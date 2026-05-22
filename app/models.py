@@ -337,6 +337,9 @@ class SyncConfig(Base):
     # auto_sync_interval_minutes (measured from last_synced_at). Opt-in.
     auto_sync_enabled          = Column(Boolean, default=False, server_default='false', nullable=False)
     auto_sync_interval_minutes = Column(Integer, default=60,    server_default='60',    nullable=False)
+    # Cooperative stop signal — POST /api/sync/stop flips this true; the
+    # per-set loop in run_sync polls it between sets and exits early.
+    cancel_requested           = Column(Boolean, default=False, server_default='false', nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

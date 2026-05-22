@@ -382,12 +382,15 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
         bp_row = cur.fetchone()
         boundary_pid = (bp_row["min"] if bp_row and bp_row.get("min") else project_id)
 
-        # 3. Mark sync as running + open a history row + reset progress
+        # 3. Mark sync as running + open a history row + reset progress.
+        # Also clear any stale cancel_requested flag from a previous run so
+        # this fresh sync isn't immediately stopped by an old stop signal.
         total_feeds = len([e for e in cfg["form_ids"] if e.get("form_id")]) * 2
         cur.execute(
             """UPDATE sync_config SET
                last_status='running', last_synced_at=NOW(), last_error=NULL,
-               last_progress_step=0, last_progress_total=%s
+               last_progress_step=0, last_progress_total=%s,
+               cancel_requested=FALSE
                WHERE project_id=%s""",
             (total_feeds, project_id),
         )
@@ -408,8 +411,27 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
         ph_cur = conn.cursor()  # tuple-cursor for bulk insert
 
         auth = (cfg["username"], cfg["password"])
+        cancelled = False
         async with httpx.AsyncClient() as client:
             for entry in cfg["form_ids"]:
+                # Cooperative stop. Poll the sync_config flag at the start of
+                # every set so a "Stop sync" button click takes effect
+                # between sets — preserves the integrity of in-flight DB
+                # writes (we never abort mid-transaction).
+                try:
+                    cur.execute(
+                        "SELECT cancel_requested FROM sync_config WHERE project_id=%s",
+                        (project_id,),
+                    )
+                    cancel_row = cur.fetchone()
+                    if cancel_row and cancel_row["cancel_requested"]:
+                        cancelled = True
+                        logger.info("Sync for project %s stopped by user request after %d sets",
+                                    project_id, len(sets_succeeded))
+                        break
+                except Exception:  # noqa: BLE001
+                    pass  # never fail the sync because the cancel-check itself errored
+
                 set_name = entry.get("set_name") or "SET ?"
                 form_id  = entry.get("form_id")
                 if not form_id:
@@ -439,20 +461,63 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                                 f"{set_name}/{rt} HTTP {e.response.status_code}: {e.response.text[:200]}"
                             ) from e
 
+                        # Client-side incremental filter.
+                        #
+                        # CommCare's OData implementation for this account
+                        # doesn't honour ``$filter=received_on gt …`` (the
+                        # query option is gated behind a feature flag we
+                        # don't have), so ``_fetch_all_pages`` returns every
+                        # row each sync. We post-filter HERE: rows whose
+                        # received_on is older than the watermark are
+                        # discarded before the upsert phase, so subsequent
+                        # syncs only spend DB time on NEW or EDITED rows.
+                        # Without this, sync #N runs in roughly the same
+                        # wall-time as sync #1 because the DB still rewrites
+                        # 200k+ rows even when nothing changed.
                         max_received: Optional[datetime] = since
                         if rt == "household":
+                            skipped_older = 0
                             for r in rows:
                                 ts = _dt(r.get("received_on"))
+                                if since is not None and ts is not None and ts <= since:
+                                    skipped_older += 1
+                                    continue
                                 if ts and (max_received is None or ts > max_received):
                                     max_received = ts
                                 set_households.append({"_set": set_name, "_form": form_id, **_map_household(r, set_name)})
+                            if skipped_older:
+                                logger.info(
+                                    "Set %s household: filtered %d rows already at watermark (kept %d new)",
+                                    set_name, skipped_older, len(rows) - skipped_older,
+                                )
                         else:
+                            # Individual rows don't carry received_on of their
+                            # own; the parent household's received_on is the
+                            # only timestamp. We DON'T pre-filter individuals
+                            # because the persist phase already prunes them by
+                            # joining on the set of household formids that
+                            # ACTUALLY got upserted this run — so if a
+                            # household is filtered out above, none of its
+                            # children touch the DB either.
                             max_received = max_received or datetime.now(timezone.utc)
+                            kept_hh = {h["formid"] for h in set_households}
+                            kept_individuals = 0
+                            skipped_individuals = 0
                             for r in rows:
                                 mapped = _map_individual(r)
                                 if not mapped["hh_formid"]:
                                     continue
+                                if since is not None and mapped["hh_formid"] not in kept_hh:
+                                    # parent household was filtered out
+                                    skipped_individuals += 1
+                                    continue
                                 set_individuals.append({"_set": set_name, "_form": form_id, **mapped})
+                                kept_individuals += 1
+                            if skipped_individuals:
+                                logger.info(
+                                    "Set %s individual: filtered %d rows belonging to households already at watermark (kept %d new)",
+                                    set_name, skipped_individuals, kept_individuals,
+                                )
 
                         set_feeds.append({
                             "set_name": set_name,
@@ -525,9 +590,15 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
             _recompute_settlement_analytics(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
             conn.commit()
 
-        # 6. Final status: tri-state ok / partial / error
+        # 6. Final status: ok / partial / error / cancelled. "cancelled"
+        #    wins when the user pressed Stop — even if some sets succeeded,
+        #    we report that the run was cut short so the UI can show the
+        #    right chip + tooltip.
         total_fetched = sum(f["fetched"] for f in per_feed)
-        if sets_failed and sets_succeeded:
+        if cancelled:
+            final_status = "cancelled"
+            final_error  = f"Stopped by user after {len(sets_succeeded)} set(s) completed."
+        elif sets_failed and sets_succeeded:
             final_status = "partial"
             final_error = " | ".join(f"{f['set_name']}: {f['error'][:100]}" for f in sets_failed)
         elif sets_failed and not sets_succeeded:

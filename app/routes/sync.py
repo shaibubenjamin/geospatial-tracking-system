@@ -300,6 +300,34 @@ async def trigger_sync(
     }
 
 
+@router.post("/stop")
+async def stop_sync(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Cooperatively cancel an in-flight sync.
+
+    Flips ``sync_config.cancel_requested`` to TRUE. The per-set loop in
+    ``run_sync`` polls this flag between sets and exits cleanly after the
+    current set finishes — no rows are rolled back, no DB transactions
+    are aborted mid-write. The next sync (manual or auto) clears the flag
+    on entry so this is one-shot.
+    """
+    res = await db.execute(
+        text("UPDATE sync_config SET cancel_requested = TRUE WHERE project_id = :pid"),
+        {"pid": project_id},
+    )
+    await db.commit()
+    if res.rowcount == 0:
+        raise HTTPException(404, "No sync config for this project")
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "note": "Stop signal sent. The current form set will finish, then the sync exits.",
+    }
+
+
 @router.get("/queue/depth")
 async def sync_queue_status(
     _admin: User = Depends(require_admin),
