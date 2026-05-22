@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SARMAAN MDA Dashboard — Sokoto State</title>
+<title>SARMAAN MDA Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
@@ -312,7 +313,7 @@ tbody tr:hover{background:var(--pale)}
       <div class="brand-logo">SS</div>
       <div>
         <div class="brand-name">SARMAAN MDA</div>
-        <div class="brand-sub">Sokoto State</div>
+        <div class="brand-sub" data-state-label>&mdash;</div>
       </div>
     </div>
 
@@ -331,7 +332,7 @@ tbody tr:hover{background:var(--pale)}
 
     <div class="sidebar-footer">
       <div>Sightsavers &mdash; SARMAAN</div>
-      <div style="color:#90c9a0;font-size:10.5px;margin-top:2px">Sokoto State 2026</div>
+      <div style="color:#90c9a0;font-size:10.5px;margin-top:2px" data-state-round-label>&mdash;</div>
       <div id="admin-nav-link" style="display:none;margin-top:10px">
         <a href="/mda-admin" style="color:var(--cyan);text-decoration:none;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
           <i class="fa-solid fa-screwdriver-wrench"></i><span>Admin Panel</span>
@@ -352,7 +353,7 @@ tbody tr:hover{background:var(--pale)}
         <i class="fa-solid fa-house" style="color:var(--blue)"></i>
         <span>SARMAAN</span>
         <i class="fa-solid fa-chevron-right" style="font-size:9px"></i>
-        <b>Sokoto MDA</b>
+        <b data-state-mda-label>MDA</b>
         <i class="fa-solid fa-chevron-right" style="font-size:9px"></i>
         <span id="crumb-view">Overview</span>
         <span style="color:var(--muted);margin-left:6px;font-size:11px">(<span id="crumb-start">&mdash;</span> to <span id="crumb-end">&mdash;</span>)</span>
@@ -944,7 +945,7 @@ tbody tr:hover{background:var(--pale)}
           <!-- Right: MapLibre map -->
           <div class="card geo-map-card" id="geo-map-card">
             <div class="card-head">
-              <div class="card-title"><i class="fa-solid fa-map"></i> Sokoto State — Boundary &amp; Visitation Map</div>
+              <div class="card-title"><i class="fa-solid fa-map"></i> <span data-state-map-label>State</span> &mdash; Boundary &amp; Visitation Map</div>
               <div style="display:flex;gap:5px;align-items:center">
                 <!-- Basemap switcher -->
                 <button onclick="geoSetBasemap('osm',this)" class="geo-bm-btn active" title="Street map"><i class="fa-solid fa-map"></i></button>
@@ -2596,6 +2597,10 @@ tbody tr:hover{background:var(--pale)}
   function renderQCTeamsTable() {
     const tbody = document.getElementById('qc-teams-tbody');
     if (!tbody) return;
+    if (!qcTeamsData.length) {
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No team data available yet for this project. Sync some forms to populate this table.</td></tr>';
+      return;
+    }
     const { col, asc } = qcTeamsSort;
     const sorted = [...qcTeamsData].sort((a, b) => {
       const va = a[col] ?? (typeof a[col] === 'string' ? '' : 0);
@@ -4430,25 +4435,86 @@ tbody tr:hover{background:var(--pale)}
   // Disable datalabels globally by default — enable per chart
   Chart.defaults.set('plugins.datalabels', { display: false });
 
-  /* ── PROJECT SELECTOR (removed) ──
-     The dashboard no longer renders a project selector. Switching projects
-     happens via Admin panel → Projects → "Set Active". Single source of
-     truth: ``is_active = TRUE``. We still need SELECTED_PID resolved at boot
-     because a couple of path-based admin endpoints (analytics/lgas, geo
-     download) embed the id in the URL. */
-  async function resolveActiveProjectId() {
-    try {
-      const projects = await api('/api/projects');
-      if (!Array.isArray(projects) || !projects.length) return null;
-      const active = projects.find(p => p.is_active) || projects[0];
-      return active ? active.id : null;
-    } catch (_) { return null; }
+  /* ── State-name labels ──
+     Several spots in the dashboard chrome used to be hardcoded to
+     "Sokoto" / "Sokoto State". Now they're filled in from the active
+     project's state_name + round_number so a Kano (or any future state)
+     project renders correctly. Elements opt in by tagging themselves
+     with a data-* attribute below. */
+  function applyProjectLabels(p) {
+    if (!p) return;
+    const state = p.state_name || 'State';
+    const round = p.round_number != null ? `Round ${p.round_number}` : null;
+    const stateRound = round ? `${state} ${round}` : state;
+
+    document.querySelectorAll('[data-state-label]').forEach(el => {
+      el.textContent = state;
+    });
+    document.querySelectorAll('[data-state-round-label]').forEach(el => {
+      el.textContent = `${stateRound} · Sightsavers`;
+    });
+    document.querySelectorAll('[data-state-mda-label]').forEach(el => {
+      el.textContent = `${state} MDA`;
+    });
+    document.querySelectorAll('[data-state-map-label]').forEach(el => {
+      el.textContent = `${state} State`;
+    });
+    // Update browser tab title too — easy to spot which state when many
+    // tabs are open.
+    document.title = `SARMAAN MDA — ${stateRound}`;
   }
 
-  resolveActiveProjectId().then(pid => {
-    SELECTED_PID = pid;
-    return loadOverview();
-  }).then(()=>{
+  /* ── PROJECT SELECTOR (topbar) ──
+     Populates the <select> with every project, sorted so the live (active)
+     one lands first. Selection writes to localStorage and reloads the
+     page — every chart / map / table re-fetches with the new SELECTED_PID
+     scope. */
+  async function populateProjectSelector() {
+    const sel = document.getElementById('project-selector');
+    if (!sel) return;
+    const projects = await api('/api/projects');
+    if (!Array.isArray(projects) || !projects.length) {
+      sel.innerHTML = '<option value="">No projects</option>';
+      sel.disabled = true;
+      return;
+    }
+    // Active first, then state ASC, then round_number DESC.
+    projects.sort((a, b) => {
+      if (a.is_active && !b.is_active) return -1;
+      if (!a.is_active && b.is_active) return 1;
+      const sa = (a.state_name || '').localeCompare(b.state_name || '');
+      if (sa !== 0) return sa;
+      return (b.round_number || 0) - (a.round_number || 0);
+    });
+    // Default if nothing stored: the server-side active project.
+    const active = projects.find(p => p.is_active) || projects[0];
+    if (SELECTED_PID == null) SELECTED_PID = active ? active.id : null;
+    // Fill in state-name labels across the dashboard from whichever project
+    // is currently selected. Falls back gracefully when state_name is null.
+    const selectedProject = projects.find(p => p.id === SELECTED_PID) || active;
+    applyProjectLabels(selectedProject);
+    sel.innerHTML = projects.map(p => {
+      const state  = p.state_name || 'Unknown state';
+      const round  = p.round_number != null ? `Round ${p.round_number}` : null;
+      const status = p.is_active ? ' (live)' : '';
+      const label  = round ? `${state} ${round}${status}` : (p.name || `Project ${p.id}`) + status;
+      const sl     = p.id === SELECTED_PID ? ' selected' : '';
+      return `<option value="${p.id}"${sl}>${label}</option>`;
+    }).join('');
+    sel.disabled = false;
+    sel.onchange = () => {
+      const v = parseInt(sel.value, 10);
+      if (!Number.isFinite(v)) return;
+      SELECTED_PID = v;
+      localStorage.setItem('selected_project_id', String(v));
+      // Hard reload so every cached chart / map / KPI re-fetches scope-aware.
+      window.location.reload();
+    };
+  }
+
+  populateProjectSelector();
+
+  loadOverview().then(()=>{
     populateLGAFilter();
     populateCovFilters();
     buildCharts('overview');
