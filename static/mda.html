@@ -516,9 +516,10 @@ tbody tr:hover{background:var(--pale)}
           <div class="chart-wrap"><canvas id="c_lgaBar"></canvas></div>
         </div>
 
-        <!-- Three balanced cards: daily trend (line), 1–59 baseline-vs-treated
-             (bar), and progress vs baseline (donut). -->
-        <div class="grid-3">
+        <!-- 2 × 2 chart grid.
+             Row 1: Daily trend (line)            | Treatment Progress vs Baseline (donut)
+             Row 2: Children 1–59 Baseline-vs-Treated (bar) | Forms Submitted vs Target (bar) -->
+        <div class="grid-2" style="margin-bottom:16px">
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
@@ -534,6 +535,21 @@ tbody tr:hover{background:var(--pale)}
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
+                <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
+                <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
+              </div>
+              <div class="card-head-right">
+                <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="c_donut"></canvas></div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card" style="margin-bottom:0">
+            <div class="card-head">
+              <div>
                 <div class="card-title"><i class="fa-solid fa-children"></i> Children 1&ndash;59: Baseline vs Treated</div>
                 <div class="card-sub">Compares the baseline target for children 1&ndash;59 months in this round against the number actually treated so far.</div>
               </div>
@@ -546,32 +562,15 @@ tbody tr:hover{background:var(--pale)}
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
-                <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
-                <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
+                <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted vs Target</div>
+                <div class="card-sub">Total forms collected so far vs the campaign-wide target. Target is derived from team capacity × planned campaign days, or — when no window is set — the count of settlements that need to be visited.</div>
               </div>
               <div class="card-head-right">
-                <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+                <button class="chart-dl" onclick="dlChart('c_formsTarget','forms_vs_target')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
               </div>
             </div>
-            <div class="chart-wrap"><canvas id="c_donut"></canvas></div>
+            <div class="chart-wrap"><canvas id="c_formsTarget"></canvas></div>
           </div>
-        </div>
-
-        <!-- Forms Submitted vs Target — campaign-wide comparison split off
-             from the daily-trend chart. Target = (teams × 80 forms/day ×
-             planned days) when a campaign window is configured, else the
-             count of settlements in the state's boundary set. -->
-        <div class="card" style="margin-top:16px">
-          <div class="card-head">
-            <div>
-              <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted vs Target</div>
-              <div class="card-sub">Total forms collected so far vs the campaign-wide target. Target is derived from team capacity × planned campaign days, or — when no window is set — the count of settlements that need to be visited.</div>
-            </div>
-            <div class="card-head-right">
-              <button class="chart-dl" onclick="dlChart('c_formsTarget','forms_vs_target')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-            </div>
-          </div>
-          <div class="chart-wrap"><canvas id="c_formsTarget"></canvas></div>
         </div>
 
         <div class="card">
@@ -1803,8 +1802,14 @@ tbody tr:hover{background:var(--pale)}
         '<td>' + fmt(r.baseline_total) + '</td>' +
         '<td>' + fmt(r.actual_treated) + '</td>' +
         '<td>' + fmt(r.forms) + '</td>' +
-        '<td><div class="bar-row"><span style="font-weight:700;min-width:52px;color:' + (cov > 100 ? '#92400E' : 'var(--navy)') + '" title="' + (cov > 100 ? 'Treated count exceeds baseline target — may indicate over-counting or baseline gap' : '') + '">' + cov.toFixed(1) + '%</span>' +
-          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%;background:' + (cov > 100 ? '#D97706' : 'var(--blue)') + '"></div></div></div></td>' +
+        // Coverage % colour palette is fully positive:
+        //   ≥100  → success green (target met)
+        //   80–99 → success green (on track)
+        //   60–79 → amber (watch)
+        //   <60   → red (mop-up)
+        // ≥100% reads as success now, not as a defect — see covCls / covLabel.
+        '<td><div class="bar-row"><span style="font-weight:700;min-width:52px;color:' + (cov >= 80 ? 'var(--good)' : cov >= 60 ? 'var(--warn)' : 'var(--bad)') + '" title="' + (cov >= 100 ? 'Target met or exceeded — a baseline is an estimate; reaching beyond one is a good outcome.' : '') + '">' + cov.toFixed(1) + '%</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%;background:' + (cov >= 80 ? 'var(--good)' : 'var(--blue)') + '"></div></div></div></td>' +
         '<td><span class="chip ' + covCls(cov) + '" title="' + (cov >= 100 ? 'Target met or exceeded for this LGA — baselines are estimates and reaching beyond one is a good outcome.' : '') + '">' + covLabel(cov) + '</span></td>' +
         '<td style="text-align:center">' + geoBtn + '</td>';
       const navBtn = tr.querySelector('[data-lga-nav]');
@@ -3005,8 +3010,11 @@ tbody tr:hover{background:var(--pale)}
       data: {
         labels: ['Forms'],
         datasets: [
-          { label: 'Submitted',    data: [submitted], backgroundColor: C_BLUE1, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
-          { label: 'Target',       data: [target],    backgroundColor: C_BLUE3, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
+          // Target sits on the left, Submitted on the right — mirrors the
+          // "Children 1–59: Baseline vs Treated" chart on the same row so
+          // the two side-by-side comparisons read in the same direction.
+          { label: 'Target',    data: [target],    backgroundColor: C_BLUE3, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
+          { label: 'Submitted', data: [submitted], backgroundColor: C_BLUE1, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
         ]
       },
       options: {
