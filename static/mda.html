@@ -200,7 +200,7 @@ tbody tr:hover{background:var(--pale)}
 .chip.good{background:var(--good-bg);color:var(--good)}
 .chip.warn{background:var(--warn-bg);color:var(--warn)}
 .chip.bad{background:var(--bad-bg);color:var(--bad)}
-.chip.over{background:#FEF3C7;color:#92400E}   /* > 100% — over-coverage; investigate */
+.chip.over{background:var(--good-bg);color:var(--good)}   /* > 100% — exceeded target; same weight as on-target */
 
 /* QC tiles */
 .qc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
@@ -557,6 +557,23 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
+        <!-- Forms Submitted vs Target — campaign-wide comparison split off
+             from the daily-trend chart. Target = (teams × 80 forms/day ×
+             planned days) when a campaign window is configured, else the
+             count of settlements in the state's boundary set. -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted vs Target</div>
+              <div class="card-sub">Total forms collected so far vs the campaign-wide target. Target is derived from team capacity × planned campaign days, or — when no window is set — the count of settlements that need to be visited.</div>
+            </div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlChart('c_formsTarget','forms_vs_target')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="c_formsTarget"></canvas></div>
+        </div>
+
         <div class="card">
           <div class="card-head">
             <div>
@@ -769,6 +786,7 @@ tbody tr:hover{background:var(--pale)}
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-bolt"></i></div><div class="qc-val" id="qc-fast-forms">&mdash;</div><div class="qc-lbl">Very Fast Forms (&lt;5 min)</div><div class="qc-desc">Completed in under 5 minutes — a full household visit typically takes longer; may indicate skipping questions or rushed entry</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-hourglass-half"></i></div><div class="qc-val" id="qc-slow-forms">&mdash;</div><div class="qc-lbl">Very Slow Forms (&gt;60 min)</div><div class="qc-desc">Took over 1 hour — may indicate poor connectivity, form abandonment, or the device being left idle</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-ban"></i></div><div class="qc-val" id="qc-refusal-rate">&mdash;</div><div class="qc-lbl">Treatment Refusal Rate</div><div class="qc-desc" id="qc-refusal-count">% of households that declined treatment — social mobilisation may be needed in high-refusal LGAs</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-arrows-left-right-to-line"></i></div><div class="qc-val" id="qc-drift">&mdash;</div><div class="qc-lbl">Form ↔ Repeat-Group Drift</div><div class="qc-desc" id="qc-drift-desc">Households where the “number of children treated” the team typed at the top of the form doesn't match the number of treated child rows in the repeat group below. A consistent gap suggests under-filled forms — repeat-group rows being skipped after the summary count is entered.</div></div>
         </div>
 
         <div class="grid-2">
@@ -1281,13 +1299,14 @@ tbody tr:hover{background:var(--pale)}
 
   /* ── COLOUR HELPERS ── */
   const covHex = () => '#006B2E';
-  // > 100% is over-coverage (treated more than the baseline target) — surfaced as a
-  // distinct amber state so the campaign team can investigate over-counting / baseline
-  // accuracy. 80-100 is on target, 60-79 needs watching, <60 needs mop-up.
-  const covCls = c => c > 100 ? 'over' : c >= 80 ? 'good' : c >= 60 ? 'warn' : 'bad';
-  const covLabel = c => c > 100
-    ? '⚠ Above target'
-    : c >= 80 ? '✓ On target' : c >= 60 ? '⚠ Watch' : '✗ Below';
+  // ≥100% means the team has matched or exceeded the baseline target —
+  // that's a *success*, not a problem (baselines are estimates and reaching
+  // beyond one is common in good campaigns). Treat 100+ visually as
+  // on-target. 80–99 on track, 60–79 watch, <60 mop-up.
+  const covCls = c => c >= 100 ? 'over' : c >= 80 ? 'good' : c >= 60 ? 'warn' : 'bad';
+  const covLabel = c => c >= 100
+    ? '✓ Target met'
+    : c >= 80 ? '✓ On track' : c >= 60 ? '⚠ Watch' : '✗ Below';
   function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
 
   /* ── ROUND-OVER-ROUND COMPARISON TABLE ──
@@ -1730,6 +1749,20 @@ tbody tr:hover{background:var(--pale)}
     }
     setEl('kpi-flags', Number(qcFlags || 0).toLocaleString());
 
+    // Form ↔ Repeat-Group Drift QC tile. Shows the count of households
+    // where the typed "number_of_treated" disagrees with the count of
+    // treated child rows in the repeat group, plus the implied count of
+    // missing repeat-group entries. A high drift is a data-quality issue,
+    // not a bug — see QC drilldown for which forms need cleanup.
+    const drifH = overviewData.drift_households || 0;
+    const drifP = overviewData.drift_pct || 0;
+    const drifM = overviewData.drift_missing_rows || 0;
+    setEl('qc-drift', drifH.toLocaleString() + (drifP ? '  ·  ' + drifP.toFixed(1) + '%' : ''));
+    const drifDesc = document.getElementById('qc-drift-desc');
+    if (drifDesc && drifM > 0) {
+      drifDesc.textContent = 'Households where the “number of children treated” the team typed at the top of the form doesn’t match the number of treated child rows in the repeat group below. About ' + drifM.toLocaleString() + ' repeat-group entries are missing across these forms.';
+    }
+
     setEl('crumb-start', overviewData.campaign_start || '—');
     setEl('crumb-end', overviewData.campaign_end || '—');
 
@@ -1772,7 +1805,7 @@ tbody tr:hover{background:var(--pale)}
         '<td>' + fmt(r.forms) + '</td>' +
         '<td><div class="bar-row"><span style="font-weight:700;min-width:52px;color:' + (cov > 100 ? '#92400E' : 'var(--navy)') + '" title="' + (cov > 100 ? 'Treated count exceeds baseline target — may indicate over-counting or baseline gap' : '') + '">' + cov.toFixed(1) + '%</span>' +
           '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%;background:' + (cov > 100 ? '#D97706' : 'var(--blue)') + '"></div></div></div></td>' +
-        '<td><span class="chip ' + covCls(cov) + '" title="' + (cov > 100 ? 'Over-coverage: treated count exceeds the baseline target. Check baseline accuracy and number_of_treated entries.' : '') + '">' + covLabel(cov) + '</span></td>' +
+        '<td><span class="chip ' + covCls(cov) + '" title="' + (cov >= 100 ? 'Target met or exceeded for this LGA — baselines are estimates and reaching beyond one is a good outcome.' : '') + '">' + covLabel(cov) + '</span></td>' +
         '<td style="text-align:center">' + geoBtn + '</td>';
       const navBtn = tr.querySelector('[data-lga-nav]');
       if (navBtn) {
@@ -2623,10 +2656,11 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function rebuildOverviewCharts(sortBy) {
-    ['c_lgaBar','c_donut'].forEach(destroyChart);
+    ['c_lgaBar','c_donut','c_formsTarget'].forEach(destroyChart);
     const data = filteredData();
     buildLGABarChart(data, sortBy || activeKpi);
     buildDonutChart(data);
+    buildFormsVsTargetChart();
     buildLGATable('lga-table-body', data);
     const lbl = document.getElementById('lga-table-filter-label');
     if (lbl) lbl.textContent = [FILTER.lga, FILTER.ward].filter(Boolean).join(' › ') || '';
@@ -2946,6 +2980,56 @@ tbody tr:hover{background:var(--pale)}
     _renderAgeSummary(d);
   }
 
+  // Forms Submitted vs Target. Reads `total_forms` and `target_forms` from
+  // the overview endpoint (target = teams × 80 × planned-days, else falls
+  // back to the state's settlement count). Two columns side-by-side so the
+  // comparison is unambiguous; an "Above target" label appears in tooltip
+  // when submitted ≥ target, framed as success not a defect.
+  function buildFormsVsTargetChart() {
+    const el = document.getElementById('c_formsTarget');
+    if (!el) return;
+    const existing = Chart.getChart(el); if (existing) existing.destroy();
+    const submitted = Number(overviewData?.total_forms  || 0);
+    const target    = Number(overviewData?.target_forms || 0);
+    if (submitted === 0 && target === 0) {
+      const ctx = el.getContext('2d');
+      ctx.clearRect(0, 0, el.width, el.height);
+      ctx.fillStyle = '#5B6B82';
+      ctx.font = '12px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No data yet — submit forms or configure a campaign window to see this comparison.', el.width / 2, el.height / 2);
+      return;
+    }
+    new Chart(el, {
+      type: 'bar',
+      data: {
+        labels: ['Forms'],
+        datasets: [
+          { label: 'Submitted',    data: [submitted], backgroundColor: C_BLUE1, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
+          { label: 'Target',       data: [target],    backgroundColor: C_BLUE3, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
+        ]
+      },
+      options: {
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+          datalabels: { ...DL_BASE, anchor: 'end', align: 'top', formatter: v => v.toLocaleString() },
+          tooltip: {
+            callbacks: {
+              footer: () => {
+                if (!target) return '';
+                const pct = (100 * submitted / target);
+                if (pct >= 100) return `Target met — ${pct.toFixed(1)}% of target submitted`;
+                return `${pct.toFixed(1)}% of target submitted so far`;
+              }
+            }
+          }
+        },
+        scales: { y: { grid: { display: false }, ticks: { callback: v => v.toLocaleString() } }, x: { grid: { display: false } } },
+        maintainAspectRatio: false, animation: { duration: 600 }
+      }
+    });
+  }
+
   function buildCharts(view) {
     if (built[view]) return;
     built[view] = true;
@@ -2955,6 +3039,7 @@ tbody tr:hover{background:var(--pale)}
       buildLGABarChart(data, null);
       buildDonutChart(data);
       buildAgeBandChart();
+      buildFormsVsTargetChart();
       buildLGATable('lga-table-body', data);
       // Build sparklines from daily data (last 10 days)
       if (dailyData.length) {
@@ -2969,9 +3054,11 @@ tbody tr:hover{background:var(--pale)}
       }
 
       if (dailyData.length) {
-        // Daily target line: 80 forms/day × active teams
-        const dailyTarget = (overviewData.teams_active || 0) * 80;
-        const dailyTargetData = dailyData.map(() => dailyTarget > 0 ? dailyTarget : null);
+        // Daily form-submissions trend. The campaign-wide target is a *total*,
+        // not a per-day rate, so it's not plotted here — drawing it as a flat
+        // line on a per-day chart implied the day was "behind target" even
+        // when the team was on schedule. The total-vs-target comparison lives
+        // in the "Forms Submitted vs Target" column chart card.
         const el_daily = document.getElementById('c_dailyLine');
         new Chart(el_daily, {
           type: 'line',
@@ -2982,9 +3069,6 @@ tbody tr:hover{background:var(--pale)}
                 borderColor: C_BLUE1, backgroundColor: ctx => gradient(ctx.chart.ctx, 'rgba(0,107,46,.22)', 'rgba(0,107,46,0)'),
                 fill: true, tension: 0.35, borderWidth: 2.5, pointRadius: 4,
                 pointBackgroundColor: C_BLUE1, pointHoverRadius: 6, order: 1 },
-              { label: 'Team daily target (80/team)', data: dailyTargetData,
-                borderColor: 'rgba(217,119,6,.6)', borderDash: [6,4], borderWidth: 1.5,
-                pointRadius: 0, fill: false, order: 0 },
             ]
           },
           options: {
