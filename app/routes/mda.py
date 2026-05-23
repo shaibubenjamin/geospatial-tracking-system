@@ -2315,6 +2315,181 @@ async def geo_settlement_breakdown(
     }
 
 
+@router.get("/teams/footprint")
+async def teams_footprint(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Team-centric counterpart to /teams/by-lga.
+
+    One row per CommCare HQ user, showing their LGA footprint and quality
+    profile. Lets supervisors see at a glance which teams roam multiple
+    LGAs vs which stay fixed, and which teams have the highest QC issues.
+
+    Columns:
+      team           = hq_user (or 'Unknown' when null)
+      primary_lga    = LGA where the team submitted the most forms
+      lgas_touched   = COUNT(DISTINCT lga)
+      forms          = total household forms
+      days_active    = COUNT(DISTINCT submission_date)
+      avg_per_day    = forms ÷ days_active
+      quality_pct    = 100 - (after_hours + fast_forms) ÷ forms × 100, clamped 0-100
+      last_seen      = ISO date string
+    """
+    res = await db.execute(text("""
+        WITH per_team_lga AS (
+          SELECT
+            COALESCE(hq_user, 'Unknown') AS team,
+            INITCAP(LOWER(TRIM(lga)))    AS lga,
+            COUNT(*)                     AS forms
+          FROM mda_households
+          WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''
+          GROUP BY 1, 2
+        ),
+        primary_lga AS (
+          SELECT DISTINCT ON (team) team, lga AS primary_lga, forms AS primary_forms
+          FROM per_team_lga
+          ORDER BY team, forms DESC, lga
+        ),
+        per_team AS (
+          SELECT
+            COALESCE(hq_user, 'Unknown') AS team,
+            COUNT(*) AS forms,
+            COUNT(DISTINCT lga) FILTER (WHERE lga IS NOT NULL) AS lgas_touched,
+            COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_active,
+            SUM(CASE WHEN flag_after_hours THEN 1 ELSE 0 END) AS after_hours,
+            SUM(CASE WHEN flag_fast_form   THEN 1 ELSE 0 END) AS fast_forms,
+            MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS last_seen
+          FROM mda_households
+          WHERE project_id = :pid
+          GROUP BY COALESCE(hq_user, 'Unknown')
+        )
+        SELECT
+          pt.team,
+          pl.primary_lga,
+          pt.lgas_touched,
+          pt.forms,
+          pt.days_active,
+          pt.after_hours,
+          pt.fast_forms,
+          pt.last_seen
+        FROM per_team pt
+        LEFT JOIN primary_lga pl ON pl.team = pt.team
+        ORDER BY pt.forms DESC, pt.team
+    """), {"pid": pid})
+    out = []
+    for r in res.fetchall():
+        forms = int(r.forms or 0)
+        days  = int(r.days_active or 0)
+        bad   = (int(r.after_hours or 0) + int(r.fast_forms or 0))
+        avg   = (forms / days) if days > 0 else 0.0
+        q     = 100.0 - min(100.0, (bad / max(forms, 1)) * 100.0)
+        out.append({
+            "team":          r.team,
+            "primary_lga":   r.primary_lga,
+            "lgas_touched":  int(r.lgas_touched or 0),
+            "forms":         forms,
+            "days_active":   days,
+            "avg_per_day":   round(avg, 1),
+            "quality_pct":   round(q, 1),
+            "last_seen":     r.last_seen,
+        })
+    return out
+
+
+@router.get("/geo/mop-up-shortlist")
+async def geo_mop_up_shortlist(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Ranked list of LGAs that need attention, with a one-line recommendation.
+
+    Combines three signals:
+      * Settlements not visited        — count of settlements with no GPS point.
+      * Treatment coverage gap         — baseline_total minus children treated.
+      * Field team density             — distinct teams currently working the LGA.
+
+    Each LGA gets an urgency score = (not_visited × 2) + max(0, gap_pct × not_visited / 5)
+    so LGAs with both a big un-reached-settlement count *and* a coverage shortfall
+    rise first. Returns the top 10 plus a tiny recommended action string for each.
+    """
+    res = await db.execute(text("""
+        WITH s AS (
+          SELECT
+            INITCAP(LOWER(TRIM(sa.lga_name))) AS lga,
+            COUNT(*) FILTER (WHERE COALESCE(sa.point_count, 0) = 0) AS not_visited,
+            COUNT(*) AS total_settlements
+          FROM settlement_analytics sa
+          WHERE sa.project_id = :pid AND sa.lga_name IS NOT NULL
+          GROUP BY INITCAP(LOWER(TRIM(sa.lga_name)))
+        ),
+        cov AS (
+          SELECT
+            INITCAP(LOWER(TRIM(lga))) AS lga,
+            COALESCE(SUM(total_treated), 0) AS baseline_total
+          FROM mda_baseline
+          WHERE project_id = :pid AND lga IS NOT NULL
+          GROUP BY INITCAP(LOWER(TRIM(lga)))
+        ),
+        hh AS (
+          SELECT
+            INITCAP(LOWER(TRIM(lga))) AS lga,
+            COUNT(DISTINCT hq_user) AS teams,
+            COALESCE(SUM(number_of_treated), 0) AS treated
+          FROM mda_households
+          WHERE project_id = :pid AND lga IS NOT NULL
+          GROUP BY INITCAP(LOWER(TRIM(lga)))
+        )
+        SELECT
+          COALESCE(s.lga, hh.lga, cov.lga) AS lga,
+          COALESCE(s.not_visited, 0)       AS not_visited,
+          COALESCE(s.total_settlements, 0) AS total_settlements,
+          COALESCE(cov.baseline_total, 0)  AS baseline_total,
+          COALESCE(hh.treated, 0)          AS treated,
+          COALESCE(hh.teams, 0)            AS teams
+        FROM s
+        FULL OUTER JOIN cov ON cov.lga = s.lga
+        FULL OUTER JOIN hh  ON hh.lga  = COALESCE(s.lga, cov.lga)
+    """), {"pid": pid})
+    rows = []
+    for r in res.fetchall():
+        if not r.lga:
+            continue
+        baseline = int(r.baseline_total or 0)
+        treated  = int(r.treated or 0)
+        nv       = int(r.not_visited or 0)
+        tot_st   = int(r.total_settlements or 0)
+        teams    = int(r.teams or 0)
+        gap_pct  = max(0.0, 100.0 - (100.0 * treated / baseline)) if baseline else 0.0
+        urgency  = (nv * 2) + max(0.0, gap_pct * nv / 5.0)
+        if nv == 0 and gap_pct < 5:
+            continue  # nothing to recommend here
+        # One-line recommended action — pick the leading issue.
+        if nv > 0 and (tot_st == 0 or nv / max(tot_st, 1) >= 0.5):
+            action = f"Deploy a first-pass team — {nv} of {tot_st} settlements not yet visited."
+        elif nv > 0:
+            action = f"Mop-up: {nv} settlements still un-visited; current team count {teams}."
+        elif gap_pct >= 20:
+            action = f"Coverage gap {gap_pct:.0f}% — review baseline accuracy or expand teams."
+        else:
+            action = f"Top up: small coverage gap of {gap_pct:.0f}% remaining."
+        rows.append({
+            "lga":               r.lga,
+            "not_visited":       nv,
+            "total_settlements": tot_st,
+            "baseline_total":    baseline,
+            "treated":           treated,
+            "gap_pct":           round(gap_pct, 1),
+            "teams":             teams,
+            "urgency":           round(urgency, 1),
+            "action":            action,
+        })
+    rows.sort(key=lambda x: x["urgency"], reverse=True)
+    return rows[:10]
+
+
 @router.get("/teams/by-lga")
 async def teams_by_lga(
     pid: int = Depends(resolve_pid),
@@ -2336,28 +2511,75 @@ async def teams_by_lga(
     when supervisors decide where to redeploy teams for mop-up. Scoped by
     project_id so each round/state stays in its own scope.
     """
+    # Pull the LGA-level activity in one query, then join settlement counts
+    # so we can derive a target-team benchmark per LGA. The benchmark uses
+    # the SARMAAN rate (80 forms / team / day) — if an LGA has N settlements,
+    # and one settlement ≈ one form, then expected_teams ≈ N ÷ (80 × planned_days)
+    # so a team can finish in the campaign window. Falls back gracefully when
+    # planned days isn't set.
     res = await db.execute(text("""
-        SELECT
-          INITCAP(LOWER(TRIM(lga)))                       AS lga,
-          COUNT(DISTINCT hq_user)                         AS teams,
-          COUNT(*)                                        AS forms,
-          COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_active,
-          MIN((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS first_seen,
-          MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS last_seen
-        FROM mda_households
-        WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''
-        GROUP BY INITCAP(LOWER(TRIM(lga)))
-        ORDER BY teams DESC, forms DESC
+        WITH hh AS (
+          SELECT
+            INITCAP(LOWER(TRIM(lga)))                       AS lga,
+            COUNT(DISTINCT hq_user)                         AS teams,
+            COUNT(*)                                        AS forms,
+            COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_active,
+            MIN((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS first_seen,
+            MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS last_seen
+          FROM mda_households
+          WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''
+          GROUP BY INITCAP(LOWER(TRIM(lga)))
+        ),
+        st AS (
+          SELECT INITCAP(LOWER(TRIM(lga_name))) AS lga,
+                 COUNT(*) AS settlements
+          FROM settlement_analytics
+          WHERE project_id = :pid AND lga_name IS NOT NULL
+          GROUP BY INITCAP(LOWER(TRIM(lga_name)))
+        )
+        SELECT hh.*, COALESCE(st.settlements, 0) AS settlements
+        FROM hh LEFT JOIN st ON st.lga = hh.lga
+        ORDER BY hh.teams DESC, hh.forms DESC
     """), {"pid": pid})
+
+    # Planned campaign window — drives the target-team denominator.
+    proj_res = await db.execute(text("""
+        SELECT campaign_start_date, campaign_end_date
+        FROM geo_projects WHERE id = :pid
+    """), {"pid": pid})
+    proj_row = proj_res.fetchone()
+    planned_days = None
+    if proj_row and proj_row[0] and proj_row[1]:
+        planned_days = (proj_row[1] - proj_row[0]).days + 1
+
     out = []
     for r in res.fetchall():
         teams = int(r.teams or 0)
         forms = int(r.forms or 0)
         days  = int(r.days_active or 0)
+        settl = int(r.settlements or 0)
         avg   = (forms / (teams * days)) if teams > 0 and days > 0 else 0.0
+        # Target teams = settlements ÷ (80 forms/team/day × planned_days).
+        # Round up so partial teams count. Falls back to None when planned
+        # days isn't configured — the frontend will hide the benchmark column.
+        target_teams = None
+        deployment_status = None
+        if planned_days and settl > 0:
+            target_teams = max(1, -(-settl // (80 * planned_days)))  # ceil
+            if teams == 0:
+                deployment_status = "unstaffed"
+            elif teams < 0.5 * target_teams:
+                deployment_status = "under-staffed"
+            elif teams > 1.5 * target_teams:
+                deployment_status = "over-staffed"
+            else:
+                deployment_status = "on-target"
         out.append({
             "lga":                   r.lga,
             "teams":                 teams,
+            "target_teams":          target_teams,
+            "deployment_status":     deployment_status,
+            "settlements":           settl,
             "forms":                 forms,
             "days_active":           days,
             "avg_per_team_per_day":  round(avg, 1),
