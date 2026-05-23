@@ -721,6 +721,47 @@ tbody tr:hover{background:var(--pale)}
             <table><thead><tr><th>LGA</th><th>Baseline Target</th><th>Treated</th><th>Forms</th><th>Coverage %</th><th>Status</th><th style="text-align:center" title="Jump to map"><i class="fa-solid fa-map-location-dot"></i></th></tr></thead><tbody id="cov-lga-table-body"></tbody></table>
           </div>
         </div>
+
+        <!-- Teams per LGA — decision-support table answering "how many
+             field teams are working in each LGA, and how active are they?"
+             Each row reflects what's actually visible in mda_households:
+               teams       = COUNT(DISTINCT hq_user) for the LGA
+               forms       = COUNT(*) of household forms
+               days_active = COUNT(DISTINCT submission_date)
+               avg/team/day = forms ÷ (teams × days_active)
+             Sortable + CSV exportable. Sorted by team count desc by default
+             so the LGAs with the highest team density rise to the top. -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-people-group"></i> Teams per LGA</div>
+              <div class="card-sub">How many distinct field teams have submitted forms from each LGA, plus how active they were. A “team” here is a unique CommCare HQ user — the same identity used everywhere else on the dashboard. Useful when deciding where to redeploy teams during mop-up.</div>
+            </div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlTeamsPerLGACSV()" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+            </div>
+          </div>
+          <div style="padding:14px 18px 18px">
+            <div style="overflow-x:auto;max-height:480px;overflow-y:auto;border:1px solid var(--line);border-radius:8px">
+              <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                <thead style="position:sticky;top:0;background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;z-index:1">
+                  <tr>
+                    <th style="padding:10px 12px;text-align:left">LGA</th>
+                    <th style="padding:10px 12px;text-align:right">Teams</th>
+                    <th style="padding:10px 12px;text-align:right">Forms</th>
+                    <th style="padding:10px 12px;text-align:right">Days active</th>
+                    <th style="padding:10px 12px;text-align:right" title="Forms ÷ (teams × days active)">Avg forms / team / day</th>
+                    <th style="padding:10px 12px;text-align:right">First seen</th>
+                    <th style="padding:10px 12px;text-align:right">Last seen</th>
+                  </tr>
+                </thead>
+                <tbody id="teamslga-tbody">
+                  <tr><td colspan="7" style="padding:18px;text-align:center;color:var(--muted)">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ========== QUALITY CHECKS ========== -->
@@ -3244,6 +3285,7 @@ tbody tr:hover{background:var(--pale)}
       // gracefully.
       renderCoverageByAge();
       renderRefusalsAnalysis();
+      _loadTeamsPerLGA();
 
       if (lgaCovData.length) {
         const sorted = [...lgaCovData].sort((a,b)=>b.coverage_pct-a.coverage_pct);
@@ -3802,6 +3844,52 @@ tbody tr:hover{background:var(--pale)}
     setEl('geo-sett-visited-count', visited.toLocaleString());
     setEl('geo-sett-total-count', total.toLocaleString());
   }
+
+  // Teams per LGA — Coverage Analysis page. One row per LGA showing how
+  // many distinct CommCare teams have submitted forms from it, total
+  // forms, days active, and the implied avg-per-team-per-day rate.
+  // Project-dynamic: the api() helper auto-appends ?project_id.
+  let _teamsPerLGACache = null;
+  async function _loadTeamsPerLGA() {
+    const rows = await api('/api/mda/teams/by-lga');
+    const tbody = document.getElementById('teamslga-tbody');
+    if (!tbody) return;
+    if (!Array.isArray(rows) || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="padding:18px;text-align:center;color:var(--muted)">No team-by-LGA data for this project yet.</td></tr>';
+      _teamsPerLGACache = [];
+      return;
+    }
+    _teamsPerLGACache = rows;
+    tbody.innerHTML = rows.map(r => {
+      return `<tr style="border-top:1px solid var(--line)">
+        <td style="padding:9px 12px;font-weight:600;color:var(--ink)">${r.lga}</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:var(--deep)">${(r.teams || 0).toLocaleString()}</td>
+        <td style="padding:9px 12px;text-align:right">${(r.forms || 0).toLocaleString()}</td>
+        <td style="padding:9px 12px;text-align:right">${(r.days_active || 0).toLocaleString()}</td>
+        <td style="padding:9px 12px;text-align:right">${(r.avg_per_team_per_day || 0).toFixed(1)}</td>
+        <td style="padding:9px 12px;text-align:right;color:var(--muted)">${r.first_seen || '—'}</td>
+        <td style="padding:9px 12px;text-align:right;color:var(--muted)">${r.last_seen || '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function dlTeamsPerLGACSV() {
+    if (!_teamsPerLGACache) return;
+    const head = ['LGA','Teams','Forms','Days active','Avg forms / team / day','First seen','Last seen'];
+    const lines = [head.join(',')];
+    _teamsPerLGACache.forEach(r => {
+      lines.push([
+        '"' + (r.lga || '').replace(/"/g, '""') + '"',
+        r.teams || 0, r.forms || 0, r.days_active || 0,
+        (r.avg_per_team_per_day || 0).toFixed(1),
+        r.first_seen || '', r.last_seen || ''
+      ].join(','));
+    });
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'teams_per_lga.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.dlTeamsPerLGACSV = dlTeamsPerLGACSV;
 
   // Coverage Threshold Summary — fills the LGA / Ward / Settlement
   // decision-support table on the Geographic View. Three rows, each
