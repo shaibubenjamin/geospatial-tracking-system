@@ -1031,6 +1031,41 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
+        <!-- Coverage Threshold Summary — decision-support roll-up: how
+             many LGAs / Wards are at the 70% coverage threshold, and how
+             many settlements are still not reached. Three rows answer
+             the operator's "where do we focus?" question at a glance. -->
+        <div class="card" style="margin-top:14px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-bullseye"></i> Coverage Threshold Summary</div>
+              <div class="card-sub">How many LGAs and Wards have crossed the 70% coverage threshold, and how many settlements are still un-reached. An LGA or Ward counts as “at target” when ≥70% of its settlements are fully covered.</div>
+            </div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlCoverageSummaryCSV()" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+            </div>
+          </div>
+          <div style="padding:14px 18px 18px">
+            <div style="overflow-x:auto;border:1px solid var(--line);border-radius:8px">
+              <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead style="background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">
+                  <tr>
+                    <th style="padding:11px 14px;text-align:left">Level</th>
+                    <th style="padding:11px 14px;text-align:right">Total</th>
+                    <th style="padding:11px 14px;text-align:right;color:var(--good)">At target (≥70%)</th>
+                    <th style="padding:11px 14px;text-align:right;color:var(--bad)" id="covsum-below-header">Below target / Not reached</th>
+                    <th style="padding:11px 14px;text-align:right">% at target</th>
+                  </tr>
+                </thead>
+                <tbody id="covsum-tbody">
+                  <tr><td colspan="5" style="padding:18px;text-align:center;color:var(--muted)">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="covsum-narrative" style="margin-top:12px;font-size:12px;color:var(--muted);line-height:1.6"></div>
+          </div>
+        </div>
+
         <!-- Settlement Coverage Breakdown — answers "where do we still
              need to go?" at a glance. Three buckets:
                Not visited        — no GPS point inside the settlement
@@ -3745,6 +3780,7 @@ tbody tr:hover{background:var(--pale)}
     // Completeness) are driven by /api/mda/geo/completeness so they use the
     // server-side capped formulas, not whatever sums we'd compute client-side.
     _loadGeoCompleteness();
+    _loadCoverageSummary();
     _loadSettlementBreakdown();
   }
 
@@ -3766,6 +3802,67 @@ tbody tr:hover{background:var(--pale)}
     setEl('geo-sett-visited-count', visited.toLocaleString());
     setEl('geo-sett-total-count', total.toLocaleString());
   }
+
+  // Coverage Threshold Summary — fills the LGA / Ward / Settlement
+  // decision-support table on the Geographic View. Three rows, each
+  // showing total / at-target / below-target / % at target. The %
+  // colouring reuses the dashboard's good/warn/bad palette.
+  let _covsumCache = null;
+  async function _loadCoverageSummary() {
+    const d = await api('/api/mda/geo/coverage-summary');
+    const tbody = document.getElementById('covsum-tbody');
+    if (!d) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:18px;text-align:center;color:var(--muted)">Settlement analytics not available yet — sync or recompute geographic analytics first.</td></tr>';
+      return;
+    }
+    _covsumCache = d;
+    const rows = [
+      { level: 'LGAs',        belowLabel: 'Below target',     ...d.lga },
+      { level: 'Wards',       belowLabel: 'Below target',     ...d.ward },
+      { level: 'Settlements', belowLabel: 'Not reached / partial', ...d.settlement },
+    ];
+    if (!rows[0].total && !rows[1].total && !rows[2].total) {
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:18px;text-align:center;color:var(--muted)">No coverage data for this project yet — settlement analytics is empty.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const pct = Number(r.pct || 0);
+      const col = pct >= 80 ? 'var(--good)' : pct >= 60 ? 'var(--warn)' : 'var(--bad)';
+      return `<tr style="border-top:1px solid var(--line)">
+        <td style="padding:10px 14px;font-weight:700;color:var(--ink)">${r.level}</td>
+        <td style="padding:10px 14px;text-align:right">${(r.total || 0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right;color:var(--good);font-weight:600">${(r.at_target || 0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right;color:${(r.below||0) ? 'var(--bad)' : 'var(--muted)'};font-weight:${(r.below||0) ? '700' : '400'}">${(r.below || 0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:700;color:${col}">${pct.toFixed(1)}%</td>
+      </tr>`;
+    }).join('');
+    // Brief narrative line under the table — gives a one-sentence summary
+    // matching how a supervisor would describe progress in a stand-up.
+    const lga = d.lga || {}, ward = d.ward || {}, sett = d.settlement || {};
+    const narr = document.getElementById('covsum-narrative');
+    if (narr) {
+      const parts = [];
+      if (lga.total)  parts.push(`<strong>${lga.at_target}</strong> of ${lga.total} LGAs (<strong>${(lga.pct||0).toFixed(1)}%</strong>) have crossed the 70% threshold.`);
+      if (ward.total) parts.push(`<strong>${ward.at_target}</strong> of ${ward.total} wards (<strong>${(ward.pct||0).toFixed(1)}%</strong>) have crossed it.`);
+      if (sett.total) parts.push(`<strong>${(sett.below||0).toLocaleString()}</strong> settlements still need attention (no form logged or grid <70% covered).`);
+      narr.innerHTML = parts.join(' ');
+    }
+  }
+
+  function dlCoverageSummaryCSV() {
+    if (!_covsumCache) return;
+    const d = _covsumCache;
+    const lines = [
+      ['Level','Total','At target (>=70%)','Below target / Not reached','% at target'].join(','),
+      ['LGAs',        d.lga.total,        d.lga.at_target,        d.lga.below,        d.lga.pct.toFixed(1)].join(','),
+      ['Wards',       d.ward.total,       d.ward.at_target,       d.ward.below,       d.ward.pct.toFixed(1)].join(','),
+      ['Settlements', d.settlement.total, d.settlement.at_target, d.settlement.below, d.settlement.pct.toFixed(1)].join(','),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'coverage_threshold_summary.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.dlCoverageSummaryCSV = dlCoverageSummaryCSV;
 
   // Settlement coverage breakdown — fills the per-LGA table + summary chips
   // under the map on the Geographic View.

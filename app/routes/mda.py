@@ -2315,6 +2315,77 @@ async def geo_settlement_breakdown(
     }
 
 
+@router.get("/geo/coverage-summary")
+async def geo_coverage_summary(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """High-level coverage roll-up across all three admin levels.
+
+    Returns three rows — LGA / Ward / Settlement — each showing how many
+    units fall at or above the 70% coverage threshold vs below it. An
+    LGA / Ward is "at threshold" when ≥70% of its settlements are fully
+    covered. Settlements use their own is_visited / completeness rule
+    (≥70% grid coverage, or any GPS point inside when grids are absent).
+
+    This is the operator-facing decision-support table: at a glance, how
+    many LGAs and Wards are still in the "need attention" bucket, and how
+    many settlements have not been reached.
+    """
+    # First compute the per-settlement bucket once and reuse for LGA + Ward
+    # rollups. Saves us doing three near-identical CTEs.
+    s_res = await db.execute(text("""
+        WITH s AS (
+          SELECT sa.lgacode, sa.lga_name, sa.wardcode, sa.ward_name,
+                 CASE WHEN sa.is_visited OR COALESCE(sa.completeness_pct, 0) >= 70
+                      THEN 1 ELSE 0 END AS covered
+          FROM settlement_analytics sa
+          WHERE sa.project_id = :pid
+        ),
+        per_lga AS (
+          SELECT lgacode, AVG(covered) AS frac
+          FROM s
+          GROUP BY lgacode
+        ),
+        per_ward AS (
+          SELECT wardcode, AVG(covered) AS frac
+          FROM s
+          GROUP BY wardcode
+        )
+        SELECT
+          (SELECT COUNT(*)                       FROM per_lga)  AS lga_total,
+          (SELECT COUNT(*) FILTER (WHERE frac >= 0.7) FROM per_lga)  AS lga_at,
+          (SELECT COUNT(*)                       FROM per_ward) AS ward_total,
+          (SELECT COUNT(*) FILTER (WHERE frac >= 0.7) FROM per_ward) AS ward_at,
+          (SELECT COUNT(*)                       FROM s)        AS sett_total,
+          (SELECT COUNT(*) FILTER (WHERE covered = 1) FROM s)   AS sett_at
+    """), {"pid": pid})
+    row = s_res.fetchone()
+    def split(total, atv):
+        total = int(total or 0); atv = int(atv or 0)
+        below = total - atv
+        return {
+            "total":      total,
+            "at_target":  atv,
+            "below":      below,
+            "pct":        round(100.0 * atv / total, 1) if total else 0.0,
+        }
+    if not row or not int(row.sett_total or 0):
+        return {
+            "threshold": 70,
+            "lga":         split(0, 0),
+            "ward":        split(0, 0),
+            "settlement":  split(0, 0),
+        }
+    return {
+        "threshold":   70,
+        "lga":         split(row.lga_total,  row.lga_at),
+        "ward":        split(row.ward_total, row.ward_at),
+        "settlement":  split(row.sett_total, row.sett_at),
+    }
+
+
 @router.get("/geo/completeness")
 async def geo_completeness(
     pid: int = Depends(resolve_pid),
