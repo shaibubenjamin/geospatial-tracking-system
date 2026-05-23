@@ -202,8 +202,9 @@ tbody tr:hover{background:var(--pale)}
 .chip.bad{background:var(--bad-bg);color:var(--bad)}
 .chip.over{background:var(--good-bg);color:var(--good)}   /* > 100% — exceeded target; same weight as on-target */
 
-/* QC tiles */
-.qc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+/* QC tiles — 3×3 grid so the 9 metrics sit in 3 logical groups
+   (form-integrity / spatial / timing+outcome) with no orphan row. */
+.qc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
 .qc-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
 .qc-icon{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;font-size:15px;margin-bottom:10px}
 .qc-val{font-size:26px;font-weight:700;color:var(--navy)}
@@ -516,9 +517,10 @@ tbody tr:hover{background:var(--pale)}
           <div class="chart-wrap"><canvas id="c_lgaBar"></canvas></div>
         </div>
 
-        <!-- Three balanced cards: daily trend (line), 1–59 baseline-vs-treated
-             (bar), and progress vs baseline (donut). -->
-        <div class="grid-3">
+        <!-- 2 × 2 chart grid.
+             Row 1: Daily trend (line)            | Treatment Progress vs Baseline (donut)
+             Row 2: Children 1–59 Baseline-vs-Treated (bar) | Forms Submitted vs Target (bar) -->
+        <div class="grid-2" style="margin-bottom:16px">
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
@@ -534,6 +536,21 @@ tbody tr:hover{background:var(--pale)}
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
+                <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
+                <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
+              </div>
+              <div class="card-head-right">
+                <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="c_donut"></canvas></div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card" style="margin-bottom:0">
+            <div class="card-head">
+              <div>
                 <div class="card-title"><i class="fa-solid fa-children"></i> Children 1&ndash;59: Baseline vs Treated</div>
                 <div class="card-sub">Compares the baseline target for children 1&ndash;59 months in this round against the number actually treated so far.</div>
               </div>
@@ -546,32 +563,15 @@ tbody tr:hover{background:var(--pale)}
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
-                <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
-                <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
+                <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted vs Target</div>
+                <div class="card-sub">Total forms collected so far vs the campaign-wide target. Target is derived from team capacity × planned campaign days, or — when no window is set — the count of settlements that need to be visited.</div>
               </div>
               <div class="card-head-right">
-                <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+                <button class="chart-dl" onclick="dlChart('c_formsTarget','forms_vs_target')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
               </div>
             </div>
-            <div class="chart-wrap"><canvas id="c_donut"></canvas></div>
+            <div class="chart-wrap"><canvas id="c_formsTarget"></canvas></div>
           </div>
-        </div>
-
-        <!-- Forms Submitted vs Target — campaign-wide comparison split off
-             from the daily-trend chart. Target = (teams × 80 forms/day ×
-             planned days) when a campaign window is configured, else the
-             count of settlements in the state's boundary set. -->
-        <div class="card" style="margin-top:16px">
-          <div class="card-head">
-            <div>
-              <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted vs Target</div>
-              <div class="card-sub">Total forms collected so far vs the campaign-wide target. Target is derived from team capacity × planned campaign days, or — when no window is set — the count of settlements that need to be visited.</div>
-            </div>
-            <div class="card-head-right">
-              <button class="chart-dl" onclick="dlChart('c_formsTarget','forms_vs_target')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-            </div>
-          </div>
-          <div class="chart-wrap"><canvas id="c_formsTarget"></canvas></div>
         </div>
 
         <div class="card">
@@ -777,16 +777,25 @@ tbody tr:hover{background:var(--pale)}
           </div>
         </div>
 
+        <!-- Quality checks are grouped into three logical rows:
+             Row 1 — Form integrity   (totals & ID / repeat-group sanity)
+             Row 2 — Timing patterns  (when & how long forms were filled)
+             Row 3 — Location + outcome (GPS issues & refusal rate)
+             The 3×3 layout keeps related metrics next to each other and
+             removes the orphan tile that the old 4-wide grid left behind. -->
         <div class="qc-grid">
+          <!-- Row 1: Form integrity -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-file-circle-check"></i></div><div class="qc-val" id="qc-total-forms">&mdash;</div><div class="qc-lbl">Total Forms Analysed</div><div class="qc-desc">All household MDA forms checked for data quality issues</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-clone"></i></div><div class="qc-val" id="qc-duplicates">&mdash;</div><div class="qc-lbl">Duplicate Form IDs</div><div class="qc-desc">Forms sharing an identical submission ID — possible double-counting of households</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-location-crosshairs"></i></div><div class="qc-val" id="qc-outside-lga">&mdash;</div><div class="qc-lbl">GPS Outside Stated LGA</div><div class="qc-desc">GPS coordinates fall outside the boundary of the LGA the team reported being in</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">&mdash;</div><div class="qc-lbl">Weak GPS Signal (&gt;20 m)</div><div class="qc-desc">GPS accuracy radius wider than 20 m — the recorded location may sit outside the settlement grid the team was actually inside, so spatial joins become unreliable</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-arrows-left-right-to-line"></i></div><div class="qc-val" id="qc-drift">&mdash;</div><div class="qc-lbl">Form ↔ Repeat-Group Drift</div><div class="qc-desc" id="qc-drift-desc">Households where the “number of children treated” the team typed at the top of the form doesn’t match the number of treated child rows in the repeat group below. A consistent gap suggests under-filled forms — repeat-group rows being skipped after the summary count is entered.</div></div>
+          <!-- Row 2: Timing patterns -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-moon"></i></div><div class="qc-val" id="qc-after-hours">&mdash;</div><div class="qc-lbl">After-Hours Submissions</div><div class="qc-desc">Forms started outside 6:00 am – 7:00 pm local time — possible data back-entry or device clock error</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-bolt"></i></div><div class="qc-val" id="qc-fast-forms">&mdash;</div><div class="qc-lbl">Very Fast Forms (&lt;5 min)</div><div class="qc-desc">Completed in under 5 minutes — a full household visit typically takes longer; may indicate skipping questions or rushed entry</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-hourglass-half"></i></div><div class="qc-val" id="qc-slow-forms">&mdash;</div><div class="qc-lbl">Very Slow Forms (&gt;60 min)</div><div class="qc-desc">Took over 1 hour — may indicate poor connectivity, form abandonment, or the device being left idle</div></div>
+          <!-- Row 3: Location + outcome -->
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-location-crosshairs"></i></div><div class="qc-val" id="qc-outside-lga">&mdash;</div><div class="qc-lbl">GPS Outside Stated LGA</div><div class="qc-desc">GPS coordinates fall outside the boundary of the LGA the team reported being in</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">&mdash;</div><div class="qc-lbl">Weak GPS Signal (&gt;20 m)</div><div class="qc-desc">GPS accuracy radius wider than 20 m — the recorded location may sit outside the settlement grid the team was actually inside, so spatial joins become unreliable</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-ban"></i></div><div class="qc-val" id="qc-refusal-rate">&mdash;</div><div class="qc-lbl">Treatment Refusal Rate</div><div class="qc-desc" id="qc-refusal-count">% of households that declined treatment — social mobilisation may be needed in high-refusal LGAs</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-arrows-left-right-to-line"></i></div><div class="qc-val" id="qc-drift">&mdash;</div><div class="qc-lbl">Form ↔ Repeat-Group Drift</div><div class="qc-desc" id="qc-drift-desc">Households where the “number of children treated” the team typed at the top of the form doesn't match the number of treated child rows in the repeat group below. A consistent gap suggests under-filled forms — repeat-group rows being skipped after the summary count is entered.</div></div>
         </div>
 
         <div class="grid-2">
@@ -1803,8 +1812,14 @@ tbody tr:hover{background:var(--pale)}
         '<td>' + fmt(r.baseline_total) + '</td>' +
         '<td>' + fmt(r.actual_treated) + '</td>' +
         '<td>' + fmt(r.forms) + '</td>' +
-        '<td><div class="bar-row"><span style="font-weight:700;min-width:52px;color:' + (cov > 100 ? '#92400E' : 'var(--navy)') + '" title="' + (cov > 100 ? 'Treated count exceeds baseline target — may indicate over-counting or baseline gap' : '') + '">' + cov.toFixed(1) + '%</span>' +
-          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%;background:' + (cov > 100 ? '#D97706' : 'var(--blue)') + '"></div></div></div></td>' +
+        // Coverage % colour palette is fully positive:
+        //   ≥100  → success green (target met)
+        //   80–99 → success green (on track)
+        //   60–79 → amber (watch)
+        //   <60   → red (mop-up)
+        // ≥100% reads as success now, not as a defect — see covCls / covLabel.
+        '<td><div class="bar-row"><span style="font-weight:700;min-width:52px;color:' + (cov >= 80 ? 'var(--good)' : cov >= 60 ? 'var(--warn)' : 'var(--bad)') + '" title="' + (cov >= 100 ? 'Target met or exceeded — a baseline is an estimate; reaching beyond one is a good outcome.' : '') + '">' + cov.toFixed(1) + '%</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(cov,100) + '%;background:' + (cov >= 80 ? 'var(--good)' : 'var(--blue)') + '"></div></div></div></td>' +
         '<td><span class="chip ' + covCls(cov) + '" title="' + (cov >= 100 ? 'Target met or exceeded for this LGA — baselines are estimates and reaching beyond one is a good outcome.' : '') + '">' + covLabel(cov) + '</span></td>' +
         '<td style="text-align:center">' + geoBtn + '</td>';
       const navBtn = tr.querySelector('[data-lga-nav]');
@@ -3005,8 +3020,11 @@ tbody tr:hover{background:var(--pale)}
       data: {
         labels: ['Forms'],
         datasets: [
-          { label: 'Submitted',    data: [submitted], backgroundColor: C_BLUE1, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
-          { label: 'Target',       data: [target],    backgroundColor: C_BLUE3, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
+          // Target sits on the left, Submitted on the right — mirrors the
+          // "Children 1–59: Baseline vs Treated" chart on the same row so
+          // the two side-by-side comparisons read in the same direction.
+          { label: 'Target',    data: [target],    backgroundColor: C_BLUE3, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
+          { label: 'Submitted', data: [submitted], backgroundColor: C_BLUE1, hoverBackgroundColor: C_BLUE2, borderRadius: 6, maxBarThickness: 80 },
         ]
       },
       options: {
@@ -3290,6 +3308,11 @@ tbody tr:hover{background:var(--pale)}
                 return [t.hq_user || 'Team', 'Forms/day: ' + (t.avg_per_day||0).toFixed(0), 'Total: ' + (t.total_forms||0).toLocaleString(), 'Quality: ' + ctx.raw.y.toFixed(0) + '%', 'LGA: ' + (t.lga||'—')];
               }}}
             },
+            // Inner-canvas padding so the y-axis tick labels (0–100) and the
+            // right-side x-axis ticks don't get clipped against the card edge.
+            // Without this Chart.js packs the plot area flush to the canvas
+            // and the rightmost "250" / leftmost "0" labels truncate.
+            layout: { padding: { left: 8, right: 24, top: 6, bottom: 6 } },
             scales: {
               x: { title: { display: true, text: 'Avg forms / day', font: { size: 12 } }, grid: { display: false } },
               y: { title: { display: true, text: 'Quality score (%)', font: { size: 12 } }, grid: { display: false }, min: 0, max: 100 }
