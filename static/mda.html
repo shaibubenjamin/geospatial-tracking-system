@@ -3308,14 +3308,28 @@ tbody tr:hover{background:var(--pale)}
                 return [t.hq_user || 'Team', 'Forms/day: ' + (t.avg_per_day||0).toFixed(0), 'Total: ' + (t.total_forms||0).toLocaleString(), 'Quality: ' + ctx.raw.y.toFixed(0) + '%', 'LGA: ' + (t.lga||'—')];
               }}}
             },
-            // Inner-canvas padding so the y-axis tick labels (0–100) and the
-            // right-side x-axis ticks don't get clipped against the card edge.
-            // Without this Chart.js packs the plot area flush to the canvas
-            // and the rightmost "250" / leftmost "0" labels truncate.
-            layout: { padding: { left: 8, right: 24, top: 6, bottom: 6 } },
+            // Two padding tricks to keep bubbles off the card edges:
+            //   1. Generous canvas-level layout.padding so axis tick labels
+            //      (y-axis 0–100, rightmost x tick like "250") never clip
+            //      against the card border.
+            //   2. Extend the x-axis below 0 and a touch beyond the data
+            //      max so the bubble at x≈0 doesn't visually merge with
+            //      the y-axis labels, and the rightmost bubble doesn't
+            //      kiss the right edge of the plot area.
+            layout: { padding: { left: 18, right: 32, top: 14, bottom: 14 } },
             scales: {
-              x: { title: { display: true, text: 'Avg forms / day', font: { size: 12 } }, grid: { display: false } },
-              y: { title: { display: true, text: 'Quality score (%)', font: { size: 12 } }, grid: { display: false }, min: 0, max: 100 }
+              x: {
+                title: { display: true, text: 'Avg forms / day', font: { size: 12 } },
+                grid: { display: false },
+                min: -2,
+                grace: '8%',
+              },
+              y: {
+                title: { display: true, text: 'Quality score (%)', font: { size: 12 } },
+                grid: { display: false },
+                min: -2,
+                max: 102,
+              }
             },
             maintainAspectRatio: false
           }
