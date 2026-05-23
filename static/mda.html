@@ -1068,6 +1068,16 @@ tbody tr:hover{background:var(--pale)}
             <div class="card-head-right"><div class="card-sub">Each bubble = one team</div><button class="chart-dl" onclick="dlChart('c_scatter','team_scatter')" title="Download"><i class="fa-solid fa-download"></i></button></div>
           </div>
           <div class="chart-wrap tall"><canvas id="c_scatter"></canvas></div>
+          <!-- Outlier teams: avg-forms-per-day beyond the main chart's
+               x-axis cap. Rather than letting them stretch the plot area
+               (and visually compress everyone else into the top-left), we
+               trim the axis at 160 and list the outliers here as a chip
+               row that toggles open to a small table. -->
+          <div id="scatter-outliers" style="padding:0 18px 16px;font-size:12px;color:var(--muted);display:none">
+            <span id="scatter-outliers-label" style="font-weight:600;color:var(--ink)"></span>
+            <button id="scatter-outliers-toggle" class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="toggleScatterOutliers()">View outliers</button>
+            <div id="scatter-outliers-list" style="display:none;margin-top:8px;max-height:160px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:#FBFDFC"></div>
+          </div>
         </div>
       </section>
 
@@ -2316,6 +2326,16 @@ tbody tr:hover{background:var(--pale)}
   function dlCovTableCSV() { dlTableCSV(); }
   window.dlChart = dlChart;
   window.dlTableCSV = dlTableCSV;
+
+  // Outliers callout under Productivity vs Quality — collapsed by default.
+  window.toggleScatterOutliers = function () {
+    const list = document.getElementById('scatter-outliers-list');
+    const btn  = document.getElementById('scatter-outliers-toggle');
+    if (!list || !btn) return;
+    const shown = list.style.display === 'block';
+    list.style.display = shown ? 'none' : 'block';
+    btn.textContent = shown ? 'View outliers' : 'Hide outliers';
+  };
   window.dlCovTableCSV = dlCovTableCSV;
 
   /* ── SHARED CHART DEFAULTS ── */
@@ -3285,44 +3305,96 @@ tbody tr:hover{background:var(--pale)}
     if (view === 'teams') {
       loadTeams().then(() => {
         if (!teamsData.length) return;
-        const pts = teamsData.map(t=>({
-          x: t.avg_per_day,
-          y: 100-Math.min(100,((t.after_hours+t.fast_forms)/Math.max(t.total_forms,1))*100),
-          r: 6
+        // Productivity vs Quality scatter.
+        //
+        // The naive plot painted ~3000 opaque bubbles of equal radius;
+        // they collapsed into a single solid blob in the top-left and the
+        // chart told the operator nothing. Rebuild with three coordinated
+        // changes:
+        //
+        //   1. Trim the x-axis to where the bulk of the data lives. Teams
+        //      with avg-forms-per-day above an OUTLIER_X_CAP get lifted out
+        //      of the plot and surfaced separately so they don't stretch
+        //      the axis and squash everyone else into 5% of the canvas.
+        //   2. Density layer (light, in the background) — bin teams into
+        //      a coarse grid and paint one circle per bin sized by team
+        //      count. Reveals where the cluster actually is.
+        //   3. Individual-team layer (foreground) — small (r=3.5) bubbles
+        //      with low opacity so overlaps render as darker patches.
+        const OUTLIER_X_CAP = 160;
+        const X_BINS = 20, Y_BINS = 10;
+        const inRange = [];
+        const outliers = [];
+        teamsData.forEach(t => {
+          const x = t.avg_per_day || 0;
+          const y = 100 - Math.min(100, ((t.after_hours + t.fast_forms) / Math.max(t.total_forms, 1)) * 100);
+          (x > OUTLIER_X_CAP ? outliers : inRange).push({ ...t, _x: x, _y: y });
+        });
+        // Compute the density grid over [-2, OUTLIER_X_CAP] x [0, 100]
+        const xLo = -2, xHi = OUTLIER_X_CAP, yLo = 0, yHi = 100;
+        const dx = (xHi - xLo) / X_BINS, dy = (yHi - yLo) / Y_BINS;
+        const bins = {};
+        inRange.forEach(t => {
+          const i = Math.min(X_BINS - 1, Math.max(0, Math.floor((t._x - xLo) / dx)));
+          const j = Math.min(Y_BINS - 1, Math.max(0, Math.floor((t._y - yLo) / dy)));
+          const k = i + ',' + j;
+          bins[k] = bins[k] || { x: xLo + (i + 0.5) * dx, y: yLo + (j + 0.5) * dy, n: 0 };
+          bins[k].n++;
+        });
+        const binValues  = Object.values(bins);
+        const maxBinN    = binValues.reduce((m, b) => Math.max(m, b.n), 1);
+        // Bin radius scales sqrt(count) so a bin with 100 teams renders
+        // ~10× the area of a bin with 1, not 100× (linear would dominate).
+        const densityPoints = binValues.map(b => ({
+          x: b.x, y: b.y,
+          r: Math.max(6, 6 + 22 * Math.sqrt(b.n / maxBinN)),
+          _count: b.n,
         }));
+        const teamPoints = inRange.map(t => ({ x: t._x, y: t._y, r: 3.5 }));
+
         new Chart(document.getElementById('c_scatter'), {
           type: 'bubble',
-          data: { datasets:[{ label: 'Teams', data: pts.map((p,i) => ({...p, r: 7})),
-            backgroundColor: C_BLUE_ALPHA, borderColor: C_BLUE1, borderWidth: 1.5,
-            hoverBackgroundColor: C_BLUE1, hoverRadius: 10 }] },
+          data: {
+            datasets: [
+              // Density layer first so individual dots render on top.
+              { label: 'Density', data: densityPoints,
+                backgroundColor: 'rgba(0,107,46,.12)', borderColor: 'rgba(0,107,46,.18)', borderWidth: 1,
+                hoverBackgroundColor: 'rgba(0,107,46,.22)', hoverRadius: 0, order: 2 },
+              // Individual teams: small, semi-transparent so overlaps stack as darker patches.
+              { label: 'Teams', data: teamPoints,
+                backgroundColor: 'rgba(0,107,46,.22)', borderColor: 'rgba(0,107,46,.55)', borderWidth: 1,
+                hoverBackgroundColor: C_BLUE1, hoverRadius: 6, order: 1 },
+            ]
+          },
           options: {
             onClick: (evt, elems) => {
               if (!elems.length) return;
-              const t = teamsData[elems[0].index] || {};
+              const hit = elems[0];
+              if (hit.datasetIndex !== 1) return;
+              const t = inRange[hit.index] || {};
               showToast((t.hq_user || 'Team') + ' — ' + (t.avg_per_day||0).toFixed(0) + ' forms/day · ' + (t.total_forms||0).toLocaleString() + ' total · ' + (t.lga || ''));
             },
-            onHover: (evt, elems) => { document.getElementById('c_scatter').style.cursor = elems.length ? 'pointer' : 'default'; },
+            onHover: (evt, elems) => { document.getElementById('c_scatter').style.cursor = (elems.length && elems[0].datasetIndex === 1) ? 'pointer' : 'default'; },
             plugins: { legend: { display: false }, datalabels: { display: false },
               tooltip: { callbacks: { label: (ctx) => {
-                const t = teamsData[ctx.dataIndex] || {};
+                if (ctx.datasetIndex === 0) {
+                  return [
+                    ctx.raw._count.toLocaleString() + ' team' + (ctx.raw._count === 1 ? '' : 's') + ' in this cell',
+                    'Forms/day: ~' + ctx.raw.x.toFixed(0),
+                    'Quality: ~' + ctx.raw.y.toFixed(0) + '%',
+                  ];
+                }
+                const t = inRange[ctx.dataIndex] || {};
                 return [t.hq_user || 'Team', 'Forms/day: ' + (t.avg_per_day||0).toFixed(0), 'Total: ' + (t.total_forms||0).toLocaleString(), 'Quality: ' + ctx.raw.y.toFixed(0) + '%', 'LGA: ' + (t.lga||'—')];
               }}}
             },
-            // Two padding tricks to keep bubbles off the card edges:
-            //   1. Generous canvas-level layout.padding so axis tick labels
-            //      (y-axis 0–100, rightmost x tick like "250") never clip
-            //      against the card border.
-            //   2. Extend the x-axis below 0 and a touch beyond the data
-            //      max so the bubble at x≈0 doesn't visually merge with
-            //      the y-axis labels, and the rightmost bubble doesn't
-            //      kiss the right edge of the plot area.
             layout: { padding: { left: 18, right: 32, top: 14, bottom: 14 } },
             scales: {
               x: {
                 title: { display: true, text: 'Avg forms / day', font: { size: 12 } },
                 grid: { display: false },
                 min: -2,
-                grace: '8%',
+                max: OUTLIER_X_CAP,
               },
               y: {
                 title: { display: true, text: 'Quality score (%)', font: { size: 12 } },
@@ -3334,6 +3406,29 @@ tbody tr:hover{background:var(--pale)}
             maintainAspectRatio: false
           }
         });
+
+        // Surface outliers below the chart. Keeps them present in the data
+        // without letting them dominate the visual.
+        const outliersEl       = document.getElementById('scatter-outliers');
+        const outliersLabelEl  = document.getElementById('scatter-outliers-label');
+        const outliersListEl   = document.getElementById('scatter-outliers-list');
+        if (outliers.length) {
+          outliersEl.style.display = 'block';
+          outliersLabelEl.textContent = `${outliers.length} team${outliers.length === 1 ? '' : 's'} beyond ${OUTLIER_X_CAP} forms/day — hidden from the plot to keep the cluster readable.`;
+          outliersListEl.innerHTML = outliers
+            .sort((a, b) => (b.avg_per_day || 0) - (a.avg_per_day || 0))
+            .map(t => {
+              const q = t._y.toFixed(0);
+              return `<div style="display:grid;grid-template-columns:1fr 100px 80px 60px;gap:8px;padding:4px 0;border-bottom:1px dashed var(--line)">
+                <span style="color:var(--ink);font-weight:600">${(t.hq_user || 'Team')}</span>
+                <span style="color:var(--muted)">${(t.lga || '—')}</span>
+                <span style="text-align:right">${(t.avg_per_day || 0).toFixed(0)} /day</span>
+                <span style="text-align:right">Q ${q}%</span>
+              </div>`;
+            }).join('');
+        } else {
+          outliersEl.style.display = 'none';
+        }
       });
     }
 
