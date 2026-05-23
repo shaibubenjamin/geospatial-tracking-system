@@ -2242,6 +2242,150 @@ async def campaign_dates(
 # GET /api/mda/geo/completeness
 # ─────────────────────────────────────────────────────────────────────────────
 
+@router.get("/geo/settlement-breakdown")
+async def geo_settlement_breakdown(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Settlement coverage breakdown, per-LGA + grand-total.
+
+    Buckets a settlement into one of three states:
+
+      * **Not visited**       — no GPS point has ever been logged inside it.
+      * **Partially covered** — at least one point but grid completeness <70%.
+      * **Fully covered**     — `is_visited` (≥70% grid completeness, or any
+        point inside the settlement polygon when no grid is loaded).
+
+    The 70% threshold mirrors the rest of the dashboard's "covered" rule —
+    consistent with `/geo/completeness` and the Geographic View map shading.
+    Used by the Settlement Coverage Breakdown table on the Geographic View
+    so supervisors can see at a glance how many settlements per LGA still
+    need any team contact vs which need a second pass to fill the grid.
+    """
+    res = await db.execute(text("""
+        WITH s AS (
+          SELECT
+            sa.lga_name,
+            CASE
+              WHEN COALESCE(sa.point_count, 0) = 0 THEN 'not_visited'
+              WHEN sa.is_visited OR COALESCE(sa.completeness_pct, 0) >= 70 THEN 'fully_covered'
+              ELSE 'partially_covered'
+            END AS bucket
+          FROM settlement_analytics sa
+          WHERE sa.project_id = :pid
+        )
+        SELECT
+          COALESCE(lga_name, '—')                              AS lga,
+          COUNT(*)                                              AS total,
+          COUNT(*) FILTER (WHERE bucket = 'not_visited')        AS not_visited,
+          COUNT(*) FILTER (WHERE bucket = 'partially_covered')  AS partially_covered,
+          COUNT(*) FILTER (WHERE bucket = 'fully_covered')      AS fully_covered
+        FROM s
+        GROUP BY lga_name
+        ORDER BY lga_name NULLS LAST
+    """), {"pid": pid})
+    rows = res.fetchall()
+    per_lga = []
+    tot_total = tot_not = tot_partial = tot_full = 0
+    for r in rows:
+        total       = int(r.total or 0)
+        not_visited = int(r.not_visited or 0)
+        partial     = int(r.partially_covered or 0)
+        full        = int(r.fully_covered or 0)
+        per_lga.append({
+            "lga":                 r.lga,
+            "total":               total,
+            "not_visited":         not_visited,
+            "partially_covered":   partial,
+            "fully_covered":       full,
+            "covered_pct":         round(100.0 * full / total, 1) if total else 0.0,
+        })
+        tot_total   += total
+        tot_not     += not_visited
+        tot_partial += partial
+        tot_full    += full
+    return {
+        "total":               tot_total,
+        "not_visited":         tot_not,
+        "partially_covered":   tot_partial,
+        "fully_covered":       tot_full,
+        "covered_pct":         round(100.0 * tot_full / tot_total, 1) if tot_total else 0.0,
+        "per_lga":             per_lga,
+    }
+
+
+@router.get("/geo/coverage-summary")
+async def geo_coverage_summary(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """High-level coverage roll-up across all three admin levels.
+
+    Returns three rows — LGA / Ward / Settlement — each showing how many
+    units fall at or above the 70% coverage threshold vs below it. An
+    LGA / Ward is "at threshold" when ≥70% of its settlements are fully
+    covered. Settlements use their own is_visited / completeness rule
+    (≥70% grid coverage, or any GPS point inside when grids are absent).
+
+    This is the operator-facing decision-support table: at a glance, how
+    many LGAs and Wards are still in the "need attention" bucket, and how
+    many settlements have not been reached.
+    """
+    # First compute the per-settlement bucket once and reuse for LGA + Ward
+    # rollups. Saves us doing three near-identical CTEs.
+    s_res = await db.execute(text("""
+        WITH s AS (
+          SELECT sa.lgacode, sa.lga_name, sa.wardcode, sa.ward_name,
+                 CASE WHEN sa.is_visited OR COALESCE(sa.completeness_pct, 0) >= 70
+                      THEN 1 ELSE 0 END AS covered
+          FROM settlement_analytics sa
+          WHERE sa.project_id = :pid
+        ),
+        per_lga AS (
+          SELECT lgacode, AVG(covered) AS frac
+          FROM s
+          GROUP BY lgacode
+        ),
+        per_ward AS (
+          SELECT wardcode, AVG(covered) AS frac
+          FROM s
+          GROUP BY wardcode
+        )
+        SELECT
+          (SELECT COUNT(*)                       FROM per_lga)  AS lga_total,
+          (SELECT COUNT(*) FILTER (WHERE frac >= 0.7) FROM per_lga)  AS lga_at,
+          (SELECT COUNT(*)                       FROM per_ward) AS ward_total,
+          (SELECT COUNT(*) FILTER (WHERE frac >= 0.7) FROM per_ward) AS ward_at,
+          (SELECT COUNT(*)                       FROM s)        AS sett_total,
+          (SELECT COUNT(*) FILTER (WHERE covered = 1) FROM s)   AS sett_at
+    """), {"pid": pid})
+    row = s_res.fetchone()
+    def split(total, atv):
+        total = int(total or 0); atv = int(atv or 0)
+        below = total - atv
+        return {
+            "total":      total,
+            "at_target":  atv,
+            "below":      below,
+            "pct":        round(100.0 * atv / total, 1) if total else 0.0,
+        }
+    if not row or not int(row.sett_total or 0):
+        return {
+            "threshold": 70,
+            "lga":         split(0, 0),
+            "ward":        split(0, 0),
+            "settlement":  split(0, 0),
+        }
+    return {
+        "threshold":   70,
+        "lga":         split(row.lga_total,  row.lga_at),
+        "ward":        split(row.ward_total, row.ward_at),
+        "settlement":  split(row.sett_total, row.sett_at),
+    }
+
+
 @router.get("/geo/completeness")
 async def geo_completeness(
     pid: int = Depends(resolve_pid),
