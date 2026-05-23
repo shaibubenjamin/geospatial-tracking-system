@@ -2315,6 +2315,58 @@ async def geo_settlement_breakdown(
     }
 
 
+@router.get("/teams/by-lga")
+async def teams_by_lga(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """How many field teams are operating in each LGA, and how active.
+
+    A "team" here is a unique CommCare HQ user (mda_households.hq_user) —
+    same identity used by Teams Performance, /overview's teams_active, etc.
+    Returned columns:
+      teams          = distinct HQ users that submitted from this LGA
+      forms          = total household forms from this LGA
+      days_active    = distinct submission dates with at least one form
+      avg_per_team_per_day = forms ÷ (teams × days_active), clamped
+      first_seen / last_seen = ISO date strings, Africa/Lagos-anchored
+
+    Used by the Teams per LGA decision-support table on Coverage Analysis
+    when supervisors decide where to redeploy teams for mop-up. Scoped by
+    project_id so each round/state stays in its own scope.
+    """
+    res = await db.execute(text("""
+        SELECT
+          INITCAP(LOWER(TRIM(lga)))                       AS lga,
+          COUNT(DISTINCT hq_user)                         AS teams,
+          COUNT(*)                                        AS forms,
+          COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_active,
+          MIN((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS first_seen,
+          MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS last_seen
+        FROM mda_households
+        WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''
+        GROUP BY INITCAP(LOWER(TRIM(lga)))
+        ORDER BY teams DESC, forms DESC
+    """), {"pid": pid})
+    out = []
+    for r in res.fetchall():
+        teams = int(r.teams or 0)
+        forms = int(r.forms or 0)
+        days  = int(r.days_active or 0)
+        avg   = (forms / (teams * days)) if teams > 0 and days > 0 else 0.0
+        out.append({
+            "lga":                   r.lga,
+            "teams":                 teams,
+            "forms":                 forms,
+            "days_active":           days,
+            "avg_per_team_per_day":  round(avg, 1),
+            "first_seen":            r.first_seen,
+            "last_seen":             r.last_seen,
+        })
+    return out
+
+
 @router.get("/geo/coverage-summary")
 async def geo_coverage_summary(
     pid: int = Depends(resolve_pid),
