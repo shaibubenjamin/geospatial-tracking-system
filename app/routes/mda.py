@@ -1506,6 +1506,70 @@ async def mda_overview(
                 d["current_campaign_day"] = raw_day
         else:
             d["current_campaign_day"] = None
+
+    # Forms-target estimator. The dashboard's "Forms Submitted vs Target"
+    # column chart needs a campaign-wide target form count. We derive it
+    # from the SARMAAN target rate of 80 forms / team / day. Fallback to
+    # the boundary settlement count (each settlement should be visited at
+    # least once) so projects without a campaign-window configured still
+    # get a meaningful target.
+    target_forms: Optional[int] = None
+    teams = d.get("teams_active") or 0
+    pdd = d.get("planned_duration_days")
+    if teams > 0 and pdd:
+        target_forms = teams * 80 * int(pdd)
+    if not target_forms:
+        # Boundaries are typically attached to the canonical project for the
+        # state (Sokoto R4 holds Sokoto's polygons; R5 reuses them). Use the
+        # min project id in this state that has settlement rows.
+        s_res = await db.execute(text("""
+            SELECT COALESCE((
+              SELECT COUNT(*) FROM settlements
+              WHERE project_id = (
+                SELECT MIN(p2.id) FROM geo_projects p1
+                JOIN geo_projects p2 ON p2.state_name = p1.state_name
+                WHERE p1.id = :pid
+                  AND EXISTS (SELECT 1 FROM settlements s WHERE s.project_id = p2.id)
+              )
+            ), 0)
+        """), {"pid": pid})
+        target_forms = int(s_res.scalar() or 0) or None
+    d["target_forms"] = target_forms
+
+    # Repeat-group drift QC. Counts households whose form-level
+    # number_of_treated disagrees with the count of treated child rows in
+    # the repeat group. A non-zero value points to under-filled forms /
+    # missing repeat-group rows / status mis-entries — actionable for the
+    # field-supervisor team.
+    drift_res = await db.execute(text(f"""
+        WITH ind AS (
+          SELECT i.hh_formid,
+                 COUNT(*) FILTER (WHERE i.treatment_status = '1') AS treated_rows
+          FROM mda_individuals i
+          WHERE i.project_id = :pid
+          GROUP BY i.hh_formid
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE
+              COALESCE(h.number_of_treated, 0) <> COALESCE(ind.treated_rows, 0)
+          ) AS drift_households,
+          COUNT(*) AS total_households,
+          COALESCE(SUM(GREATEST(
+              COALESCE(h.number_of_treated, 0) - COALESCE(ind.treated_rows, 0), 0
+          )), 0) AS missing_repeat_rows
+        FROM mda_households h
+        LEFT JOIN ind ON ind.hh_formid = h.formid
+        {where}
+    """), params)
+    drift_row = drift_res.fetchone()
+    if drift_row:
+        d["drift_households"]     = int(drift_row[0] or 0)
+        d["drift_missing_rows"]   = int(drift_row[2] or 0)
+        d["drift_pct"] = round(100.0 * d["drift_households"] / d["total_forms"], 1) if d["total_forms"] else 0.0
+    else:
+        d["drift_households"] = 0
+        d["drift_missing_rows"] = 0
+        d["drift_pct"] = 0.0
     return d
 
 
