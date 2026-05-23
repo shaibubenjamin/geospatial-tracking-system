@@ -1030,6 +1030,52 @@ tbody tr:hover{background:var(--pale)}
             <div id="geo-map"></div>
           </div>
         </div>
+
+        <!-- Settlement Coverage Breakdown — answers "where do we still
+             need to go?" at a glance. Three buckets:
+               Not visited        — no GPS point inside the settlement
+               Partially covered  — some points, grid completeness <70%
+               Fully covered      — ≥70% grid completeness (consistent
+                                    with the map shading rule).
+             Summary chips above + per-LGA table below. -->
+        <div class="card" style="margin-top:14px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-table-list"></i> Settlement Coverage Breakdown</div>
+              <div class="card-sub">How many settlements per LGA still need any team contact, vs which already need a second pass to fill the grid. A settlement counts as <strong>fully covered</strong> once ≥70% of its grid cells have a GPS point inside (matches the map shading).</div>
+            </div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlSettlementBreakdownCSV()" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+            </div>
+          </div>
+          <!-- Summary chips -->
+          <div id="settcov-summary" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:14px 18px 0">
+            <div class="kpi" style="padding:12px 14px"><div class="lbl">Total Settlements</div><div class="val" style="font-size:22px;color:var(--ink)" id="settcov-total">&mdash;</div></div>
+            <div class="kpi bad" style="padding:12px 14px"><div class="lbl">Not Visited</div><div class="val" style="font-size:22px;color:var(--bad)" id="settcov-not">&mdash;</div><div class="sub" style="font-size:10.5px" id="settcov-not-sub">No GPS point logged inside</div></div>
+            <div class="kpi warn" style="padding:12px 14px"><div class="lbl">Partially Covered</div><div class="val" style="font-size:22px;color:var(--warn)" id="settcov-partial">&mdash;</div><div class="sub" style="font-size:10.5px" id="settcov-partial-sub">Some forms — grid &lt;70% complete</div></div>
+            <div class="kpi good" style="padding:12px 14px"><div class="lbl">Fully Covered</div><div class="val" style="font-size:22px;color:var(--good)" id="settcov-full">&mdash;</div><div class="sub" style="font-size:10.5px" id="settcov-full-sub">≥70% of grid covered</div></div>
+          </div>
+          <!-- Per-LGA table -->
+          <div style="padding:14px 18px 18px">
+            <div style="overflow-x:auto;max-height:420px;overflow-y:auto;border:1px solid var(--line);border-radius:8px">
+              <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                <thead style="position:sticky;top:0;background:var(--mist);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;z-index:1">
+                  <tr>
+                    <th style="padding:10px 12px;text-align:left">LGA</th>
+                    <th style="padding:10px 12px;text-align:right">Total settlements</th>
+                    <th style="padding:10px 12px;text-align:right;color:var(--bad)">Not visited</th>
+                    <th style="padding:10px 12px;text-align:right;color:var(--warn)">Partially covered</th>
+                    <th style="padding:10px 12px;text-align:right;color:var(--good)">Fully covered</th>
+                    <th style="padding:10px 12px;text-align:right">Covered %</th>
+                  </tr>
+                </thead>
+                <tbody id="settcov-tbody">
+                  <tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted)">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ========== TEAMS ========== -->
@@ -3699,6 +3745,7 @@ tbody tr:hover{background:var(--pale)}
     // Completeness) are driven by /api/mda/geo/completeness so they use the
     // server-side capped formulas, not whatever sums we'd compute client-side.
     _loadGeoCompleteness();
+    _loadSettlementBreakdown();
   }
 
   async function _loadGeoCompleteness() {
@@ -3719,6 +3766,66 @@ tbody tr:hover{background:var(--pale)}
     setEl('geo-sett-visited-count', visited.toLocaleString());
     setEl('geo-sett-total-count', total.toLocaleString());
   }
+
+  // Settlement coverage breakdown — fills the per-LGA table + summary chips
+  // under the map on the Geographic View.
+  let _settcovCache = null;
+  async function _loadSettlementBreakdown() {
+    const d = await api('/api/mda/geo/settlement-breakdown');
+    const tbody = document.getElementById('settcov-tbody');
+    if (!d) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:18px;text-align:center;color:var(--muted)">Settlement analytics not available yet — sync or recompute geographic analytics first.</td></tr>';
+      return;
+    }
+    _settcovCache = d;
+    const total   = Number(d.total || 0);
+    const notV    = Number(d.not_visited || 0);
+    const partial = Number(d.partially_covered || 0);
+    const full    = Number(d.fully_covered || 0);
+    const pctOf   = n => total ? (100 * n / total).toFixed(1) + '%' : '0%';
+    setEl('settcov-total',   total.toLocaleString());
+    setEl('settcov-not',     notV.toLocaleString());
+    setEl('settcov-partial', partial.toLocaleString());
+    setEl('settcov-full',    full.toLocaleString());
+    setEl('settcov-not-sub',     pctOf(notV)    + ' of all settlements — no GPS point inside');
+    setEl('settcov-partial-sub', pctOf(partial) + ' of all settlements — at least one form, grid <70%');
+    setEl('settcov-full-sub',    pctOf(full)    + ' of all settlements — ≥70% of grid covered');
+    const rows = (d.per_lga || []).slice().sort((a, b) => (b.not_visited - a.not_visited) || (b.total - a.total));
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:18px;text-align:center;color:var(--muted)">No settlement data for this project yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const covPct = Number(r.covered_pct || 0);
+      const covCls = covPct >= 80 ? 'good' : covPct >= 60 ? 'warn' : 'bad';
+      const covColour = covCls === 'good' ? 'var(--good)' : covCls === 'warn' ? 'var(--warn)' : 'var(--bad)';
+      return `<tr style="border-top:1px solid var(--line)">
+        <td style="padding:9px 12px;font-weight:600;color:var(--ink)">${r.lga}</td>
+        <td style="padding:9px 12px;text-align:right">${r.total.toLocaleString()}</td>
+        <td style="padding:9px 12px;text-align:right;color:${r.not_visited ? 'var(--bad)' : 'var(--muted)'};font-weight:${r.not_visited ? '700' : '400'}">${r.not_visited.toLocaleString()}</td>
+        <td style="padding:9px 12px;text-align:right;color:${r.partially_covered ? 'var(--warn)' : 'var(--muted)'};font-weight:${r.partially_covered ? '600' : '400'}">${r.partially_covered.toLocaleString()}</td>
+        <td style="padding:9px 12px;text-align:right;color:var(--good);font-weight:600">${r.fully_covered.toLocaleString()}</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:700;color:${covColour}">${covPct.toFixed(1)}%</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function dlSettlementBreakdownCSV() {
+    if (!_settcovCache || !_settcovCache.per_lga) return;
+    const head = ['LGA','Total Settlements','Not Visited','Partially Covered','Fully Covered','Covered %'];
+    const lines = [head.join(',')];
+    _settcovCache.per_lga.forEach(r => {
+      lines.push([
+        '"' + (r.lga || '').replace(/"/g, '""') + '"',
+        r.total, r.not_visited, r.partially_covered, r.fully_covered,
+        Number(r.covered_pct || 0).toFixed(1)
+      ].join(','));
+    });
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'settlement_coverage_breakdown.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.dlSettlementBreakdownCSV = dlSettlementBreakdownCSV;
   async function loadGeoMetricsWard(lgacode) {
     const d = await api('/api/projects/' + geoPid + '/analytics/wards?lgacode=' + lgacode);
     if (!d) return;
