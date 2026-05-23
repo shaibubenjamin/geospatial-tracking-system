@@ -948,37 +948,49 @@ tbody tr:hover{background:var(--pale)}
              For non-admins the download grid stays hidden and the KPI grid
              stretches to use the full width via CSS Grid auto-fit. -->
         <div class="geo-top-row" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;margin-bottom:10px;align-items:stretch">
-          <!-- KPI strip — 3 wide tiles -->
-          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-            <!-- Visitation Ratio — combined: count + total + percentage -->
+          <!-- KPI strip — 4 chips reused from the Settlement Coverage
+               Breakdown card below. Hoisted to the top so the operator sees
+               the "where do we stand?" snapshot before scrolling. The old
+               Visitation Ratio / Not Yet Visited / Overall Completeness
+               tiles were merged in (Not Visited replaces "Not Yet Visited";
+               Fully Covered subsumes the "Overall Completeness" intent;
+               Total + breakdown give the same ratio info). The IDs match
+               the ones the loader (_loadSettlementBreakdown) populates so
+               nothing else needs rewiring. -->
+          <div id="settcov-summary" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
             <div class="kpi" style="padding:14px 18px">
-              <div class="kpi-icon-strip"><i class="fa-solid fa-route" style="font-size:13px"></i></div>
-              <div class="lbl">Visitation Ratio</div>
-              <div class="val" style="font-size:22px;color:var(--blue)" id="geo-visit-ratio">&mdash;</div>
-              <div class="sub" style="font-size:10.5px" id="geo-visit-ratio-sub">Settlements that have received at least one visit ÷ total settlements</div>
+              <div class="lbl">Total Settlements</div>
+              <div class="val" style="font-size:22px;color:var(--ink)" id="settcov-total">&mdash;</div>
             </div>
-            <!-- Not Yet Visited -->
-            <div class="kpi" style="padding:14px 18px">
-              <div class="kpi-icon-strip"><i class="fa-solid fa-circle-xmark" style="font-size:13px"></i></div>
-              <div class="lbl">Not Yet Visited</div>
-              <div class="val" style="font-size:22px;color:var(--bad)" id="geo-sett-notvisited-count">&mdash;</div>
-              <div class="sub" style="font-size:10.5px">Settlements where no team has logged a visit yet</div>
+            <div class="kpi bad" style="padding:14px 18px">
+              <div class="lbl">Not Visited</div>
+              <div class="val" style="font-size:22px;color:var(--bad)" id="settcov-not">&mdash;</div>
+              <div class="sub" style="font-size:10.5px" id="settcov-not-sub">No GPS point logged inside</div>
             </div>
-            <!-- Overall Grid Completeness -->
-            <div class="kpi" style="padding:14px 18px">
-              <div class="kpi-icon-strip"><i class="fa-solid fa-layer-group" style="font-size:13px"></i></div>
-              <div class="lbl">Overall Completeness</div>
-              <div class="val" style="font-size:22px;color:var(--warn)" id="geo-avg-completeness">&mdash;</div>
-              <div class="sub" style="font-size:10.5px">How thoroughly each settlement has been covered, averaged across all settlements. Settlements that are 70% or more covered count as fully complete. <span id="geo-completed-count">—</span> settlements qualify.</div>
+            <div class="kpi warn" style="padding:14px 18px">
+              <div class="lbl">Partially Covered</div>
+              <div class="val" style="font-size:22px;color:var(--warn)" id="settcov-partial">&mdash;</div>
+              <div class="sub" style="font-size:10.5px" id="settcov-partial-sub">Some forms — grid &lt;70% complete</div>
+            </div>
+            <div class="kpi good" style="padding:14px 18px">
+              <div class="lbl">Fully Covered</div>
+              <div class="val" style="font-size:22px;color:var(--good)" id="settcov-full">&mdash;</div>
+              <div class="sub" style="font-size:10.5px" id="settcov-full-sub">≥70% of grid covered</div>
             </div>
           </div>
-          <!-- Hidden back-compat counters — keep so older render paths don't 404 -->
+          <!-- Hidden back-compat counters — code paths in chatbot,
+               settlement-drill, downloads and the geo loader still read
+               these IDs. Keep them around so removing the visible KPI
+               tiles doesn't 404 any of those. _loadGeoCompleteness
+               continues to populate them. -->
+          <span id="geo-visit-ratio" style="display:none"></span>
+          <span id="geo-visit-ratio-sub" style="display:none"></span>
+          <span id="geo-sett-notvisited-count" style="display:none"></span>
+          <span id="geo-avg-completeness" style="display:none"></span>
+          <span id="geo-completed-count" style="display:none"></span>
           <span id="geo-coverage-pct" style="display:none"></span>
           <span id="geo-sett-visited-count" style="display:none"></span>
           <span id="geo-sett-total-count" style="display:none"></span>
-          <span id="geo-ward-active-count" style="display:none"></span>
-          <span id="geo-ward-total-count" style="display:none"></span>
-          <!-- hidden back-compat counters -->
           <span id="geo-ward-active-count" style="display:none"></span>
           <span id="geo-ward-total-count" style="display:none"></span>
 
@@ -1161,14 +1173,10 @@ tbody tr:hover{background:var(--pale)}
               <button class="chart-dl" onclick="dlSettlementBreakdownCSV()" title="Download CSV"><i class="fa-solid fa-download"></i></button>
             </div>
           </div>
-          <!-- Summary chips -->
-          <div id="settcov-summary" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:14px 18px 0">
-            <div class="kpi" style="padding:12px 14px"><div class="lbl">Total Settlements</div><div class="val" style="font-size:22px;color:var(--ink)" id="settcov-total">&mdash;</div></div>
-            <div class="kpi bad" style="padding:12px 14px"><div class="lbl">Not Visited</div><div class="val" style="font-size:22px;color:var(--bad)" id="settcov-not">&mdash;</div><div class="sub" style="font-size:10.5px" id="settcov-not-sub">No GPS point logged inside</div></div>
-            <div class="kpi warn" style="padding:12px 14px"><div class="lbl">Partially Covered</div><div class="val" style="font-size:22px;color:var(--warn)" id="settcov-partial">&mdash;</div><div class="sub" style="font-size:10.5px" id="settcov-partial-sub">Some forms — grid &lt;70% complete</div></div>
-            <div class="kpi good" style="padding:12px 14px"><div class="lbl">Fully Covered</div><div class="val" style="font-size:22px;color:var(--good)" id="settcov-full">&mdash;</div><div class="sub" style="font-size:10.5px" id="settcov-full-sub">≥70% of grid covered</div></div>
-          </div>
-          <!-- Per-LGA table -->
+          <!-- Per-LGA table (summary chips hoisted to the top of the
+               Geographic View so they replace the old Visitation Ratio /
+               Not Yet Visited / Overall Completeness KPI strip — no
+               duplication). -->
           <div style="padding:14px 18px 18px">
             <div style="overflow-x:auto;max-height:420px;overflow-y:auto;border:1px solid var(--line);border-radius:8px">
               <table style="width:100%;border-collapse:collapse;font-size:12.5px">
