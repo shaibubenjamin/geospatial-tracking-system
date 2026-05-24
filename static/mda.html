@@ -3880,6 +3880,26 @@ tbody tr:hover{background:var(--pale)}
       loadGeoBoundariesWard(null),
       loadGeoMetricsLGA(),
     ]);
+    // Auto-zoom to the project's state extent on first load. Without this
+    // the map opened on the default Nigeria-centred view and operators
+    // landing on Geographic View for Kano (or any non-Sokoto project) saw
+    // a near-empty map until they manually panned. We fit to the LGA
+    // featurecollection — it covers the full state and is always loaded.
+    _fitMapToProject();
+  }
+
+  // Fits the geo map to the bounding box of the loaded LGA polygons.
+  // No-op when LGAs aren't loaded yet — the loader calls it once the
+  // featurecollection has landed.
+  function _fitMapToProject() {
+    if (!geoMap || !geoLGAfc || !geoLGAfc.features || !geoLGAfc.features.length) return;
+    try {
+      const bbox = turf_bbox(geoLGAfc);
+      if (!bbox || bbox.some(v => !isFinite(v))) return;
+      geoMap.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], {
+        padding: 50, maxZoom: 11, duration: 800,
+      });
+    } catch (e) { /* turf_bbox can throw on empty features — silent fallback */ }
   }
 
   async function loadGeoBoundariesLGA() {
@@ -5087,7 +5107,20 @@ tbody tr:hover{background:var(--pale)}
     if(crumb) crumb.textContent=viewTitles[view]||view;
     const pg=document.querySelector('.page');
     if(pg){ pg.scrollTop=0; pg.classList.toggle('geo-active', view==='geo'); }
-    requestAnimationFrame(()=>{ buildCharts(view); if(view==='geo') buildMap(); });
+    requestAnimationFrame(()=>{
+      buildCharts(view);
+      if (view === 'geo') {
+        buildMap();
+        // When re-entering Geographic View after the map was already built
+        // (operator navigated away and back), buildMap() returns early
+        // without firing the load handler — so the auto-fit never runs.
+        // Force a re-fit here so the camera always returns to the project's
+        // state extent, not wherever the operator last drilled.
+        if (typeof _fitMapToProject === 'function') {
+          setTimeout(_fitMapToProject, 250);
+        }
+      }
+    });
   }
   document.querySelectorAll('.nav-item').forEach(n=>{
     n.addEventListener('click',function(){ const v=this.dataset.view; if(v) switchView(v); });
