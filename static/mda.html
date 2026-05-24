@@ -3767,7 +3767,7 @@ tbody tr:hover{background:var(--pale)}
   let geoNavData  = { lga: [], ward: [], settlement: [] };
   let geoCurrentLGA = null, geoCurrentWard = null;
   let geoLayerVis = { lga: true, ward: true, settlement: true, points: true };
-  let geoLGAfc = EMPTY_FC, geoWardfc = EMPTY_FC;
+  let geoLGAfc = EMPTY_FC, geoWardfc = EMPTY_FC, geoSettlementfc = EMPTY_FC;
 
   function buildMap() {
     if (geoMapBuilt) { if (geoMap) setTimeout(() => geoMap.resize(), 50); return; }
@@ -3917,7 +3917,10 @@ tbody tr:hover{background:var(--pale)}
     if (wardcode) q = '?wardcode=' + wardcode;
     else if (lgacode) q = '?lgacode=' + lgacode;
     const d = await api('/api/projects/' + geoPid + '/boundaries/settlement/geojson' + q);
-    if (d && geoMap.getSource('settlement-src')) geoMap.getSource('settlement-src').setData(d);
+    // Cache for fallback zoom when a settlement has no grid cells (a "100%
+    // visited" stray-GPS settlement still needs to be findable on the map
+    // when its grid layer is empty).
+    if (d) { geoSettlementfc = d; if (geoMap.getSource('settlement-src')) geoMap.getSource('settlement-src').setData(d); }
   }
   async function loadGeoPoints(unique_cod) {
     const d = await api('/api/projects/' + geoPid + '/analytics/points/geojson?unique_cod=' + encodeURIComponent(unique_cod) + '&limit=5000');
@@ -4316,13 +4319,18 @@ tbody tr:hover{background:var(--pale)}
     updateGeoNavHeader();
     const f = ['==', ['get', 'lgacode'], item.lgacode];
     ['lga-line', 'lga-label', 'lga-fill'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, f); });
+    // Zoom IMMEDIATELY — the LGA featurecollection is already client-side
+    // cached, so the camera can follow the click without waiting on the
+    // settlement-boundary fetch (15k+ features for a state, slow). The data
+    // loads in the background and pops in as it arrives. Without this the
+    // map appears "stuck" on the previous level until network catches up.
+    zoomGeoTo(geoLGAfc, 'lgacode', item.lgacode);
     await Promise.all([
       loadGeoBoundariesWard(item.lgacode),
       loadGeoBoundariesSettlement(item.lgacode, null),
       loadGeoMetricsWard(item.lgacode),
       _loadGeoPointsForLGA(item.lgacode),
     ]);
-    zoomGeoTo(geoLGAfc, 'lgacode', item.lgacode);
     if (movementActive) {
       _spatialMovementFilter = { lga: item.lga_name || null, ward: null };
       geoFilterMovement();
@@ -4339,6 +4347,8 @@ tbody tr:hover{background:var(--pale)}
     updateGeoNavHeader();
     const f = ['==', ['get', 'wardcode'], item.wardcode];
     ['ward-line', 'ward-label'].forEach(id => { if (geoMap.getLayer(id)) geoMap.setFilter(id, f); });
+    // Zoom immediately from the cached ward FC — see geodrillLGA comment.
+    zoomGeoTo(geoWardfc, 'wardcode', item.wardcode);
     // Eagerly load GPS points for the whole ward so the green-in-grid /
     // red-outside dots in the legend actually populate at ward level — users
     // previously had to drill into a single settlement to see any points.
@@ -4347,7 +4357,6 @@ tbody tr:hover{background:var(--pale)}
       loadGeoMetricsSettlement(item.wardcode),
       _loadGeoPointsForWard(item.wardcode),
     ]);
-    zoomGeoTo(geoWardfc, 'wardcode', item.wardcode);
     // If the movement overlay is currently active, refilter it spatially to
     // the clicked ward so the team-movement view follows the drill.
     if (movementActive) {
@@ -4363,8 +4372,16 @@ tbody tr:hover{background:var(--pale)}
 
   async function geodrillSettlement(item) {
     updateGeoNavHeader();
-    // Load GPS points AND grid cells in parallel
-    const [, gridData] = await Promise.all([
+    // Immediate zoom to the settlement polygon from the cached settlement FC.
+    // This guarantees a visible camera change on every click, even for
+    // settlements that have no grid cells (e.g. one with a stray GPS point
+    // inside but no grid coverage uploaded). Without this fallback those
+    // rows appeared unclickable because loadGeoGridAndZoom returned empty
+    // and never called fitBounds.
+    _zoomToSettlementPolygon(item.unique_cod);
+    // Then load GPS points AND grid cells in parallel; the grid-derived
+    // zoom (tighter to the actual data) will refine the camera if it can.
+    await Promise.all([
       loadGeoPoints(item.unique_cod),
       loadGeoGridAndZoom(item.unique_cod),
     ]);
@@ -4379,6 +4396,24 @@ tbody tr:hover{background:var(--pale)}
       };
       geoFilterMovement();
     }
+  }
+
+  // Helper: zoom the map to a single settlement's polygon by unique_cod.
+  // Reads from the in-memory settlement featurecollection so it never
+  // blocks on a network call. Used as the always-fires camera move when
+  // a settlement nav row is clicked.
+  function _zoomToSettlementPolygon(unique_cod) {
+    if (!geoMap || !geoSettlementfc || !geoSettlementfc.features) return;
+    const feat = geoSettlementfc.features.find(f => f.properties && f.properties.unique_cod === unique_cod);
+    if (!feat) return;
+    try {
+      let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+      function walk(c){if(typeof c[0]==='number'){if(c[0]<minx)minx=c[0];if(c[0]>maxx)maxx=c[0];if(c[1]<miny)miny=c[1];if(c[1]>maxy)maxy=c[1];}else c.forEach(walk);}
+      walk(feat.geometry.coordinates);
+      if ([minx,miny,maxx,maxy].every(isFinite)) {
+        geoMap.fitBounds([[minx,miny],[maxx,maxy]], { padding: 80, maxZoom: 16, duration: 600 });
+      }
+    } catch (e) { /* silent */ }
   }
 
   async function loadGeoGridAndZoom(unique_cod) {
