@@ -431,10 +431,11 @@
   </div>
 
   <script>
-    // Redirect if already logged in — superadmins to Admin Panel, others to Dashboard
+    // Already-logged-in redirect always lands on the public dashboard, even
+    // for superadmins. They can jump to the admin panel from the dashboard
+    // chrome — the dashboard is the home page, the admin panel is a tool.
     if (localStorage.getItem('token')) {
-      const dest = localStorage.getItem('is_superadmin') === 'true' ? '/mda-admin' : '/dashboard';
-      window.location.href = dest;
+      window.location.href = '/dashboard';
     }
 
     // ── Live landing-page stats ────────────────────────────────────────────
@@ -520,8 +521,10 @@
         localStorage.setItem('username',      data.username);
         localStorage.setItem('is_admin',      data.is_admin);
         localStorage.setItem('is_superadmin', data.is_superadmin ? 'true' : 'false');
-        // Superadmins land on the Admin Panel (data control). Everyone else on the dashboard.
-        window.location.href = data.is_superadmin ? '/mda-admin' : '/dashboard';
+        // Everyone — including superadmins — lands on the public dashboard
+        // after sign-in. The admin panel is reachable from the dashboard
+        // chrome; the dashboard is the home page, the admin panel is a tool.
+        window.location.href = '/dashboard';
       } catch {
         document.getElementById('error-msg').textContent = 'Network error — is the server running?';
         errBox.classList.add('visible');
