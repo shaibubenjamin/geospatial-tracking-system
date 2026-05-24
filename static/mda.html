@@ -3894,11 +3894,12 @@ tbody tr:hover{background:var(--pale)}
   function _fitMapToProject() {
     if (!geoMap || !geoLGAfc || !geoLGAfc.features || !geoLGAfc.features.length) return;
     try {
+      // turf_bbox returns [[minx,miny],[maxx,maxy]] — already in the
+      // shape MapLibre's fitBounds expects, no further wrapping needed.
       const bbox = turf_bbox(geoLGAfc);
-      if (!bbox || bbox.some(v => !isFinite(v))) return;
-      geoMap.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], {
-        padding: 50, maxZoom: 11, duration: 800,
-      });
+      const [sw, ne] = bbox;
+      if (!sw || !ne || ![sw[0], sw[1], ne[0], ne[1]].every(isFinite)) return;
+      geoMap.fitBounds(bbox, { padding: 50, maxZoom: 11, duration: 800 });
     } catch (e) { /* turf_bbox can throw on empty features — silent fallback */ }
   }
 
