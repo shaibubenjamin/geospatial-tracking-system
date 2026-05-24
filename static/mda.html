@@ -1419,25 +1419,117 @@ tbody tr:hover{background:var(--pale)}
         <div class="page-head">
           <div>
             <div class="page-title">Reports &amp; Export</div>
-            <div class="page-sub">Generate standardised reports for SARMAAN, MoH and WHO</div>
+            <div class="page-sub">Pull campaign data into standard files — drives MoH / WHO / donor submissions and offline analysis.</div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-ghost btn-sm" onclick="window.print()" title="Print this dashboard as a PDF report"><i class="fa-solid fa-print"></i> Print page</button>
           </div>
         </div>
 
+        <!-- Live snapshot — pulled from overviewData so the operator sees
+             what the export will contain before downloading. -->
         <div class="kpi-grid cols-4">
-          <div class="kpi"><div class="lbl">Reports Generated</div><div class="val">&mdash;</div><div class="sub">This round</div></div>
-          <div class="kpi accent"><div class="lbl">Scheduled Auto-Reports</div><div class="val">&mdash;</div><div class="sub">Running daily</div></div>
-          <div class="kpi good"><div class="lbl">WHO Submissions</div><div class="val">&mdash;</div><div class="sub">Submission status</div></div>
-          <div class="kpi"><div class="lbl">Donor Briefs Sent</div><div class="val">&mdash;</div><div class="sub">Partners</div></div>
+          <div class="kpi"><div class="lbl">Forms Synced</div><div class="val" id="rep-kpi-forms">&mdash;</div><div class="sub" id="rep-kpi-forms-sub">Household forms in this project</div></div>
+          <div class="kpi accent"><div class="lbl">Children Treated</div><div class="val" id="rep-kpi-treated">&mdash;</div><div class="sub" id="rep-kpi-treated-sub">1–59 months, campaign-to-date</div></div>
+          <div class="kpi good"><div class="lbl">Coverage</div><div class="val" id="rep-kpi-coverage">&mdash;</div><div class="sub" id="rep-kpi-coverage-sub">Treated ÷ baseline target</div></div>
+          <div class="kpi"><div class="lbl">Campaign Day</div><div class="val" id="rep-kpi-day">&mdash;</div><div class="sub" id="rep-kpi-day-sub">Day-N of planned window</div></div>
         </div>
 
         <div class="grid-3">
-          <div class="card" style="margin-bottom:0;cursor:pointer"><div class="card-body"><div style="width:42px;height:42px;border-radius:10px;background:var(--mist);color:var(--blue);display:grid;place-items:center;font-size:18px;margin-bottom:12px"><i class="fa-solid fa-file-pdf"></i></div><div style="font-weight:700;color:var(--navy);font-size:15px">State Daily Brief</div><div style="font-size:12px;color:var(--muted);margin-top:4px">PDF &bull; Auto-generated 06:00</div><button class="btn btn-ghost" style="margin-top:14px"><i class="fa-solid fa-download"></i> Download</button></div></div>
-          <div class="card" style="margin-bottom:0;cursor:pointer"><div class="card-body"><div style="width:42px;height:42px;border-radius:10px;background:var(--mist);color:var(--blue);display:grid;place-items:center;font-size:18px;margin-bottom:12px"><i class="fa-solid fa-file-excel"></i></div><div style="font-weight:700;color:var(--navy);font-size:15px">LGA Coverage Workbook</div><div style="font-size:12px;color:var(--muted);margin-top:4px">XLSX &bull; Ward-level</div><button class="btn btn-ghost" style="margin-top:14px"><i class="fa-solid fa-download"></i> Download</button></div></div>
-          <div class="card" style="margin-bottom:0;cursor:pointer"><div class="card-body"><div style="width:42px;height:42px;border-radius:10px;background:var(--mist);color:var(--blue);display:grid;place-items:center;font-size:18px;margin-bottom:12px"><i class="fa-solid fa-globe"></i></div><div style="font-weight:700;color:var(--navy);font-size:15px">WHO ESPEN Submission</div><div style="font-size:12px;color:var(--muted);margin-top:4px">CSV &bull; SAFE strategy format</div><button class="btn btn-ghost" style="margin-top:14px"><i class="fa-solid fa-download"></i> Download</button></div></div>
-          <div class="card" style="margin-bottom:0;cursor:pointer"><div class="card-body"><div style="width:42px;height:42px;border-radius:10px;background:var(--mist);color:var(--blue);display:grid;place-items:center;font-size:18px;margin-bottom:12px"><i class="fa-solid fa-shield"></i></div><div style="font-weight:700;color:var(--navy);font-size:15px">QC &amp; DQA Report</div><div style="font-size:12px;color:var(--muted);margin-top:4px">PDF &bull; Full audit trail</div><button class="btn btn-ghost" style="margin-top:14px"><i class="fa-solid fa-download"></i> Download</button></div></div>
-          <div class="card" style="margin-bottom:0;cursor:pointer"><div class="card-body"><div style="width:42px;height:42px;border-radius:10px;background:var(--mist);color:var(--blue);display:grid;place-items:center;font-size:18px;margin-bottom:12px"><i class="fa-solid fa-map-location-dot"></i></div><div style="font-weight:700;color:var(--navy);font-size:15px">Microplanning Map Pack</div><div style="font-size:12px;color:var(--muted);margin-top:4px">GeoJSON + PNG</div><button class="btn btn-ghost" style="margin-top:14px"><i class="fa-solid fa-download"></i> Download</button></div></div>
-          <div class="card" style="margin-bottom:0;cursor:pointer"><div class="card-body"><div style="width:42px;height:42px;border-radius:10px;background:var(--mist);color:var(--blue);display:grid;place-items:center;font-size:18px;margin-bottom:12px"><i class="fa-solid fa-handshake"></i></div><div style="font-weight:700;color:var(--navy);font-size:15px">Donor Report</div><div style="font-size:12px;color:var(--muted);margin-top:4px">DOCX &bull; Branded</div><button class="btn btn-ghost" style="margin-top:14px"><i class="fa-solid fa-download"></i> Download</button></div></div>
+          <!-- 1. Campaign Summary CSV — a 1-row brief of the overview KPIs.
+                  Lightweight, ready to paste into an email. -->
+          <div class="card report-card" onclick="reportDownloadCampaignSummary()" style="margin-bottom:0;cursor:pointer">
+            <div class="card-body">
+              <div class="rep-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-file-csv"></i></div>
+              <div class="rep-title">Campaign Summary</div>
+              <div class="rep-sub">CSV &bull; One row per project: forms, treated, baseline, coverage, QC counts</div>
+              <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();reportDownloadCampaignSummary()"><i class="fa-solid fa-download"></i> Download CSV</button>
+            </div>
+          </div>
+
+          <!-- 2. Per-LGA Coverage Workbook — XLSX from the same endpoint
+                  the Geographic View's "Download LGAs" button uses. -->
+          <div class="card report-card" onclick="reportDownloadLGAs()" style="margin-bottom:0;cursor:pointer">
+            <div class="card-body">
+              <div class="rep-icon" style="background:var(--mist);color:var(--good)"><i class="fa-solid fa-file-excel"></i></div>
+              <div class="rep-title">Per-LGA Coverage Workbook</div>
+              <div class="rep-sub">XLSX &bull; One row per LGA: baseline, treated, coverage %, forms, teams, days active</div>
+              <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();reportDownloadLGAs()"><i class="fa-solid fa-download"></i> Download XLSX</button>
+            </div>
+          </div>
+
+          <!-- 3. Ward Coverage Workbook — XLSX, ward-level breakdown. -->
+          <div class="card report-card" onclick="reportDownloadWards()" style="margin-bottom:0;cursor:pointer">
+            <div class="card-body">
+              <div class="rep-icon" style="background:var(--mist);color:var(--good)"><i class="fa-solid fa-file-excel"></i></div>
+              <div class="rep-title">Ward Coverage Workbook</div>
+              <div class="rep-sub">XLSX &bull; One row per ward: forms, treated, coverage %, settlements covered</div>
+              <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();reportDownloadWards()"><i class="fa-solid fa-download"></i> Download XLSX</button>
+            </div>
+          </div>
+
+          <!-- 4. Settlement Visit Status — already-shipped endpoint, kept
+                  here so operators don't have to hunt for it on Geographic View. -->
+          <div class="card report-card" onclick="reportDownloadSettlementStatus()" style="margin-bottom:0;cursor:pointer">
+            <div class="card-body">
+              <div class="rep-icon" style="background:var(--mist);color:var(--good)"><i class="fa-solid fa-file-excel"></i></div>
+              <div class="rep-title">Settlement Visit Status</div>
+              <div class="rep-sub">XLSX &bull; Per-settlement: visited (yes/no), grid completeness, GPS points</div>
+              <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();reportDownloadSettlementStatus()"><i class="fa-solid fa-download"></i> Download XLSX</button>
+            </div>
+          </div>
+
+          <!-- 5. Mop-up Shortlist — same data as the Coverage Analysis card,
+                  exported for offline planning. -->
+          <div class="card report-card" onclick="dlMopUpCSV()" style="margin-bottom:0;cursor:pointer">
+            <div class="card-body">
+              <div class="rep-icon" style="background:var(--mist);color:var(--warn)"><i class="fa-solid fa-list-check"></i></div>
+              <div class="rep-title">Mop-up Shortlist</div>
+              <div class="rep-sub">CSV &bull; LGAs ranked by urgency, with a one-line recommended action per row</div>
+              <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();dlMopUpCSV()"><i class="fa-solid fa-download"></i> Download CSV</button>
+            </div>
+          </div>
+
+          <!-- 6. Boundary GeoJSON Pack — direct geojson endpoint links so
+                  field teams can drop the polygons into QGIS / KoBoCollect. -->
+          <div class="card report-card" onclick="reportShowGeoPack()" style="margin-bottom:0;cursor:pointer">
+            <div class="card-body">
+              <div class="rep-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-map-location-dot"></i></div>
+              <div class="rep-title">Boundary GeoJSON Pack</div>
+              <div class="rep-sub">GeoJSON &bull; LGA / Ward / Settlement / Grid polygons for the selected project</div>
+              <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();reportShowGeoPack()"><i class="fa-solid fa-download"></i> View links</button>
+            </div>
+          </div>
         </div>
+
+        <!-- GeoJSON pack popover — populated by reportShowGeoPack(). -->
+        <div id="rep-geopack" style="display:none;margin-top:14px">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title"><i class="fa-solid fa-link"></i> Direct GeoJSON download links</div>
+              <div class="card-head-right">
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('rep-geopack').style.display='none'"><i class="fa-solid fa-xmark"></i> Close</button>
+              </div>
+            </div>
+            <div style="padding:14px 18px 18px;font-size:12.5px;line-height:1.7">
+              <ul style="list-style:disc;margin:0 0 0 18px;color:var(--ink)">
+                <li><a id="rep-geopack-lga"   href="#" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">LGA boundaries</a> — outline of each LGA polygon.</li>
+                <li><a id="rep-geopack-ward"  href="#" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">Ward boundaries</a> — every ward in the project.</li>
+                <li><a id="rep-geopack-sett"  href="#" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">Settlement boundaries</a> — full settlement polygon set (large; expect a few MB).</li>
+                <li><a id="rep-geopack-grid"  href="#" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">Grid cells</a> — fine-grained grid for the active project (can be 100MB+ depending on state).</li>
+              </ul>
+              <div style="margin-top:10px;color:var(--muted);font-size:11.5px">Tip: right-click → “Save Link As” to download. All four files are valid GeoJSON and can be opened in QGIS, ArcGIS, or any web mapping tool.</div>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          .report-card { transition: transform .15s, box-shadow .15s; }
+          .report-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+          .rep-icon { width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-size:18px;margin-bottom:12px; }
+          .rep-title { font-weight:700;color:var(--navy);font-size:15px; }
+          .rep-sub   { font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5; }
+        </style>
       </section>
 
     </div>
@@ -3649,7 +3741,110 @@ tbody tr:hover{background:var(--pale)}
     if (view === 'trends') {
       renderCampaignTrends();
     }
+
+    if (view === 'reports') {
+      _renderReportsKPIs();
+    }
   }
+
+  // Reports & Export page — populates the live KPI strip from the in-memory
+  // overviewData. The downloads themselves don't depend on this (each fires
+  // its own fetch), but the chips give the operator a sanity-check on what
+  // they're about to download.
+  function _renderReportsKPIs() {
+    const ov = overviewData || {};
+    setEl('rep-kpi-forms',      fmt(ov.total_forms));
+    setEl('rep-kpi-treated',    fmt(ov.total_treated));
+    setEl('rep-kpi-coverage',   (ov.coverage_pct || 0).toFixed(1) + '%');
+    const day = ov.current_campaign_day;
+    const planned = ov.planned_duration_days;
+    if (day != null && planned) {
+      setEl('rep-kpi-day', 'Day ' + day);
+      setEl('rep-kpi-day-sub', 'of ' + planned + ' planned campaign days');
+    } else if (day != null) {
+      setEl('rep-kpi-day', 'Day ' + day);
+      setEl('rep-kpi-day-sub', 'Campaign window not configured');
+    } else if (ov.days_active != null) {
+      setEl('rep-kpi-day', String(ov.days_active));
+      setEl('rep-kpi-day-sub', 'Distinct submission days');
+    }
+  }
+
+  /* ── REPORTS & EXPORT — download handlers ── */
+  // Each handler wires to a real backend endpoint we already ship. No
+  // mock data, no placeholder PDFs — every download produces a file the
+  // operator can hand off without further editing.
+
+  // Campaign Summary CSV — one row of overview numbers. Hand-pasteable
+  // into an email or stand-up brief.
+  function reportDownloadCampaignSummary() {
+    const ov = overviewData || {};
+    const projLabel = (function(){
+      const sel = document.getElementById('project-selector');
+      return sel && sel.selectedOptions && sel.selectedOptions[0] ? sel.selectedOptions[0].text : '';
+    })();
+    const head = [
+      'Project','Forms','Children treated','Baseline target','Coverage %',
+      'Active teams','Days active','Current campaign day','Planned days',
+      'Refusals','QC flags total','Forms with at least one error','Error rate %',
+      'Campaign start','Campaign end'
+    ];
+    const row = [
+      '"' + (projLabel || '').replace(/"/g, '""') + '"',
+      ov.total_forms || 0,
+      ov.total_treated || 0,
+      ov.baseline_total || 0,
+      (ov.coverage_pct || 0).toFixed(1),
+      ov.teams_active || 0,
+      ov.days_active || 0,
+      ov.current_campaign_day != null ? ov.current_campaign_day : '',
+      ov.planned_duration_days || '',
+      ov.refusals || 0,
+      ov.total_qc_flags || 0,
+      ov.forms_with_error || 0,
+      (ov.error_rate_pct || 0).toFixed(1),
+      ov.campaign_start || '',
+      ov.campaign_end || '',
+    ];
+    const csv = head.join(',') + '\n' + row.join(',') + '\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a   = document.createElement('a');
+    a.href    = url;
+    a.download = 'campaign_summary_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.reportDownloadCampaignSummary = reportDownloadCampaignSummary;
+
+  // XLSX downloads — reuse the existing geo-download helpers so the format
+  // matches what's already produced by the Geographic View download grid.
+  function reportDownloadLGAs() { return downloadGeoExport('lgas', 'LGAs'); }
+  function reportDownloadWards() { return downloadGeoExport('wards', 'Wards'); }
+  function reportDownloadSettlementStatus() { return downloadSettlementStatus(); }
+  window.reportDownloadLGAs = reportDownloadLGAs;
+  window.reportDownloadWards = reportDownloadWards;
+  window.reportDownloadSettlementStatus = reportDownloadSettlementStatus;
+
+  // Toggles the GeoJSON pack panel; fills the link hrefs against the
+  // selected project's id so each link is direct-downloadable.
+  function reportShowGeoPack() {
+    const pid = (typeof geoPid !== 'undefined' && geoPid) ? geoPid : SELECTED_PID;
+    if (!pid) return;
+    const base = '/api/projects/' + pid + '/boundaries';
+    const map = {
+      'rep-geopack-lga':  base + '/lga/geojson',
+      'rep-geopack-ward': base + '/ward/geojson',
+      'rep-geopack-sett': base + '/settlement/geojson',
+      'rep-geopack-grid': base + '/grid/geojson',
+    };
+    Object.entries(map).forEach(([id, href]) => {
+      const a = document.getElementById(id);
+      if (a) a.href = href;
+    });
+    const box = document.getElementById('rep-geopack');
+    if (box) box.style.display = 'block';
+  }
+  window.reportShowGeoPack = reportShowGeoPack;
 
   /* ── CHATBOT ── */
   let chatOpen = false;
