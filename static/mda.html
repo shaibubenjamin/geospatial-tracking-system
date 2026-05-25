@@ -1173,7 +1173,15 @@ tbody tr:hover{background:var(--pale)}
           <div class="card-head">
             <div>
               <div class="card-title"><i class="fa-solid fa-table-list"></i> Settlement Coverage Breakdown</div>
-              <div class="card-sub">How many settlements per LGA still need any team contact, vs which already need a second pass to fill the grid. A settlement counts as <strong>fully covered</strong> once ≥70% of its grid cells have a GPS point inside (matches the map shading).</div>
+              <div class="card-sub" style="line-height:1.6">
+                Per-LGA picture of where the campaign still needs to go. Each settlement falls into one of three buckets:
+                <ul style="margin:6px 0 6px 18px;padding:0;list-style:disc">
+                  <li><strong style="color:var(--bad)">Not visited</strong> — no GPS point has ever been logged inside this settlement. The team hasn't physically reached it yet.</li>
+                  <li><strong style="color:var(--warn)">Partially covered</strong> — at least one form was submitted from inside, but fewer than 70 % of the settlement's grid cells contain a GPS point. The team reached part of it; a mop-up pass is needed.</li>
+                  <li><strong style="color:var(--good)">Fully covered</strong> — ≥ 70 % of the grid cells have a GPS point inside, OR (when no grid is loaded) any GPS point falls inside the settlement polygon. This matches the green shading on the map.</li>
+                </ul>
+                <strong>Covered %</strong> is <em>fully-covered settlements ÷ total settlements</em> for the LGA — the share of settlements that have crossed the “done” threshold.
+              </div>
             </div>
             <div class="card-head-right">
               <button class="chart-dl" onclick="dlSettlementBreakdownCSV()" title="Download CSV"><i class="fa-solid fa-download"></i></button>
@@ -3987,21 +3995,22 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function initGeoSources() {
-    // LGA — coverage-graduated fill so the operator sees the spread of
-    // completeness across the state without having to click into each LGA.
-    // The fill colour reads the LGA's completeness_pct (merged into the
-    // geojson properties by loadGeoMetricsLGA after the metrics arrive);
-    // until that happens completeness_pct is null and the fallback case
-    // paints a neutral grey so the state still has visible polygons.
+    // LGA — visitation-graduated fill so the operator sees where the
+    // campaign has and hasn't physically reached without clicking into
+    // each LGA. Reads visitation_pct (share of an LGA's settlements with
+    // at least one GPS point inside) — not completeness_pct, which is
+    // the deeper grid-coverage metric. Visitation answers "have we been
+    // there?"; completeness answers "did we cover the area thoroughly?"
+    // The first question is what supervisors triage by.
     geoMap.addSource('lga-src', { type: 'geojson', data: EMPTY_FC });
     geoMap.addLayer({ id: 'lga-fill', type: 'fill', source: 'lga-src',
       paint: {
         'fill-color': [
           'case',
-          ['==', ['get', 'completeness_pct'], null], '#E5E7EB',
-          ['>=', ['to-number', ['get', 'completeness_pct']], 70], '#16a34a',
-          ['>=', ['to-number', ['get', 'completeness_pct']], 40], '#f59e0b',
-          ['>=', ['to-number', ['get', 'completeness_pct']],  1], '#dc2626',
+          ['==', ['get', 'visitation_pct'], null], '#E5E7EB',
+          ['>=', ['to-number', ['get', 'visitation_pct']], 70], '#16a34a',
+          ['>=', ['to-number', ['get', 'visitation_pct']], 40], '#f59e0b',
+          ['>=', ['to-number', ['get', 'visitation_pct']],  1], '#dc2626',
           '#E5E7EB',
         ],
         'fill-opacity': 0.35,
