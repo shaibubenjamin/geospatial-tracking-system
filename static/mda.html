@@ -3987,10 +3987,25 @@ tbody tr:hover{background:var(--pale)}
   }
 
   function initGeoSources() {
-    // LGA — thick green lines, transparent fill
+    // LGA — coverage-graduated fill so the operator sees the spread of
+    // completeness across the state without having to click into each LGA.
+    // The fill colour reads the LGA's completeness_pct (merged into the
+    // geojson properties by loadGeoMetricsLGA after the metrics arrive);
+    // until that happens completeness_pct is null and the fallback case
+    // paints a neutral grey so the state still has visible polygons.
     geoMap.addSource('lga-src', { type: 'geojson', data: EMPTY_FC });
     geoMap.addLayer({ id: 'lga-fill', type: 'fill', source: 'lga-src',
-      paint: { 'fill-color': 'transparent', 'fill-opacity': 0 } });
+      paint: {
+        'fill-color': [
+          'case',
+          ['==', ['get', 'completeness_pct'], null], '#E5E7EB',
+          ['>=', ['to-number', ['get', 'completeness_pct']], 70], '#16a34a',
+          ['>=', ['to-number', ['get', 'completeness_pct']], 40], '#f59e0b',
+          ['>=', ['to-number', ['get', 'completeness_pct']],  1], '#dc2626',
+          '#E5E7EB',
+        ],
+        'fill-opacity': 0.35,
+      } });
     geoMap.addLayer({ id: 'lga-line', type: 'line', source: 'lga-src',
       paint: { 'line-color': '#1a1a1a', 'line-width': 2.0, 'line-opacity': 0.85 } });
     geoMap.addLayer({ id: 'lga-label', type: 'symbol', source: 'lga-src', minzoom: 5, maxzoom: 9,
@@ -4005,10 +4020,14 @@ tbody tr:hover{background:var(--pale)}
       layout: { 'text-field': ['get', 'ward_name'], 'text-size': 9, 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'] },
       paint: { 'text-color': '#78350f', 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 } });
 
-    // Settlement — coloured green (visited ≥70%) / red (not visited)
+    // Settlement — coloured green (visited ≥70%) / red (not visited).
+    // minzoom dropped from 9 → 6 so the green/red mosaic appears as
+    // soon as the operator enters the Geographic View. At state zoom the
+    // settlement polygons render as tiny coloured dots that visually
+    // map out where the campaign has and hasn't reached.
     geoMap.addSource('settlement-src', { type: 'geojson', data: EMPTY_FC });
-    geoMap.addLayer({ id: 'settlement-fill', type: 'fill', source: 'settlement-src', minzoom: 9,
-      paint: { 'fill-color': ['case', ['get', 'is_visited'], '#16a34a', '#dc2626'], 'fill-opacity': 0.45 } });
+    geoMap.addLayer({ id: 'settlement-fill', type: 'fill', source: 'settlement-src', minzoom: 6,
+      paint: { 'fill-color': ['case', ['get', 'is_visited'], '#16a34a', '#dc2626'], 'fill-opacity': 0.55 } });
     geoMap.addLayer({ id: 'settlement-line', type: 'line', source: 'settlement-src', minzoom: 9,
       paint: { 'line-color': ['case', ['get', 'is_visited'], '#15803d', '#b91c1c'], 'line-width': 1.0, 'line-dasharray': [3, 2] } });
     geoMap.addLayer({ id: 'settlement-label', type: 'symbol', source: 'settlement-src', minzoom: 12,
@@ -4070,8 +4089,12 @@ tbody tr:hover{background:var(--pale)}
     }
     if (!target) target = projects.find(p => p.is_active) || projects[0];
     geoPid = target.id;
+    // Boundaries first so the metrics-merge inside loadGeoMetricsLGA can
+    // splice completeness_pct into the LGA featurecollection. Without this
+    // ordering the choropleth fill paints all polygons neutral grey because
+    // the merge runs before geoLGAfc.features exists.
+    await loadGeoBoundariesLGA();
     await Promise.all([
-      loadGeoBoundariesLGA(),
       loadGeoBoundariesWard(null),
       loadGeoMetricsLGA(),
     ]);
@@ -4128,6 +4151,33 @@ tbody tr:hover{background:var(--pale)}
     geoNavData.lga = d;
     geoNavLevel = 'lga';
     renderGeoNav(d, 'lga');
+    // Merge the per-LGA completeness/visitation metrics into the LGA
+    // featurecollection's properties so the choropleth fill on lga-fill
+    // can colour each polygon by coverage. Until this runs the polygons
+    // stay neutral grey (per the fill-color expression's fallback case).
+    if (geoLGAfc && geoLGAfc.features) {
+      const byCode = {};
+      d.forEach(r => { if (r.lgacode) byCode[r.lgacode] = r; });
+      const byName = {};
+      d.forEach(r => { if (r.lga_name) byName[r.lga_name.trim().toLowerCase()] = r; });
+      geoLGAfc.features.forEach(f => {
+        const p = f.properties || (f.properties = {});
+        const m = byCode[p.lgacode]
+              || byName[(p.lga_name || '').trim().toLowerCase()]
+              || null;
+        if (m) {
+          p.completeness_pct = m.completeness_pct != null ? Number(m.completeness_pct) : null;
+          p.visitation_pct   = m.visitation_pct   != null ? Number(m.visitation_pct)   : null;
+        }
+      });
+      if (geoMap.getSource('lga-src')) geoMap.getSource('lga-src').setData(geoLGAfc);
+    }
+    // Auto-load the settlement polygons for the whole state so the green/red
+    // settlement mosaic shows up immediately — the operator no longer has to
+    // drill into an LGA to see where the campaign has and hasn't reached.
+    if (geoCurrentLGA == null && geoCurrentWard == null) {
+      loadGeoBoundariesSettlement(null, null);
+    }
     // The state-wide rollups (Visitation Ratio, Not Yet Visited, Overall
     // Completeness) are driven by /api/mda/geo/completeness so they use the
     // server-side capped formulas, not whatever sums we'd compute client-side.
