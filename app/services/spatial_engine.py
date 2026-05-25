@@ -335,11 +335,17 @@ async def get_points_geojson(
         text(f"""
             SELECT
                 h.id,
+                h.formid,
                 h.latitude,
                 h.longitude,
                 (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS collection_date,
                 h.started_time      AS timestamp,
                 h.hq_user           AS research_assistant,
+                h.username          AS hq_username,
+                h.teamcode,
+                h.data_entry_persons,
+                h.serial_number_hh_id,
+                h.hh_num,
                 h.lga               AS lga_name,
                 h.ward_name,
                 h.in_grid,
@@ -367,10 +373,21 @@ async def get_points_geojson(
             "geometry": row.geometry,
             "properties": {
                 "id":                  row.id,
+                # Identification fields surfaced for the on-click popup so a
+                # supervisor seeing a "GPS outside" point can match it back to
+                # the specific form / household / team in CommCare.
+                "formid":              row.formid,
+                "teamcode":            row.teamcode,
+                "hq_user":             row.research_assistant,
+                "hq_username":         row.hq_username,
+                "data_entry_persons":  row.data_entry_persons,
+                "serial_number_hh_id": row.serial_number_hh_id,
+                "hh_num":              row.hh_num,
                 "latitude":            row.latitude,
                 "longitude":           row.longitude,
                 "collection_date":     str(row.collection_date) if row.collection_date else None,
                 "timestamp":           str(row.timestamp)       if row.timestamp       else None,
+                # Legacy alias retained for existing front-end callers.
                 "research_assistant":  row.research_assistant,
                 "lga_name":            row.lga_name,
                 "ward_name":           row.ward_name,
