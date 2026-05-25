@@ -4013,7 +4013,19 @@ tbody tr:hover{background:var(--pale)}
           ['>=', ['to-number', ['get', 'visitation_pct']],  1], '#dc2626',
           '#E5E7EB',
         ],
-        'fill-opacity': 0.35,
+        // Opacity fades out as the operator zooms in past the state-level
+        // view: 0.35 at zoom ≤8 (full state spread visible), tapering to 0
+        // by zoom 11 so ward / settlement / grid detail can be read without
+        // the LGA colour wash sitting on top. Outlines (lga-line) stay
+        // visible at all zooms so the boundary itself never disappears.
+        'fill-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          7,  0.35,
+          8,  0.35,
+          9,  0.20,
+          10, 0.08,
+          11, 0.00,
+        ],
       } });
     geoMap.addLayer({ id: 'lga-line', type: 'line', source: 'lga-src',
       paint: { 'line-color': '#1a1a1a', 'line-width': 2.0, 'line-opacity': 0.85 } });
@@ -4905,17 +4917,33 @@ tbody tr:hover{background:var(--pale)}
       const where = inGrid
         ? '✓ Inside a grid cell'
         : (inSett ? '✓ Inside a settlement polygon (no grid)' : '✗ Outside all settlements and grids');
+      // Identification helpers — show form / household / team identifiers so
+      // a supervisor seeing an "outside-LGA" red dot can trace it back to
+      // the specific form in CommCare. Each row only renders when the
+      // backing field is present, so the popup stays compact for fully-
+      // identified records and informative for partial ones.
+      const esc = (s) => String(s == null ? '' : s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+      const team = p.hq_user || p.hq_username || p.teamcode;
+      const formIdShort = p.formid ? esc(String(p.formid).slice(0, 8)) + '…' : null;
+      const rows = [
+        team        ? `<b>Team:</b> ${esc(team)}`                                                  : null,
+        p.data_entry_persons ? `<b>RA:</b> ${esc(p.data_entry_persons)}`                          : null,
+        p.serial_number_hh_id ? `<b>HH ID:</b> ${esc(p.serial_number_hh_id)}`                     : null,
+        p.hh_num    ? `<b>HH #:</b> ${esc(p.hh_num)}`                                              : null,
+        formIdShort ? `<b>Form:</b> <code title="${esc(p.formid)}" style="font-size:10px">${formIdShort}</code>` : null,
+      ].filter(Boolean).join('<br>');
       popup.setLngLat(e.lngLat).setHTML(
-        '<div style="font-size:12px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
-        '<b style="color:#003D1A">GPS Point</b><br>' +
-        '<span style="color:' + (inBounds ? '#15803d' : '#b91c1c') + ';font-weight:700">' +
+        '<div style="font-size:12px;padding:4px 2px;font-family:Inter,system-ui,sans-serif;min-width:220px">' +
+        '<b style="color:#003D1A;font-size:13px">GPS Submission</b><br>' +
+        '<span style="color:' + (inBounds ? '#15803d' : '#b91c1c') + ';font-weight:700;display:inline-block;margin-top:2px">' +
           where +
-        '</span><br>' +
-        '<span style="color:#5B6B82;font-size:11px">' +
-          'Lat ' + Number(p.latitude||0).toFixed(5) + ', Lon ' + Number(p.longitude||0).toFixed(5) +
         '</span>' +
-        (p.collection_date ? '<br><span style="color:#5B6B82;font-size:10.5px">' + p.collection_date + '</span>' : '') +
-        (p.lga_name ? '<br><span style="color:#5B6B82;font-size:10.5px">' + p.lga_name + (p.ward_name ? ' › ' + p.ward_name : '') + '</span>' : '') +
+        (rows ? '<div style="margin-top:6px;color:#1f2937;font-size:11.5px;line-height:1.55">' + rows + '</div>' : '') +
+        '<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:5px;color:#5B6B82;font-size:10.5px;line-height:1.5">' +
+          'Lat ' + Number(p.latitude||0).toFixed(5) + ', Lon ' + Number(p.longitude||0).toFixed(5) +
+          (p.collection_date ? '<br>' + esc(p.collection_date) : '') +
+          (p.lga_name ? '<br>' + esc(p.lga_name) + (p.ward_name ? ' › ' + esc(p.ward_name) : '') : '') +
+        '</div>' +
         '</div>'
       ).addTo(geoMap);
     });
