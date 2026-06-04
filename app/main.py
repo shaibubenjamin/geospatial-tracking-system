@@ -479,8 +479,17 @@ _PUBLIC_GET_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 
+# Paths that are public for any HTTP method (e.g. POST login).
+_PUBLIC_ANY_METHOD: set[str] = {
+    "/api/auth/login",
+    "/api/health",
+}
+
+
 def _is_public(method: str, path: str) -> bool:
     if method == "OPTIONS":
+        return True
+    if path in _PUBLIC_ANY_METHOD:
         return True
     if method != "GET":
         return False
