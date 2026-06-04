@@ -401,6 +401,57 @@ async def add_security_headers(request, call_next):
     return response
 
 
+# ── Authentication gate on read APIs ────────────────────────────────────────
+# Historical: every /api/mda/* endpoint took `get_current_user_optional` and
+# never rejected anonymous callers — so the entire dataset was readable by
+# anyone with the URL. The QA audit flagged this as a P0.
+#
+# The fix is a single middleware that enforces a valid Bearer token on the
+# protected paths, with a small allowlist for the public landing-stats
+# endpoint the login page relies on. Endpoints that already use
+# Depends(get_current_user) are unaffected — they just check the same token
+# a second time at the route layer.
+from fastapi.responses import JSONResponse
+
+_PROTECTED_PREFIXES = (
+    "/api/mda/",
+    "/api/projects",
+    "/api/qc/",
+    "/api/analytics/",
+)
+_PUBLIC_API_ALLOWLIST = {
+    "/api/health",
+    "/api/auth/login",
+    "/api/mda/landing-stats",
+}
+
+
+@app.middleware("http")
+async def require_auth_on_protected_apis(request, call_next):
+    path = request.url.path
+    if path in _PUBLIC_API_ALLOWLIST or request.method == "OPTIONS":
+        return await call_next(request)
+    if not any(path.startswith(p) for p in _PROTECTED_PREFIXES):
+        return await call_next(request)
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return JSONResponse(
+            {"detail": "Not authenticated"},
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        from app.routes.auth import decode_token
+        decode_token(auth.split(" ", 1)[1])
+    except Exception:
+        return JSONResponse(
+            {"detail": "Invalid or expired token"},
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return await call_next(request)
+
+
 # ── Rate limiting ───────────────────────────────────────────────────────────
 # Defensive ceiling per client IP. The default is generous (120/min) so
 # normal dashboard usage is unaffected; specific heavy endpoints can override
