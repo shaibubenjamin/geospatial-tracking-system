@@ -97,6 +97,51 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   alarm_actions = [aws_sns_topic.alarms.arn]
 }
 
+# ── RDS memory + connection alarms ───────────────────────────────────────────
+# Added after QA flagged the 06-03 RDS outage was preceded by memory
+# pressure + connection exhaustion with no early-warning signal.
+
+resource "aws_cloudwatch_metric_alarm" "rds_freeable_memory_low" {
+  alarm_name          = "${var.project_name}-rds-freeable-memory-low"
+  alarm_description   = "RDS FreeableMemory below 200 MB for two consecutive 5-minute periods."
+  namespace           = "AWS/RDS"
+  metric_name         = "FreeableMemory"
+  statistic           = "Average"
+  comparison_operator = "LessThanThreshold"
+  threshold           = 200 * 1024 * 1024 # 200 MB
+  period              = 300
+  evaluation_periods  = 2
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  alarm_actions = [aws_sns_topic.alarms.arn]
+  ok_actions    = [aws_sns_topic.alarms.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "rds_connections_high" {
+  alarm_name          = "${var.project_name}-rds-connections-high"
+  alarm_description   = "RDS DatabaseConnections above 85 percent of the instance ceiling."
+  namespace           = "AWS/RDS"
+  metric_name         = "DatabaseConnections"
+  statistic           = "Maximum"
+  comparison_operator = "GreaterThanThreshold"
+  # db.t4g.medium ceiling is ~85; alarm at 70 leaves headroom for action.
+  threshold          = 70
+  period             = 300
+  evaluation_periods = 2
+  treat_missing_data = "notBreaching"
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  alarm_actions = [aws_sns_topic.alarms.arn]
+  ok_actions    = [aws_sns_topic.alarms.arn]
+}
+
 # ── EC2 instance status alarm ────────────────────────────────────────────────
 
 resource "aws_cloudwatch_metric_alarm" "ec2_status" {
