@@ -62,11 +62,42 @@ fi
 
 # 6. Geospatial endpoints
 g1=$(curl -sk -o /dev/null -w "%{http_code}" "$BASE/api/mda/geo/coverage-summary?project_id=2")
-g2=$(curl -sk -o /dev/null -w "%{http_code}" "$BASE/api/boundaries/lga/geojson?project_id=2")
+g2=$(curl -sk -o /dev/null -w "%{http_code}" "$BASE/api/projects/2/boundaries/lga/geojson")
 if [[ "$g1" == "200" && "$g2" == "200" ]]; then
   back_pass "Geospatial (coverage + GeoJSON)" "both 200"
 else
   back_fail "Geospatial" "coverage=$g1 lga-geojson=$g2"
+fi
+
+# 6b. Security headers (added by main.py middleware after QA Quick Wins)
+H=$(curl -sIk "$BASE/")
+miss=()
+echo "$H" | grep -iq "^x-content-type-options:" || miss+=("X-Content-Type-Options")
+echo "$H" | grep -iq "^x-frame-options:"        || miss+=("X-Frame-Options")
+echo "$H" | grep -iq "^referrer-policy:"        || miss+=("Referrer-Policy")
+echo "$H" | grep -iq "^strict-transport-security:" || miss+=("HSTS")
+echo "$H" | grep -iq "^x-request-id:"           || miss+=("X-Request-ID")
+if [[ ${#miss[@]} -eq 0 ]]; then
+  back_pass "Security headers (5 required)" "HSTS, XFO, XCTO, Referrer, X-Request-ID present"
+else
+  back_fail "Security headers" "missing: ${miss[*]}"
+fi
+
+# 6c. OpenAPI docs hidden in production
+d1=$(curl -sk -o /dev/null -w "%{http_code}" "$BASE/docs")
+d2=$(curl -sk -o /dev/null -w "%{http_code}" "$BASE/openapi.json")
+if [[ "$d1" == "404" && "$d2" == "404" ]]; then
+  back_pass "OpenAPI docs hidden in prod" "/docs and /openapi.json → 404"
+else
+  back_fail "OpenAPI exposed" "/docs=$d1 /openapi.json=$d2"
+fi
+
+# 6d. CORS not wildcard
+cors=$(curl -sIk -H "Origin: https://example.com" "$BASE/api/mda/overview?project_id=2" | grep -i "access-control-allow-origin")
+if echo "$cors" | grep -q '\*'; then
+  back_fail "CORS allowlist" "wildcard still present"
+else
+  back_pass "CORS allowlist (no wildcard)" "explicit origin policy enforced"
 fi
 
 # 7. Teams performance / supervision
