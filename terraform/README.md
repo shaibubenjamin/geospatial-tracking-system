@@ -1,4 +1,4 @@
-# Terraform — AWS infrastructure for the SARMAAN MDA dashboard
+# Terraform — AWS infrastructure for the ERITAS MDA dashboard
 
 Single-environment production deployment in **us-east-1**, account **`387526361725`**.
 
