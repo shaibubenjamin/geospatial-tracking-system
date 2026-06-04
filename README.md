@@ -1,4 +1,4 @@
-# SARMAAN MDA Monitoring Dashboard
+# ERITAS MDA Monitoring Dashboard
 ### Sokoto State Mass Drug Administration — Geospatial Coverage & Data Quality Platform
 
 Built with FastAPI · PostGIS · MapLibre GL JS · Chart.js
@@ -147,7 +147,7 @@ python scripts/add_in_grid_column.py
 |-----|-------------|
 | `http://localhost:8090/` | Login |
 | `http://localhost:8090/home` | Welcome landing page |
-| `http://localhost:8090/mda` | SARMAAN MDA dashboard |
+| `http://localhost:8090/mda` | ERITAS MDA dashboard |
 | `http://localhost:8090/mda-admin` | Admin panel (admin only) |
 
 ---
