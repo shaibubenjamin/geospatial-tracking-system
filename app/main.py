@@ -401,35 +401,98 @@ async def add_security_headers(request, call_next):
     return response
 
 
-# ── Authentication gate on read APIs ────────────────────────────────────────
-# Historical: every /api/mda/* endpoint took `get_current_user_optional` and
-# never rejected anonymous callers — so the entire dataset was readable by
-# anyone with the URL. The QA audit flagged this as a P0.
+# ── Authentication gate on protected APIs ───────────────────────────────────
+# Historical: every /api/mda/* endpoint accepted anonymous callers, so the
+# whole dataset was scrape-able. The QA audit flagged this as a P0.
 #
-# The fix is a single middleware that enforces a valid Bearer token on the
-# protected paths, with a small allowlist for the public landing-stats
-# endpoint the login page relies on. Endpoints that already use
-# Depends(get_current_user) are unaffected — they just check the same token
-# a second time at the route layer.
+# Fix: a single middleware enforces a valid Bearer token on writes, admin
+# routes, and PII-adjacent reads (raw GPS points, individual movement
+# tracks, etc.). The public dashboard is preserved by an explicit allowlist
+# of aggregate GET endpoints that show campaign-level coverage and KPIs
+# without any individual records or PII.
+import re
+
 from fastapi.responses import JSONResponse
 
+# Any path matched by _PROTECTED_PREFIXES is gated unless also matched by
+# the public allowlist below.
 _PROTECTED_PREFIXES = (
     "/api/mda/",
     "/api/projects",
     "/api/qc/",
     "/api/analytics/",
+    "/api/auth/",     # auth admin endpoints (users CRUD, password reset)
+    "/api/sync/",     # sync config + history
+    "/api/ingestion/",
+    "/api/boundaries/",
 )
-_PUBLIC_API_ALLOWLIST = {
+
+# Anonymous GETs allowed on these paths — aggregate / public-by-design.
+# Anything not listed here that matches a protected prefix needs a Bearer
+# token. Non-GET methods are always gated.
+_PUBLIC_GET_PATHS: set[str] = {
+    # Always-public utility endpoints
     "/api/health",
-    "/api/auth/login",
     "/api/mda/landing-stats",
+    # Campaign-level summaries
+    "/api/mda/overview",
+    "/api/mda/campaign-dates",
+    "/api/mda/rounds/summary",
+    "/api/mda/rounds/lga-compare",
+    "/api/mda/system/counts",
+    "/api/mda/trends/daily",
+    "/api/mda/trends/daily-by-round",
+    # Coverage aggregates (per LGA / ward / age)
+    "/api/mda/coverage/lga",
+    "/api/mda/coverage/ward",
+    "/api/mda/coverage/lga-by-age",
+    "/api/mda/coverage/refusals-analysis",
+    # QC summaries (aggregate counters only — raw GPS records remain gated)
+    "/api/mda/qc/summary",
+    "/api/mda/qc/refusals-by-lga",
+    "/api/mda/qc/duration-by-lga",
+    "/api/mda/qc/teams-summary",
+    # Geo summaries (aggregate; heatmap GeoJSON and movement tracks stay gated)
+    "/api/mda/geo/coverage-summary",
+    "/api/mda/geo/completeness",
+    "/api/mda/geo/settlement-breakdown",
+    "/api/mda/geo/mop-up-shortlist",
+    # Team + ward + individual aggregates
+    "/api/mda/teams/performance",
+    "/api/mda/teams/by-lga",
+    "/api/mda/teams/footprint",
+    "/api/mda/submissions/ward",
+    "/api/mda/individuals/age-summary",
+    "/api/mda/wards",
+    # Project metadata (list view)
+    "/api/projects",
+    # Anonymous login + token issuance
+    "/api/auth/login",
 }
+
+# Path patterns (with path params) that are publicly readable.
+_PUBLIC_GET_PATTERNS: list[re.Pattern[str]] = [
+    # Read a single project
+    re.compile(r"^/api/projects/\d+$"),
+    # Boundary GeoJSON layers — pure geography, no PII
+    re.compile(r"^/api/projects/\d+/boundaries/(lga|ward|settlement|grid)/geojson$"),
+]
+
+
+def _is_public(method: str, path: str) -> bool:
+    if method == "OPTIONS":
+        return True
+    if method != "GET":
+        return False
+    if path in _PUBLIC_GET_PATHS:
+        return True
+    return any(p.match(path) for p in _PUBLIC_GET_PATTERNS)
 
 
 @app.middleware("http")
 async def require_auth_on_protected_apis(request, call_next):
     path = request.url.path
-    if path in _PUBLIC_API_ALLOWLIST or request.method == "OPTIONS":
+    if _is_public(request.method, path):
         return await call_next(request)
     if not any(path.startswith(p) for p in _PROTECTED_PREFIXES):
         return await call_next(request)
