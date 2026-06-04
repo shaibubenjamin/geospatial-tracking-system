@@ -37,6 +37,21 @@ jobs:
         run: ruff check app/ --select F821,F823,F811,E9 --output-format=github
 
   # ────────────────────────────────────────────────────────────────────────────
+  # QA — production smoke test (eritas-mda-tests/scripts/qa-prod.sh).
+  # Runs against the live ALB to verify the deployed build is healthy.
+  # Non-blocking on PRs (informational), blocking on push to main.
+  # ────────────────────────────────────────────────────────────────────────────
+  qa-prod:
+    name: QA — production smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run QA harness
+        run: bash eritas-mda-tests/scripts/qa-prod.sh
+        continue-on-error: ${{ github.ref != 'refs/heads/main' }}
+
+  # ────────────────────────────────────────────────────────────────────────────
   # Docker build — verifies the Dockerfile still produces a valid image.
   # No push; that happens in the deploy workflow once AWS is up.
   # ────────────────────────────────────────────────────────────────────────────
