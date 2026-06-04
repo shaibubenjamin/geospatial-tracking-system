@@ -2,9 +2,38 @@
 main.py — Geospatial Coverage & Data Quality Monitoring System
 FastAPI application entry point.
 """
+import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
+
+
+# ── Structured JSON logging ─────────────────────────────────────────────────
+# Configure the root logger to emit one JSON object per line so CloudWatch
+# (and Sentry, Loki, Datadog, …) can index by level/module/request_id.
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
+        payload = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(record.created)),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        # Optional fields if present
+        rid = getattr(record, "request_id", None)
+        if rid:
+            payload["request_id"] = rid
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        return json.dumps(payload, separators=(",", ":"))
+
+
+_log_handler = logging.StreamHandler()
+_log_handler.setFormatter(_JsonFormatter())
+_root_logger = logging.getLogger()
+_root_logger.handlers = [_log_handler]
+_root_logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +48,7 @@ from app.config import SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD, SUPERADMIN_EMAI
 from app.routes import auth, projects, boundaries, ingestion, analytics, qc, sync
 from app.routes import mda as mda_route
 
-logging.basicConfig(level=logging.INFO)
+# Root logger already configured above as JSON; basicConfig is a no-op now.
 logger = logging.getLogger(__name__)
 
 
@@ -342,17 +371,51 @@ async def add_request_id(request, call_next):
 
 
 # Baseline security headers. Cheap to add and closes the most obvious gaps.
+# CSP is intentionally lenient (allows inline + CDN) because the static
+# dashboard relies on inline <script> blocks + CDN-hosted MapLibre/Chart.js;
+# tightening to nonce-based requires a refactor of the static templates.
+_CSP_DEFAULT = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net "
+    "https://cdnjs.cloudflare.com; "
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net "
+    "https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+    "img-src 'self' data: blob: https:; "
+    "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
+    "connect-src 'self' https:; "
+    "frame-ancestors 'none';"
+)
+
+
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Content-Security-Policy", _CSP_DEFAULT)
     if _IS_PROD:
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
         )
     return response
+
+
+# ── Rate limiting ───────────────────────────────────────────────────────────
+# Defensive ceiling per client IP. The default is generous (120/min) so
+# normal dashboard usage is unaffected; specific heavy endpoints can override
+# with their own decorator.
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler  # type: ignore
+    from slowapi.errors import RateLimitExceeded  # type: ignore
+    from slowapi.util import get_remote_address  # type: ignore
+
+    limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    logger.info("Rate limiting enabled (default 120/minute per IP).")
+except ImportError:
+    logger.warning("slowapi not installed — rate limiting disabled.")
 
 # Register routes
 app.include_router(auth.router, prefix="/api")

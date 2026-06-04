@@ -167,10 +167,11 @@ async def upload_boundary_bundle(
     convenience wrapper that splits one upload into four.
     """
     await _get_project(project_id, db)
-    if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(400, "Upload a ZIP file containing all four boundary shapefile sets")
-
-    raw = await file.read()
+    # Size + extension guardrails. ZIP only for the bundle endpoint;
+    # 100 MB ceiling matches the helper default.
+    from app.services.uploads import validate_upload, read_with_cap
+    validate_upload(file, allowed={".zip"})
+    raw = await read_with_cap(file)
     with tempfile.TemporaryDirectory() as tmp_dir:
         try:
             with zipfile.ZipFile(io.BytesIO(raw)) as zf:
