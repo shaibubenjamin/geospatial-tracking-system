@@ -3,6 +3,7 @@ main.py — Geospatial Coverage & Data Quality Monitoring System
 FastAPI application entry point.
 """
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -283,20 +284,75 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete.")
 
 
+_IS_PROD = os.getenv("ENVIRONMENT", "development") == "production"
+
+# Optional error tracking. No-op if SENTRY_DSN is not set.
+_SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk  # type: ignore
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+            environment=os.getenv("ENVIRONMENT", "development"),
+        )
+        logger.info("Sentry error tracking enabled.")
+    except ImportError:
+        logger.warning("SENTRY_DSN set but sentry_sdk not installed. Skipping.")
+
 app = FastAPI(
-    title="Geospatial Coverage & Data Quality Monitoring System",
+    title="ERITAS MDA — Geospatial Coverage & Data Quality Monitoring System",
     description="Production-grade geospatial field data monitoring with PostGIS",
     version="1.0.0",
     lifespan=lifespan,
+    # Disable interactive API schema in production so the route map isn't public.
+    docs_url=None if _IS_PROD else "/docs",
+    redoc_url=None if _IS_PROD else "/redoc",
+    openapi_url=None if _IS_PROD else "/openapi.json",
 )
 
+# Explicit CORS allowlist. "*" with credentials is silently rejected by browsers
+# anyway, so default to first-party origins and let ops widen via env.
+_DEFAULT_ORIGINS = ",".join([
+    "https://eha-mda-dashboard.ehealthnigeria.org",
+    "https://mda-dashboard-alb-1851779239.us-east-1.elb.amazonaws.com",
+])
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", _DEFAULT_ORIGINS).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+
+
+# Tag every request with a correlation ID so logs can be threaded.
+@app.middleware("http")
+async def add_request_id(request, call_next):
+    import uuid
+    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
+
+
+# Baseline security headers. Cheap to add and closes the most obvious gaps.
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if _IS_PROD:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
 
 # Register routes
 app.include_router(auth.router, prefix="/api")
