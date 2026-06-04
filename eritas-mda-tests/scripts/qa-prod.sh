@@ -174,13 +174,20 @@ else
   infra_fail "TLS cert" "could not verify"
 fi
 
-# 5. Sec groups — only 80/443 exposed
-sg_id=$(aws ec2 describe-load-balancers --region $REGION --names mda-dashboard-alb --query "LoadBalancers[0].SecurityGroups[0]" --output text 2>/dev/null)
-open_ports=$(aws ec2 describe-security-groups --region $REGION --group-ids "$sg_id" --query "SecurityGroups[0].IpPermissions[?contains(IpRanges[0].CidrIp, '0.0.0.0/0')].FromPort" --output text 2>/dev/null)
-if echo "$open_ports" | grep -qE "^(80|443)( |$)|( 80| 443)( |$)" && ! echo "$open_ports" | grep -qE "(22|3306|5432|6379|27017)"; then
-  infra_pass "Security groups" "only ports $open_ports open to internet"
+# 5. Sec groups — ALB SG must expose only 80/443; no SSH (22), DB (5432), or
+# Redis (6379) ports may face the public internet from the ALB.
+sg_id=$(aws elbv2 describe-load-balancers --region $REGION --names mda-dashboard-alb --query "LoadBalancers[0].SecurityGroups[0]" --output text 2>/dev/null)
+forbidden=0
+for fp in 22 5432 6379 3306 27017; do
+  hits=$(aws ec2 describe-security-groups --region $REGION --group-ids "$sg_id" \
+    --query "SecurityGroups[0].IpPermissions[?FromPort==\`$fp\` && length(IpRanges[?CidrIp=='0.0.0.0/0']) > \`0\`] | length(@)" \
+    --output text 2>/dev/null)
+  [[ "$hits" != "0" ]] && forbidden=$((forbidden+1))
+done
+if [[ "$forbidden" == "0" ]]; then
+  infra_pass "ALB security group" "only ports 80/443 exposed"
 else
-  infra_fail "Security groups" "open: $open_ports"
+  infra_fail "ALB security group" "$forbidden forbidden port(s) exposed publicly"
 fi
 
 # 6. CloudWatch metrics flowing
