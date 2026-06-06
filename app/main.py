@@ -394,6 +394,11 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Content-Security-Policy", _CSP_DEFAULT)
+    # HTML pages (login, home, dashboard, admin) are session-sensitive and must
+    # never be cached by browsers or intermediaries — otherwise a logged-out
+    # user could see a previous user's authenticated render from the bfcache.
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "no-store, no-cache, must-revalidate")
     if _IS_PROD:
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"

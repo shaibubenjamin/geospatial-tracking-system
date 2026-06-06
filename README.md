@@ -1,6 +1,8 @@
 # ERITAS MDA Monitoring Dashboard
 ### Sokoto State Mass Drug Administration — Geospatial Coverage & Data Quality Platform
 
+**ERITAS** — **E**vidence through **R**eal-time **I**ntelligence, **T**racking, and **A**ccountability **S**ystems.
+
 Built with FastAPI · PostGIS · MapLibre GL JS · Chart.js
 
 ---
