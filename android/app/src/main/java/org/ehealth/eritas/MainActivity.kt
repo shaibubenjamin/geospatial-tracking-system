@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -112,6 +113,9 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showPicker = true }) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch campaign")
+                    }
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")
                     }

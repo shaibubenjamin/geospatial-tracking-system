@@ -58,16 +58,19 @@ fun CoverageMapScreen(projectId: Int?) {
         status = "Loading boundaries…"
         geoJson = null
         summary = null
-        summary = runCatching { ServiceLocator.api.geoSummary(projectId) }.getOrNull()
         try {
             val gj = ServiceLocator.api.wardsGeoJson(projectId).string()
             val n = Regex("\"geometry\"").findAll(gj).count()
             status = if (n == 0) "No boundaries for this project" else null
             geoJson = gj
-        } catch (_: Exception) {
-            status = "Couldn't load boundaries"
+        } catch (e: Exception) {
+            // Surface the real cause so field issues are diagnosable.
+            val detail = (e as? retrofit2.HttpException)?.let { "HTTP ${it.code()}" }
+                ?: (e.message?.take(80) ?: e.javaClass.simpleName)
+            status = "Couldn't load boundaries · $detail"
             geoJson = null
         }
+        summary = runCatching { ServiceLocator.api.geoSummary(projectId) }.getOrNull()
     }
 
     Column(Modifier.fillMaxSize()) {
