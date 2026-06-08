@@ -7,69 +7,72 @@
   <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
   <style>
     html,body,#map{margin:0;padding:0;height:100%;width:100%;font-family:-apple-system,sans-serif}
-    #msg{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:5;background:#fff;border-radius:8px;
-         padding:6px 12px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-    #legend{position:absolute;bottom:10px;left:10px;z-index:5;background:#fff;border-radius:8px;padding:6px 10px;
-            font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;gap:10px;align-items:center}
+    .pill{position:absolute;z-index:5;background:#fff;border-radius:8px;padding:5px 10px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+    #status{top:8px;left:50%;transform:translateX(-50%);max-width:92%}
+    #legend{bottom:8px;left:8px;display:flex;gap:9px;align-items:center}
     #legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:3px;vertical-align:-1px}
+    #toggles{top:8px;right:8px;display:flex;flex-direction:column;gap:3px}
+    #toggles label{font-size:11px;display:block}
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div id="msg">Loading geographic view…</div>
-  <div id="legend" style="display:none">
+  <div id="status" class="pill">Loading geographic view…</div>
+  <div id="toggles" class="pill">
+    <label><input type="checkbox" id="t-lga" checked> LGA</label>
+    <label><input type="checkbox" id="t-ward" checked> Ward</label>
+    <label><input type="checkbox" id="t-sett" checked> Settlement</label>
+  </div>
+  <div id="legend" class="pill" style="display:none">
     <span><i style="background:#dc2626"></i>Not covered</span>
     <span><i style="background:#f59e0b"></i>Partial</span>
     <span><i style="background:#16a34a"></i>≥70%</span>
   </div>
   <script>
     function qp(n){ return new URLSearchParams(location.search).get(n); }
-    var pid = qp('project_id'), q = pid ? ('?project_id='+encodeURIComponent(pid)) : '';
-    var msg = document.getElementById('msg');
-    var EMPTY = {type:'FeatureCollection',features:[]};
-    function get(url){ return fetch(url).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
+    var pid=qp('project_id'), q=pid?('?project_id='+encodeURIComponent(pid)):'';
+    var st=document.getElementById('status');
+    var state={lga:'…',ward:'…',sett:'…'};
+    function setStatus(){ st.textContent='LGA '+state.lga+' · Ward '+state.ward+' · Settl '+state.sett; }
+    function get(u){ return fetch(u).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
+    var covColor=['interpolate',['linear'],['to-number',['get','coverage_pct']],0,'#dc2626',40,'#f59e0b',70,'#66bb6a',100,'#16a34a'];
 
-    var map = new maplibregl.Map({
-      container:'map',
+    var map=new maplibregl.Map({container:'map',
       style:{version:8,
         sources:{carto:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap © CARTO'}},
         layers:[{id:'bg',type:'background',paint:{'background-color':'#E8EAED'}},{id:'carto',type:'raster',source:'carto'}]},
-      center:[8.5,10.0], zoom:5
-    });
+      center:[8.5,10.0],zoom:5});
 
-    var covColor = ['interpolate',['linear'],['get','coverage_pct'],0,'#dc2626',50,'#f59e0b',70,'#66bb6a',100,'#16a34a'];
+    map.on('load',function(){
+      ['lga','ward','sett'].forEach(function(s){ map.addSource(s,{type:'geojson',data:{type:'FeatureCollection',features:[]}}); });
+      // Settlement mosaic (visited/not) — bottom of our stack.
+      map.addLayer({id:'sett-fill',type:'fill',source:'sett',paint:{'fill-color':['case',['get','is_visited'],'#16a34a','#dc2626'],'fill-opacity':0.5}});
+      // Ward coverage fill + outline.
+      map.addLayer({id:'ward-fill',type:'fill',source:'ward',paint:{'fill-color':covColor,'fill-opacity':0.35}});
+      map.addLayer({id:'ward-line',type:'line',source:'ward',paint:{'line-color':'#78350f','line-width':0.8,'line-opacity':0.8}});
+      // LGA coverage fill + bold outline (always visible).
+      map.addLayer({id:'lga-fill',type:'fill',source:'lga',paint:{'fill-color':covColor,'fill-opacity':0.45}});
+      map.addLayer({id:'lga-line',type:'line',source:'lga',paint:{'line-color':'#111827','line-width':2.0,'line-opacity':0.9}});
 
-    map.on('load', function(){
-      // Sources
-      map.addSource('lga',{type:'geojson',data:EMPTY});
-      map.addSource('ward',{type:'geojson',data:EMPTY});
-      map.addSource('sett',{type:'geojson',data:EMPTY});
+      function toggle(id,layers){ document.getElementById(id).addEventListener('change',function(e){
+        layers.forEach(function(L){ if(map.getLayer(L)) map.setLayoutProperty(L,'visibility',e.target.checked?'visible':'none'); }); }); }
+      toggle('t-lga',['lga-fill','lga-line']); toggle('t-ward',['ward-fill','ward-line']); toggle('t-sett',['sett-fill']);
 
-      // Settlement mosaic (visited/not) — the core coverage view. From zoom 6.
-      map.addLayer({id:'sett-fill',type:'fill',source:'sett',minzoom:6,paint:{
-        'fill-color':['case',['get','is_visited'],'#16a34a','#dc2626'],'fill-opacity':0.55}});
-      // Ward fill by coverage, fading as you zoom toward settlements.
-      map.addLayer({id:'ward-fill',type:'fill',source:'ward',paint:{
-        'fill-color':covColor,'fill-opacity':['interpolate',['linear'],['zoom'],7,0.45,9,0.30,11,0.0]}});
-      map.addLayer({id:'ward-line',type:'line',source:'ward',paint:{'line-color':'#78350f','line-width':0.8,'line-opacity':0.7}});
-      // LGA fill by coverage, dominant when zoomed out, fades by zoom 10.
-      map.addLayer({id:'lga-fill',type:'fill',source:'lga',paint:{
-        'fill-color':covColor,'fill-opacity':['interpolate',['linear'],['zoom'],6,0.5,8,0.35,10,0.0]}});
-      map.addLayer({id:'lga-line',type:'line',source:'lga',paint:{'line-color':'#1a1a1a','line-width':1.8,'line-opacity':0.85}});
-
-      // Load LGA first (fit bounds), then ward, then the heavier settlement mosaic.
       get('/api/mda/geo/lgas-coverage'+q).then(function(d){
-        map.getSource('lga').setData(d);
+        map.getSource('lga').setData(d); state.lga=(d.features||[]).length; setStatus();
         var b=new maplibregl.LngLatBounds(); function ext(c){if(typeof c[0]==='number')b.extend(c);else c.forEach(ext);}
         (d.features||[]).forEach(function(f){ if(f.geometry) ext(f.geometry.coordinates); });
-        if(!b.isEmpty()) map.fitBounds(b,{padding:24,maxZoom:11,duration:0});
+        if(!b.isEmpty()) map.fitBounds(b,{padding:20,maxZoom:9,duration:0});
         document.getElementById('legend').style.display='flex';
-        msg.style.display='none';
-      }).catch(function(e){ msg.textContent='Couldn’t load LGAs · '+e.message; });
+      }).catch(function(e){ state.lga='ERR '+e.message; setStatus(); });
 
-      get('/api/mda/geo/wards-coverage'+q).then(function(d){ map.getSource('ward').setData(d); }).catch(function(){});
-      get('/api/mda/geo/settlements-coverage'+q).then(function(d){ map.getSource('sett').setData(d); }).catch(function(){});
+      get('/api/mda/geo/wards-coverage'+q).then(function(d){ map.getSource('ward').setData(d); state.ward=(d.features||[]).length; setStatus(); })
+        .catch(function(e){ state.ward='ERR '+e.message; setStatus(); });
+
+      get('/api/mda/geo/settlements-coverage'+q).then(function(d){ map.getSource('sett').setData(d); state.sett=(d.features||[]).length; setStatus(); })
+        .catch(function(e){ state.sett='ERR '+e.message; setStatus(); });
     });
+    map.on('error',function(e){ st.textContent='Map error: '+(e&&e.error&&e.error.message||'unknown'); });
   </script>
 </body>
 </html>
