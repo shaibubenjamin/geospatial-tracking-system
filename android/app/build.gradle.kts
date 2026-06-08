@@ -86,10 +86,11 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8090\"")
         }
         release {
-            // R8 on: confirmed safe (Moshi/Retrofit/Tink covered by
-            // proguard-rules.pro; the blank map was a base64 bug, not R8).
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 disabled (per request, to rule it out). The map fix was the
+            // CSP blob: worker-src, not R8 — but keeping it off is harmless;
+            // the APK has no native libs to shrink.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
