@@ -399,6 +399,14 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Content-Security-Policy", _CSP_DEFAULT)
+    # The app map page is embedded same-origin by the preview (and is a benign
+    # public map), so allow same-origin framing for it specifically. Everything
+    # else keeps DENY / frame-ancestors 'none'.
+    if request.url.path in ("/app/map", "/app-preview"):
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Content-Security-Policy"] = _CSP_DEFAULT.replace(
+            "frame-ancestors 'none'", "frame-ancestors 'self'"
+        )
     # HTML pages (login, home, dashboard, admin) are session-sensitive and must
     # never be cached by browsers or intermediaries — otherwise a logged-out
     # user could see a previous user's authenticated render from the bfcache.
