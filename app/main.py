@@ -675,11 +675,18 @@ async def health():
 # and the APK download is a dumb public file host.
 @app.get("/version")
 async def app_version():
-    """Drives the client launch check (update wall / optional-update banner)."""
+    """Drives the client launch check (update wall / optional-update banner).
+
+    ``latest`` is derived from the actual APK published on the server (parsed
+    from the eritas-<name>-<code>.apk files), so the optional-update banner
+    fires automatically for older installs without manually bumping env on
+    every release. ``min`` (force-update floor) stays env-driven.
+    """
+    s = _apk_status()
     return {
         "min": MIN_VERSION_CODE,
-        "latest": LATEST_VERSION_CODE,
-        "latest_name": LATEST_VERSION_NAME,
+        "latest": s["version_code"] or LATEST_VERSION_CODE,
+        "latest_name": s["version_name"] or LATEST_VERSION_NAME,
         "update_url": UPDATE_URL,
     }
 
@@ -801,7 +808,11 @@ def _apk_landing_html(request: Request) -> str:
     .header .sub{{margin-top:6px;font-size:14px;color:#BBF7D0}}
     .card{{background:#fff;color:#0F172A;border-radius:20px;padding:32px 28px;margin-top:24px;box-shadow:0 10px 40px rgba(0,0,0,.18)}}
     .qr-row{{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;padding:8px 0 16px}}
-    @media(max-width:540px){{.qr-row{{grid-template-columns:1fr;text-align:center}}}}
+    @media(max-width:540px){{
+      .qr-row{{grid-template-columns:1fr;text-align:center;justify-items:center}}
+      .qr-row img{{width:min(280px,72vw);height:auto;aspect-ratio:1}}
+      .btn{{width:100%;max-width:360px;padding:18px 24px;font-size:19px}}
+    }}
     .qr-row img{{width:240px;height:240px;background:#fff;padding:8px;border-radius:12px;border:1px solid #E2E8F0}}
     .qr-row .copy h2{{margin:0 0 6px;font-size:18px;font-weight:700}}
     .qr-row .copy p{{margin:0;font-size:14px;color:#475569}}
