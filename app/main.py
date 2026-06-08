@@ -381,13 +381,21 @@ async def add_request_id(request, call_next):
 # tightening to nonce-based requires a refactor of the static templates.
 _CSP_DEFAULT = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net "
+    # blob: is required by MapLibre GL JS, which builds its GeoJSON vector
+    # layers in a blob: web worker. Without blob: in script-src AND a
+    # worker-src/child-src that allows blob:, the worker is blocked and every
+    # GeoJSON layer (LGA visitation choropleth, ward/settlement/grid coverage)
+    # silently fails to render — only the raster basemap shows. This applies to
+    # the dashboard map (/mda) and every page that embeds MapLibre.
+    "script-src 'self' 'unsafe-inline' blob: https://unpkg.com https://cdn.jsdelivr.net "
     "https://cdnjs.cloudflare.com; "
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net "
     "https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
     "img-src 'self' data: blob: https:; "
     "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
     "connect-src 'self' https:; "
+    "worker-src 'self' blob:; "
+    "child-src 'self' blob:; "
     "frame-ancestors 'none';"
 )
 
