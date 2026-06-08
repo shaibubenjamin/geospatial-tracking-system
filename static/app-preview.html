@@ -116,7 +116,9 @@
           ${[['Children treated',k(d.total_treated||0)],['Forms',k(d.total_forms||0)],['Teams active',k(d.teams_active||0)],
              ['LGAs covered',d.lgas_covered||0],['Campaign day',day],['QC flags',k(d.total_qc_flags||0)],
              ['Error rate',Math.round(d.error_rate_pct||0)+'%'],['Refusals',k(d.refusals||0)],
-             ['Avg forms/team',(d.teams_active>0?Math.round(d.total_forms/d.teams_active):'—')]]
+             ['Avg forms/team',(d.teams_active>0?Math.round(d.total_forms/d.teams_active):'—')],
+             ['GPS outside LGA',k(d.gps_outside_lga||0)],['Fast forms',k(d.fast_forms||0)],
+             ['Days active',d.days_active||0]]
             .map(s=>`<div class="card"><div class="v">${s[1]}</div><div class="l">${s[0]}</div></div>`).join('')}
           </div>
           <div class="card" style="margin-top:12px"><div class="l" style="margin-bottom:6px">Cumulative coverage over campaign days</div>
