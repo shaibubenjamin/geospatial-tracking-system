@@ -684,8 +684,13 @@ async def app_version():
     }
 
 
-def _serve_apk(filename: str):
-    """Serve an APK from APK_DIR as an attachment, guarding path traversal."""
+def _serve_apk(filename: str, download_as: str | None = None):
+    """Serve an APK from APK_DIR as an attachment, guarding path traversal.
+
+    ``download_as`` overrides the saved filename so the user gets a
+    version-stamped name (e.g. eritas-0.1-111.apk) even though the served file
+    on disk is the stable eritas-latest.apk.
+    """
     safe_name = os.path.basename(filename)
     if not safe_name.endswith(".apk"):
         return JSONResponse({"detail": "Not an APK"}, status_code=404)
@@ -697,7 +702,7 @@ def _serve_apk(filename: str):
     return FileResponse(
         apk_path,
         media_type="application/vnd.android.package-archive",
-        filename=safe_name,
+        filename=os.path.basename(download_as) if download_as else safe_name,
     )
 
 
@@ -840,8 +845,11 @@ async def apk_landing(request: Request):
 
 @app.get("/download")
 async def download_apk():
-    """The actual signed APK file (linked from the /apk landing page)."""
-    return _serve_apk(APK_FILENAME)
+    """The actual signed APK file (linked from the /apk landing page).
+
+    Saved with the version-stamped name so the user can tell which build they
+    downloaded (e.g. eritas-0.1-111.apk)."""
+    return _serve_apk(APK_FILENAME, download_as=_apk_status()["download_name"])
 
 
 @app.get("/apk/{filename}")

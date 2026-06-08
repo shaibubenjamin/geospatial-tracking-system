@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import GeoProject, User
 from app.routes.auth import get_current_user
-from app.routes.mda import resolve_pid, mda_overview, mda_coverage_lga
+from app.routes.mda import resolve_pid, mda_overview, mda_coverage_lga, mda_coverage_ward
 from app.routes import mda as mda_route
 
 router = APIRouter(prefix="/app", tags=["app"])
@@ -97,6 +97,22 @@ async def app_coverage_lga(
     matches the overview page exactly.
     """
     return await mda_coverage_lga(pid=pid, db=db, _u=user)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/app/coverage/ward — ward coverage, optionally within one LGA.
+# Drives the LGA → ward drill-down in the app.
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/coverage/ward")
+async def app_coverage_ward(
+    lga: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Per-ward coverage for the selected project, filtered to one LGA when
+    ``lga`` is given. Reuses the web dashboard's ``mda_coverage_ward``."""
+    return await mda_coverage_ward(lga=lga, pid=pid, db=db, _u=user)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

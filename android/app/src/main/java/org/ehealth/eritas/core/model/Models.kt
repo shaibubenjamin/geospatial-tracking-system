@@ -58,6 +58,17 @@ data class LgaCoverage(
     @Json(name = "days_reported") val daysReported: Int = 0,
 )
 
+/** One row of GET /api/app/coverage/ward — per-ward coverage within an LGA. */
+data class WardCoverage(
+    @Json(name = "ward_name") val wardName: String?,
+    val lga: String?,
+    val forms: Int = 0,
+    @Json(name = "actual_treated") val actualTreated: Int = 0,
+    @Json(name = "baseline_total") val baselineTotal: Int = 0,
+    @Json(name = "coverage_pct") val coveragePct: Double = 0.0,
+    val teams: Int = 0,
+)
+
 /** Response of GET /api/app/near — the core field-coverage aid. */
 data class NearResponse(
     @Json(name = "project_id") val projectId: Int,
