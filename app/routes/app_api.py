@@ -24,9 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import GeoProject, User
 from app.routes.auth import get_current_user
+from typing import Optional as _Optional
+
 from app.routes.mda import (
     resolve_pid, mda_overview, mda_coverage_lga, mda_coverage_ward,
     geo_completeness, geo_coverage_summary, mda_trends_daily,
+    geo_lgas_coverage, geo_wards_coverage, geo_settlements_coverage,
 )
 from app.routes import mda as mda_route
 
@@ -225,6 +228,30 @@ async def app_geo_wards(
             }
         )
     return {"type": "FeatureCollection", "project_id": pid, "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/app/geo/{lgas,settlements} — gated coverage geojson for the map.
+# (wards already exists above.) These require a token, so the geographic data
+# is only reachable from within the authenticated app.
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/geo/lgas")
+async def app_geo_lgas(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await geo_lgas_coverage(pid=pid, db=db, _u=user)
+
+
+@router.get("/geo/settlements")
+async def app_geo_settlements(
+    lgacode: _Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return await geo_settlements_coverage(lgacode=lgacode, pid=pid, db=db, _u=user)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
