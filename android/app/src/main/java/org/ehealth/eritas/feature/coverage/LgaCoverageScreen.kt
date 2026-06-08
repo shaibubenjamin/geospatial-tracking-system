@@ -1,5 +1,6 @@
 package org.ehealth.eritas.feature.coverage
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,20 +9,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,10 +49,25 @@ private fun coverageColor(pct: Double) = when {
 
 @Composable
 fun LgaCoverageScreen(projectId: Int?) {
+    var selectedLga by remember { mutableStateOf<String?>(null) }
+
+    if (selectedLga != null) {
+        BackHandler { selectedLga = null }
+        WardCoveragePage(
+            lga = selectedLga!!,
+            projectId = projectId,
+            onBack = { selectedLga = null },
+        )
+    } else {
+        LgaListPage(projectId = projectId, onOpenLga = { selectedLga = it })
+    }
+}
+
+@Composable
+private fun LgaListPage(projectId: Int?, onOpenLga: (String?) -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var rows by remember { mutableStateOf<List<LgaCoverage>>(emptyList()) }
-    var selectedLga by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(projectId) {
         loading = true
@@ -79,17 +94,62 @@ fun LgaCoverageScreen(projectId: Int?) {
         ) {
             item {
                 Text(
-                    "Coverage by LGA · tap for wards",
+                    "Coverage by LGA · tap to view wards",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
-            items(rows) { LgaRow(it) { selectedLga = it.lga } }
+            items(rows) { row -> LgaRow(row) { onOpenLga(row.lga) } }
         }
     }
+}
 
-    selectedLga?.let { lga ->
-        WardDrillDownDialog(lga = lga, projectId = projectId, onDismiss = { selectedLga = null })
+@Composable
+private fun WardCoveragePage(lga: String, projectId: Int?, onBack: () -> Unit) {
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var wards by remember { mutableStateOf<List<WardCoverage>>(emptyList()) }
+
+    LaunchedEffect(lga) {
+        loading = true
+        error = null
+        try {
+            wards = ServiceLocator.api.coverageWard(lga, projectId)
+        } catch (e: Exception) {
+            error = "Could not load wards: ${e.message ?: "network error"}"
+        }
+        loading = false
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to LGAs")
+            }
+            Text(
+                "$lga · wards",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        when {
+            loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+            error != null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+                Text(error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+            }
+            wards.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+                Text("No ward coverage for this LGA yet.", textAlign = TextAlign.Center)
+            }
+            else -> LazyColumn(
+                Modifier.fillMaxSize().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(wards) { WardCard(it) }
+            }
+        }
     }
 }
 
@@ -140,64 +200,39 @@ private fun LgaRow(row: LgaCoverage, onClick: () -> Unit) {
 }
 
 @Composable
-private fun WardDrillDownDialog(lga: String?, projectId: Int?, onDismiss: () -> Unit) {
-    var loading by remember { mutableStateOf(true) }
-    var wards by remember { mutableStateOf<List<WardCoverage>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(lga) {
-        loading = true
-        error = null
-        try {
-            wards = ServiceLocator.api.coverageWard(lga, projectId)
-        } catch (e: Exception) {
-            error = "Could not load wards: ${e.message ?: "network error"}"
-        }
-        loading = false
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-        title = { Text("${lga ?: "LGA"} · wards") },
-        text = {
-            when {
-                loading -> CircularProgressIndicator()
-                error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
-                wards.isEmpty() -> Text("No ward coverage for this LGA yet.")
-                else -> LazyColumn(
-                    Modifier.heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(wards) { WardRow(it) }
-                }
-            }
-        },
-    )
-}
-
-@Composable
-private fun WardRow(w: WardCoverage) {
+private fun WardCard(w: WardCoverage) {
     val pct = w.coveragePct
     val color = coverageColor(pct)
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(w.wardName ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "${pct.roundToInt()}%",
-                style = MaterialTheme.typography.bodyMedium,
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    w.wardName ?: "Unknown",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "${pct.roundToInt()}%",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = color,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { (pct / 100.0).coerceIn(0.0, 1.0).toFloat() },
+                modifier = Modifier.fillMaxWidth().height(7.dp).padding(top = 6.dp),
                 color = color,
-                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "${formatCount(w.actualTreated)} treated / ${formatCount(w.baselineTotal)} target  ·  ${w.teams} team(s)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
-        LinearProgressIndicator(
-            progress = { (pct / 100.0).coerceIn(0.0, 1.0).toFloat() },
-            modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 4.dp),
-            color = color,
-        )
     }
 }
 

@@ -3,16 +3,19 @@ package org.ehealth.eritas
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -94,11 +97,21 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(projectLabel ?: "Active campaign") },
-                actions = {
-                    IconButton(onClick = { showPicker = true }) {
-                        Icon(Icons.Filled.Layers, contentDescription = "Select campaign")
+                title = {
+                    // The title itself is the campaign switcher: tap it to pick
+                    // a state/round. The dropdown caret makes that obvious.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { showPicker = true },
+                    ) {
+                        Text(projectLabel ?: "Active campaign")
+                        Icon(
+                            Icons.Filled.ArrowDropDown,
+                            contentDescription = "Switch campaign",
+                        )
                     }
+                },
+                actions = {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")
                     }

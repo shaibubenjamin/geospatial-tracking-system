@@ -69,6 +69,33 @@ data class WardCoverage(
     val teams: Int = 0,
 )
 
+/** GET /api/app/geo/summary — headline numbers from the web Geographic View. */
+data class GeoSummary(
+    val completeness: GeoCompleteness?,
+    @Json(name = "coverage_summary") val coverageSummary: GeoCoverageSummary?,
+)
+
+data class GeoCompleteness(
+    @Json(name = "overall_completeness") val overallCompleteness: Double = 0.0,
+    @Json(name = "visited_settlements") val visitedSettlements: Int = 0,
+    @Json(name = "total_settlements") val totalSettlements: Int = 0,
+    @Json(name = "visitation_pct") val visitationPct: Double = 0.0,
+    @Json(name = "completed_70") val completed70: Int = 0,
+)
+
+data class GeoCoverageSummary(
+    val lga: GeoBucket?,
+    val ward: GeoBucket?,
+    val settlement: GeoBucket?,
+)
+
+data class GeoBucket(
+    val total: Int = 0,
+    @Json(name = "at_target") val atTarget: Int = 0,
+    val below: Int = 0,
+    val pct: Double = 0.0,
+)
+
 /** Response of GET /api/app/near — the core field-coverage aid. */
 data class NearResponse(
     @Json(name = "project_id") val projectId: Int,

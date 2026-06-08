@@ -24,7 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import GeoProject, User
 from app.routes.auth import get_current_user
-from app.routes.mda import resolve_pid, mda_overview, mda_coverage_lga, mda_coverage_ward
+from app.routes.mda import (
+    resolve_pid, mda_overview, mda_coverage_lga, mda_coverage_ward,
+    geo_completeness, geo_coverage_summary,
+)
 from app.routes import mda as mda_route
 
 router = APIRouter(prefix="/app", tags=["app"])
@@ -208,6 +211,22 @@ async def app_geo_wards(
             }
         )
     return {"type": "FeatureCollection", "project_id": pid, "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/app/geo/summary — geographic-view summary (mirrors the web).
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/geo/summary")
+async def app_geo_summary(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Overall grid completeness + LGA/ward/settlement at-threshold counts —
+    the headline numbers from the web dashboard's Geographic View."""
+    completeness = await geo_completeness(pid=pid, db=db, _u=user)
+    coverage = await geo_coverage_summary(pid=pid, db=db, _u=user)
+    return {"completeness": completeness, "coverage_summary": coverage}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

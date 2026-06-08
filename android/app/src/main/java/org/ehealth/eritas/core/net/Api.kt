@@ -1,6 +1,7 @@
 package org.ehealth.eritas.core.net
 
 import okhttp3.ResponseBody
+import org.ehealth.eritas.core.model.GeoSummary
 import org.ehealth.eritas.core.model.LgaCoverage
 import org.ehealth.eritas.core.model.LoginRequest
 import org.ehealth.eritas.core.model.LoginResponse
@@ -44,6 +45,9 @@ interface Api {
     /** Ward polygons + coverage as raw GeoJSON, fed straight to MapLibre. */
     @GET("/api/app/geo/wards")
     suspend fun wardsGeoJson(@Query("project_id") projectId: Int?): ResponseBody
+
+    @GET("/api/app/geo/summary")
+    suspend fun geoSummary(@Query("project_id") projectId: Int?): GeoSummary
 
     @GET("/api/app/near")
     suspend fun near(
