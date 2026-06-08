@@ -45,6 +45,17 @@ data class OverviewDto(
     @Json(name = "error_rate_pct") val errorRatePct: Double = 0.0,
     @Json(name = "total_qc_flags") val totalQcFlags: Int = 0,
     @Json(name = "refusals") val refusals: Int = 0,
+    @Json(name = "fast_forms") val fastForms: Int = 0,
+    @Json(name = "gps_outside_lga") val gpsOutsideLga: Int = 0,
+    @Json(name = "baseline_total") val baselineTotal: Int = 0,
+)
+
+/** One day of GET /api/app/trends/daily (for the cumulative trend chart). */
+data class TrendPoint(
+    val date: String? = null,
+    val forms: Int = 0,
+    val treated: Int = 0,
+    val teams: Int = 0,
 )
 
 /** One row of GET /api/app/coverage/lga — per-LGA coverage vs baseline. */

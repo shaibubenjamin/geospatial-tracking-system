@@ -1,5 +1,6 @@
 package org.ehealth.eritas.feature.dashboard
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -36,7 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,6 +51,7 @@ import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.ui.CoverageGood
 import org.ehealth.eritas.ui.CoverageLow
 import org.ehealth.eritas.ui.CoverageMid
+import org.ehealth.eritas.ui.EritasGreen
 import kotlin.math.roundToInt
 
 private data class Stat(val label: String, val value: String, val icon: ImageVector)
@@ -73,15 +79,16 @@ fun DashboardScreen(projectId: Int?) {
         error != null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
             Text(error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
         }
-        data != null -> DashboardContent(data!!)
+        data != null -> DashboardContent(data!!, projectId)
     }
 }
 
 @Composable
-private fun DashboardContent(d: OverviewDto) {
+private fun DashboardContent(d: OverviewDto, projectId: Int?) {
     val day = d.currentCampaignDay?.let { cur ->
         d.plannedDurationDays?.let { tot -> "$cur / $tot" } ?: cur.toString()
     } ?: "—"
+    val avgPerTeam = if (d.teamsActive > 0) (d.totalForms / d.teamsActive).toString() else "—"
     val stats = listOf(
         Stat("Children treated", formatCount(d.totalTreated), Icons.Filled.Favorite),
         Stat("Forms submitted", formatCount(d.totalForms), Icons.Filled.Description),
@@ -91,6 +98,10 @@ private fun DashboardContent(d: OverviewDto) {
         Stat("QC flags", formatCount(d.totalQcFlags), Icons.Filled.Flag),
         Stat("Error rate", "${d.errorRatePct.roundToInt()}%", Icons.Filled.ErrorOutline),
         Stat("Refusals", formatCount(d.refusals), Icons.Filled.Block),
+        Stat("Avg forms/team", avgPerTeam, Icons.Filled.Groups),
+        Stat("GPS outside LGA", formatCount(d.gpsOutsideLga), Icons.Filled.Place),
+        Stat("Fast forms", formatCount(d.fastForms), Icons.Filled.Description),
+        Stat("Days active", d.daysActive.toString(), Icons.Filled.Event),
     )
 
     Column(
@@ -104,7 +115,59 @@ private fun DashboardContent(d: OverviewDto) {
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+        TrendCard(projectId, d.baselineTotal)
         Spacer(Modifier.size(4.dp))
+    }
+}
+
+@Composable
+private fun TrendCard(projectId: Int?, baseline: Int) {
+    var cum by remember { mutableStateOf<List<Pair<String?, Int>>>(emptyList()) }
+    LaunchedEffect(projectId) {
+        val t = runCatching { ServiceLocator.api.trendsDaily(projectId) }.getOrNull().orEmpty()
+        var c = 0
+        cum = t.map { c += it.treated; it.date to c }
+    }
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "Cumulative coverage over campaign days",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (cum.isEmpty()) {
+                Text("No daily data yet.", style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp))
+            } else {
+                val maxV = (if (baseline > 0) baseline else (cum.maxOfOrNull { it.second } ?: 1)).coerceAtLeast(1)
+                Canvas(Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp)) {
+                    val n = cum.size; val w = size.width; val h = size.height; val pad = 6f
+                    fun px(i: Int) = pad + if (n <= 1) 0f else i * (w - 2 * pad) / (n - 1)
+                    fun py(v: Int) = h - pad - (v.toFloat() / maxV) * (h - 2 * pad)
+                    val line = Path(); val area = Path(); area.moveTo(px(0), h - pad)
+                    cum.forEachIndexed { i, p ->
+                        val xx = px(i); val yy = py(p.second)
+                        if (i == 0) line.moveTo(xx, yy) else line.lineTo(xx, yy)
+                        area.lineTo(xx, yy)
+                    }
+                    area.lineTo(px(n - 1), h - pad); area.close()
+                    drawPath(area, color = EritasGreen.copy(alpha = 0.18f))
+                    drawPath(line, color = EritasGreen, style = Stroke(width = 3f))
+                    cum.forEachIndexed { i, p -> drawCircle(EritasGreen, 3f, Offset(px(i), py(p.second))) }
+                }
+                val last = cum.last().second
+                val lab = if (baseline > 0) "${(100.0 * last / maxV).roundToInt()}% of target"
+                          else "${formatCount(last)} treated"
+                val range = listOfNotNull(cum.first().first, cum.last().first)
+                    .map { it.takeLast(5) }.joinToString(" → ")
+                Text(
+                    "${cum.size} day(s) · $lab" + if (range.isNotBlank()) "  ($range)" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
     }
 }
 
