@@ -659,6 +659,14 @@ async def mda_dashboard():
     return FileResponse(os.path.join(static_dir, "mda.html"))
 
 
+@app.get("/app-preview")
+async def app_preview_page():
+    """Browser mirror of the Android app's screens — logs in and renders the
+    same /api/app/* data, so app UI/data changes can be previewed without
+    building an APK. Not the APK itself."""
+    return FileResponse(os.path.join(static_dir, "app-preview.html"))
+
+
 @app.get("/mda-admin")
 async def mda_admin_page():
     return FileResponse(os.path.join(static_dir, "mda-admin.html"))
