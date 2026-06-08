@@ -474,11 +474,11 @@ _PUBLIC_GET_PATHS: set[str] = {
     # Geo summaries (aggregate; heatmap GeoJSON and movement tracks stay gated)
     "/api/mda/geo/coverage-summary",
     "/api/mda/geo/completeness",
-    "/api/mda/geo/wards-coverage",
-    "/api/mda/geo/lgas-coverage",
-    "/api/mda/geo/settlements-coverage",
     "/api/mda/geo/settlement-breakdown",
     "/api/mda/geo/mop-up-shortlist",
+    # NOTE: the detailed coverage geojson (lgas/wards/settlements-coverage) is
+    # deliberately NOT public — the app reaches it via the gated /api/app/geo/*
+    # endpoints with a token, so the geographic data isn't exposed publicly.
     # Team + ward + individual aggregates
     "/api/mda/teams/performance",
     "/api/mda/teams/by-lga",
