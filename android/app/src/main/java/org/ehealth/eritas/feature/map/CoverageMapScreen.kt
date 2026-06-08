@@ -33,9 +33,15 @@ import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.ui.CoverageGood
 import org.ehealth.eritas.ui.CoverageLow
 import org.ehealth.eritas.ui.CoverageMid
+import org.json.JSONArray
+import org.json.JSONObject
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import kotlin.math.max
+import kotlin.math.min
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -170,7 +176,48 @@ private fun applyCoverageStyle(map: MapLibreMap, geoJson: String?) {
             )
         )
     }
-    map.setStyle(builder)
+    map.setStyle(builder) {
+        // Once the style (and the project's boundary source) is loaded, fit the
+        // camera to the actual extent of the selected project's boundaries —
+        // so the map works for ANY state/round, not a hardcoded location.
+        if (geoJson != null) {
+            boundsFromGeoJson(geoJson)?.let { bounds ->
+                runCatching {
+                    map.easeCamera(CameraUpdateFactory.newLatLngBounds(bounds, 48), 600)
+                }
+            }
+        }
+    }
+}
+
+/** Compute the lat/lng extent of every polygon in a GeoJSON FeatureCollection
+ *  so the camera can frame the selected project's boundaries. */
+private fun boundsFromGeoJson(geoJson: String): LatLngBounds? {
+    return try {
+        val features = JSONObject(geoJson).optJSONArray("features") ?: return null
+        var minLat = 90.0; var maxLat = -90.0; var minLon = 180.0; var maxLon = -180.0
+        var found = false
+
+        fun walk(arr: JSONArray) {
+            if (arr.length() == 2 && arr.opt(0) is Number && arr.opt(1) is Number) {
+                val lon = arr.getDouble(0); val lat = arr.getDouble(1)
+                minLat = min(minLat, lat); maxLat = max(maxLat, lat)
+                minLon = min(minLon, lon); maxLon = max(maxLon, lon)
+                found = true
+                return
+            }
+            for (i in 0 until arr.length()) (arr.opt(i) as? JSONArray)?.let { walk(it) }
+        }
+
+        for (i in 0 until features.length()) {
+            val coords = features.getJSONObject(i)
+                .optJSONObject("geometry")?.optJSONArray("coordinates") ?: continue
+            walk(coords)
+        }
+        if (found) LatLngBounds.from(maxLat, maxLon, minLat, minLon) else null
+    } catch (_: Exception) {
+        null
+    }
 }
 
 @Composable
