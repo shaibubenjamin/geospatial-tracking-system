@@ -42,3 +42,20 @@ terraform/*.tfvars
 crash.log
 crash.*.log
 docs/
+
+# Android companion app — build outputs, local SDK config, signing material.
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+*.keystore
+*.jks
+keystore.properties
+
+# Built APK artifacts and the local serve directory contents (the APK is a
+# build/CI artifact, never committed; the directory itself is kept via .gitkeep).
+*.apk
+apk/*
+!apk/.gitkeep

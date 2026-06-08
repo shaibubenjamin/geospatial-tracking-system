@@ -16,6 +16,11 @@ services:
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - uploads:/app/uploads
+      # Static APK host. The app-build CI pipeline uploads the signed APK to
+      # /var/app-apk on the EC2 host; the API serves it at /apk (read-only
+      # mount so the running app can never mutate the artifact). Matches
+      # APK_DIR=/var/app-apk in the .env.
+      - /var/app-apk:/var/app-apk:ro
     depends_on:
       - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips='*'

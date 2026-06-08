@@ -1,0 +1,165 @@
+name: App build (APK)
+
+# Builds and publishes the signed Android APK. Deliberately SEPARATE from the
+# backend deploy (.github/workflows/deploy.yml) — building the app never
+# deploys server code, and vice versa. See docs/apk-app-blueprint.md §3.5.
+on:
+  push:
+    branches: [apk_dev]
+    paths:
+      - "android/**"
+      - ".github/workflows/app-build.yml"
+  # Manual trigger for re-publishing without a code change.
+  workflow_dispatch:
+
+concurrency:
+  group: app-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build + publish signed APK
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write # OIDC into AWS for the upload step
+
+    env:
+      AWS_REGION: us-east-1
+      EC2_INSTANCE_ID: i-0f57573ce98580bfc
+      # Set this repo/Actions variable to the S3 bucket used to stage the APK
+      # before it is pulled onto the EC2 host. (vars.APK_S3_BUCKET)
+      APK_S3_BUCKET: ${{ vars.APK_S3_BUCKET }}
+      SERVER_APK_DIR: /var/app-apk
+
+    steps:
+      - name: Checkout (full history for git-derived version)
+        uses: actions/checkout@v4
+        with:
+          # versionCode = `git rev-list --count HEAD`; versionName =
+          # `git describe --tags`. Both need full history + tags.
+          fetch-depth: 0
+
+      - name: Derive version
+        id: ver
+        run: |
+          CODE=$(git rev-list --count HEAD)
+          NAME=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.1")
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Building versionName=$NAME versionCode=$CODE"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Decode signing keystore
+        # Secrets can't be read in an `if:` condition, so guard inside bash:
+        # when no keystore secret is configured the release build falls back to
+        # debug signing (see android/app/build.gradle.kts) so CI still succeeds.
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret — release will use fallback debug signing."
+            exit 0
+          fi
+          KEYSTORE_PATH="$GITHUB_WORKSPACE/android/release.keystore"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          cat > "$GITHUB_WORKSPACE/android/keystore.properties" <<EOF
+          storeFile=$KEYSTORE_PATH
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+          echo "Keystore decoded; release build will be signed with the release key."
+
+      - name: Build release APK
+        run: gradle -p android :app:assembleRelease --no-daemon
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          test -n "$APK" || { echo "No APK produced"; exit 1; }
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "Built: $APK"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eritas-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}
+          path: ${{ steps.apk.outputs.path }}
+
+      # ── Publish to the live download path ──────────────────────────────────
+      # Stage to S3, then have the EC2 host pull it into SERVER_APK_DIR via SSM
+      # (matches the keyless, no-SSH deploy model). Skipped automatically if
+      # APK_S3_BUCKET is not configured, so the build still succeeds for PRs /
+      # forks without publish credentials.
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ env.APK_S3_BUCKET != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::387526361725:role/mda-dashboard-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish APK to server (S3 → SSM pull)
+        if: ${{ env.APK_S3_BUCKET != '' }}
+        env:
+          VNAME: ${{ steps.ver.outputs.name }}
+          VCODE: ${{ steps.ver.outputs.code }}
+          APK_PATH: ${{ steps.apk.outputs.path }}
+        run: |
+          set -euo pipefail
+          VERSIONED="eritas-${VNAME}-${VCODE}.apk"
+          LATEST="eritas-latest.apk"
+          aws s3 cp "$APK_PATH" "s3://${APK_S3_BUCKET}/${VERSIONED}"
+          aws s3 cp "$APK_PATH" "s3://${APK_S3_BUCKET}/${LATEST}"
+
+          # Pull both onto the EC2 host into SERVER_APK_DIR. The versioned copy
+          # is reachable at /apk/<file>; the stable copy is what /apk serves.
+          CMD_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Publish APK ${VERSIONED}" \
+            --parameters "{\"commands\":[
+              \"set -e\",
+              \"sudo mkdir -p ${SERVER_APK_DIR}\",
+              \"sudo aws s3 cp s3://${APK_S3_BUCKET}/${VERSIONED} ${SERVER_APK_DIR}/${VERSIONED}\",
+              \"sudo aws s3 cp s3://${APK_S3_BUCKET}/${LATEST} ${SERVER_APK_DIR}/${LATEST}\",
+              \"echo Published ${VERSIONED}\"
+            ],\"executionTimeout\":[\"300\"]}" \
+            --query "Command.CommandId" --output text)
+          echo "SSM Command ID: $CMD_ID"
+          while true; do
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" \
+              --command-id "$CMD_ID" --instance-id "$EC2_INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Success|Failed|TimedOut|Cancelled) break;; esac
+            sleep 4
+          done
+          echo "Publish status: $STATUS"
+          [ "$STATUS" = "Success" ] || exit 1
+
+      - name: Summary
+        run: |
+          echo "### APK build" >> "$GITHUB_STEP_SUMMARY"
+          echo "- versionName: ${{ steps.ver.outputs.name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- versionCode: ${{ steps.ver.outputs.code }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Published: ${{ env.APK_S3_BUCKET != '' && 'yes (→ /apk)' || 'no (artifact only — set APK_S3_BUCKET to publish)' }}" >> "$GITHUB_STEP_SUMMARY"

@@ -45,8 +45,13 @@ from app.database import create_all_tables, AsyncSessionLocal
 from app.routes.auth import hash_password
 from app.models import User, GeoProject
 from app.config import SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD, SUPERADMIN_EMAIL
+from app.config import (
+    MIN_VERSION_CODE, LATEST_VERSION_CODE, LATEST_VERSION_NAME, UPDATE_URL,
+    APP_API_PREFIX, APK_DIR, APK_FILENAME,
+)
 from app.routes import auth, projects, boundaries, ingestion, analytics, qc, sync
 from app.routes import mda as mda_route
+from app.routes import app_api
 
 # Root logger already configured above as JSON; basicConfig is a no-op now.
 logger = logging.getLogger(__name__)
@@ -430,6 +435,7 @@ _PROTECTED_PREFIXES = (
     "/api/sync/",     # sync config + history
     "/api/ingestion/",
     "/api/boundaries/",
+    "/api/app/",      # Android companion app surface (always requires a token)
 )
 
 # Anonymous GETs allowed on these paths — aggregate / public-by-design.
@@ -529,6 +535,55 @@ async def require_auth_on_protected_apis(request, call_next):
     return await call_next(request)
 
 
+# ── Android app version gate (force-update) ─────────────────────────────────
+# The companion app sends `X-App-Version-Code: <n>` on every request. This
+# middleware is defined AFTER the auth gate so it is the OUTERMOST http
+# middleware (Starlette runs the last-registered first) — an outdated client
+# gets a 426 before the auth gate can return a 401, so the user is told to
+# update rather than to log in.
+#
+# Rules (only enforced when MIN_VERSION_CODE > 0; 0 disables the gate):
+#   • header present and version < MIN_VERSION_CODE  → 426 on ANY path
+#     (a stale install is locked out everywhere it calls, not just app paths)
+#   • header absent on an /api/app/* path            → 426 (only the app
+#     should ever call these; a missing header means a tampered/old client)
+#   • header absent on a non-app path (web browser)  → pass through untouched
+# GET /version is always exempt so the client launch-check can run.
+def _version_payload(detail: str) -> dict:
+    return {
+        "detail": detail,
+        "min": MIN_VERSION_CODE,
+        "latest": LATEST_VERSION_CODE,
+        "latest_name": LATEST_VERSION_NAME,
+        "update_url": UPDATE_URL,
+    }
+
+
+@app.middleware("http")
+async def enforce_app_version(request, call_next):
+    path = request.url.path
+    if request.method == "OPTIONS" or path == "/version":
+        return await call_next(request)
+    if MIN_VERSION_CODE and MIN_VERSION_CODE > 0:
+        raw = request.headers.get("X-App-Version-Code")
+        is_app_path = path.startswith(APP_API_PREFIX)
+        if raw is not None:
+            try:
+                version_code = int(raw)
+            except ValueError:
+                version_code = -1
+            if version_code < MIN_VERSION_CODE:
+                return JSONResponse(
+                    _version_payload("Upgrade required"), status_code=426
+                )
+        elif is_app_path:
+            return JSONResponse(
+                _version_payload("Upgrade required (missing version header)"),
+                status_code=426,
+            )
+    return await call_next(request)
+
+
 # ── Rate limiting ───────────────────────────────────────────────────────────
 # Defensive ceiling per client IP. The default is generous (120/min) so
 # normal dashboard usage is unaffected; specific heavy endpoints can override
@@ -554,6 +609,7 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(qc.router, prefix="/api")
 app.include_router(mda_route.router, prefix="/api")
 app.include_router(sync.router, prefix="/api")
+app.include_router(app_api.router, prefix="/api")
 
 # Serve static files
 import os
@@ -611,3 +667,53 @@ async def mda_admin_page():
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "geospatial-tracker"}
+
+
+# ── Android companion app: public version check + static APK host ───────────
+# Both are deliberately unauthenticated and un-gated: the launch-time version
+# check must work for any client (including one about to be force-updated),
+# and the APK download is a dumb public file host.
+@app.get("/version")
+async def app_version():
+    """Drives the client launch check (update wall / optional-update banner)."""
+    return {
+        "min": MIN_VERSION_CODE,
+        "latest": LATEST_VERSION_CODE,
+        "latest_name": LATEST_VERSION_NAME,
+        "update_url": UPDATE_URL,
+    }
+
+
+def _serve_apk(filename: str):
+    """Serve an APK from APK_DIR as an attachment, guarding path traversal."""
+    safe_name = os.path.basename(filename)
+    if not safe_name.endswith(".apk"):
+        return JSONResponse({"detail": "Not an APK"}, status_code=404)
+    apk_path = os.path.join(APK_DIR, safe_name)
+    if not os.path.isfile(apk_path):
+        return JSONResponse(
+            {"detail": "APK not available yet"}, status_code=404
+        )
+    return FileResponse(
+        apk_path,
+        media_type="application/vnd.android.package-archive",
+        filename=safe_name,
+    )
+
+
+@app.get("/apk")
+async def download_apk_latest():
+    """Fixed public download path for the latest signed APK."""
+    return _serve_apk(APK_FILENAME)
+
+
+# Alias kept because the blueprint mentions both /apk and /download.
+@app.get("/download")
+async def download_apk_alias():
+    return _serve_apk(APK_FILENAME)
+
+
+@app.get("/apk/{filename}")
+async def download_apk_versioned(filename: str):
+    """Fetch a specific versioned APK (e.g. /apk/eritas-0.1.apk)."""
+    return _serve_apk(filename)
