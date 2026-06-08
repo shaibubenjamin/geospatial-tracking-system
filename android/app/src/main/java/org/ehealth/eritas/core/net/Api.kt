@@ -8,6 +8,7 @@ import org.ehealth.eritas.core.model.NearResponse
 import org.ehealth.eritas.core.model.OverviewDto
 import org.ehealth.eritas.core.model.ProjectDto
 import org.ehealth.eritas.core.model.VersionInfo
+import org.ehealth.eritas.core.model.WardCoverage
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -33,6 +34,12 @@ interface Api {
 
     @GET("/api/app/coverage/lga")
     suspend fun coverageLga(@Query("project_id") projectId: Int?): List<LgaCoverage>
+
+    @GET("/api/app/coverage/ward")
+    suspend fun coverageWard(
+        @Query("lga") lga: String?,
+        @Query("project_id") projectId: Int?,
+    ): List<WardCoverage>
 
     /** Ward polygons + coverage as raw GeoJSON, fed straight to MapLibre. */
     @GET("/api/app/geo/wards")

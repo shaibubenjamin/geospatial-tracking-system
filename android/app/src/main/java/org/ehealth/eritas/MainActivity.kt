@@ -18,9 +18,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -46,6 +48,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             EritasTheme {
+              // A themed Surface backs every screen so login and the rest
+              // respect dark/light mode (without it, screens fell through to
+              // the white window background).
+              Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 // The update gate is the outermost UI: a too-old install can
                 // never reach login or the data screens.
                 UpdateGate { optionalUpdate ->
@@ -62,6 +68,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+              }
             }
         }
     }

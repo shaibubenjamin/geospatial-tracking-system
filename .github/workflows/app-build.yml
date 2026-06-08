@@ -127,12 +127,14 @@ jobs:
         run: |
           set -euo pipefail
           VERSIONED="eritas-${VNAME}-${VCODE}.apk"
-          LATEST="eritas-latest.apk"
+          # Stage to S3 (the deploy role has put/get via the bucket policy).
           aws s3 cp "$APK_PATH" "s3://${APK_S3_BUCKET}/${VERSIONED}"
-          aws s3 cp "$APK_PATH" "s3://${APK_S3_BUCKET}/${LATEST}"
+          # Presign so the EC2 host can pull it with plain curl — no S3
+          # permissions required on the instance role.
+          URL=$(aws s3 presign "s3://${APK_S3_BUCKET}/${VERSIONED}" --expires-in 1800)
 
-          # Pull both onto the EC2 host into SERVER_APK_DIR. The versioned copy
-          # is reachable at /apk/<file>; the stable copy is what /apk serves.
+          # Pull onto the host, then promote to the stable eritas-latest.apk
+          # that /apk serves. The versioned copy stays reachable at /apk/<file>.
           CMD_ID=$(aws ssm send-command \
             --region "$AWS_REGION" \
             --instance-ids "$EC2_INSTANCE_ID" \
@@ -141,8 +143,9 @@ jobs:
             --parameters "{\"commands\":[
               \"set -e\",
               \"sudo mkdir -p ${SERVER_APK_DIR}\",
-              \"sudo aws s3 cp s3://${APK_S3_BUCKET}/${VERSIONED} ${SERVER_APK_DIR}/${VERSIONED}\",
-              \"sudo aws s3 cp s3://${APK_S3_BUCKET}/${LATEST} ${SERVER_APK_DIR}/${LATEST}\",
+              \"sudo curl -fSL -o ${SERVER_APK_DIR}/${VERSIONED} '${URL}'\",
+              \"sudo cp ${SERVER_APK_DIR}/${VERSIONED} ${SERVER_APK_DIR}/eritas-latest.apk\",
+              \"sudo chmod 644 ${SERVER_APK_DIR}/*.apk\",
               \"echo Published ${VERSIONED}\"
             ],\"executionTimeout\":[\"300\"]}" \
             --query "Command.CommandId" --output text)

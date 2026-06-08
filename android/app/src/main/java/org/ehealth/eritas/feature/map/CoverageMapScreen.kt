@@ -50,20 +50,30 @@ import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 
-// Keyless raster base map (OpenStreetMap). For a production/high-traffic
-// rollout, point this at a tile provider with an appropriate usage agreement.
+// Keyless raster base map (CARTO Voyager). OSM's tile server blocks app
+// clients without an approved User-Agent, leaving the map blank — CARTO's
+// public basemap tiles are reliable for this use. A background layer keeps the
+// map neutral if tiles are slow/unreachable. For a high-traffic rollout, move
+// to a tile provider with an explicit usage agreement / API key.
 private const val BASE_STYLE_JSON = """
 {
   "version": 8,
   "sources": {
-    "osm": {
+    "carto": {
       "type": "raster",
-      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      "tiles": [
+        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+      ],
       "tileSize": 256,
-      "attribution": "© OpenStreetMap contributors"
+      "attribution": "© OpenStreetMap © CARTO"
     }
   },
-  "layers": [{ "id": "osm", "type": "raster", "source": "osm" }]
+  "layers": [
+    { "id": "bg", "type": "background", "paint": { "background-color": "#E8EAED" } },
+    { "id": "carto", "type": "raster", "source": "carto" }
+  ]
 }
 """
 
@@ -75,11 +85,18 @@ fun CoverageMapScreen(projectId: Int?) {
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
     var geoJson by remember { mutableStateOf<String?>(null) }
 
+    var boundariesStatus by remember { mutableStateOf<String?>(null) }
+
     // Fetch ward polygons + coverage for the selected project as raw GeoJSON.
     LaunchedEffect(projectId) {
+        boundariesStatus = "Loading boundaries…"
         geoJson = try {
-            ServiceLocator.api.wardsGeoJson(projectId).string()
+            val gj = ServiceLocator.api.wardsGeoJson(projectId).string()
+            val n = Regex("\"geometry\"").findAll(gj).count()
+            boundariesStatus = if (n == 0) "No boundaries for this project" else null
+            gj
         } catch (_: Exception) {
+            boundariesStatus = "Couldn't load boundaries"
             null
         }
     }
@@ -127,6 +144,20 @@ fun CoverageMapScreen(projectId: Int?) {
                 modifier = Modifier.fillMaxSize(),
             )
             Legend(Modifier.align(Alignment.BottomStart).padding(12.dp))
+            boundariesStatus?.let { msg ->
+                Surface(
+                    Modifier.align(Alignment.TopCenter).padding(12.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp,
+                ) {
+                    Text(
+                        msg,
+                        Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
         }
     }
 
@@ -157,7 +188,7 @@ private fun applyCoverageStyle(map: MapLibreMap, geoJson: String?) {
         builder.withSource(GeoJsonSource(WARD_SOURCE, geoJson))
         val coverageColor = Expression.interpolate(
             Expression.linear(),
-            Expression.coalesce(Expression.toNumber(Expression.get("coverage_pct")), Expression.literal(0)),
+            Expression.get("coverage_pct"),
             Expression.stop(0, Expression.color(Color.parseColor("#C62828"))),
             Expression.stop(50, Expression.color(Color.parseColor("#F9A825"))),
             Expression.stop(70, Expression.color(Color.parseColor("#66BB6A"))),

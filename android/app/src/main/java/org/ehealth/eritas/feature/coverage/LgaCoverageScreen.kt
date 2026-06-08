@@ -1,5 +1,6 @@
 package org.ehealth.eritas.feature.coverage
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,14 +8,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,17 +34,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.ehealth.eritas.core.model.LgaCoverage
+import org.ehealth.eritas.core.model.WardCoverage
 import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.ui.CoverageGood
 import org.ehealth.eritas.ui.CoverageLow
 import org.ehealth.eritas.ui.CoverageMid
 import kotlin.math.roundToInt
 
+private fun coverageColor(pct: Double) = when {
+    pct >= 70 -> CoverageGood
+    pct >= 40 -> CoverageMid
+    else -> CoverageLow
+}
+
 @Composable
 fun LgaCoverageScreen(projectId: Int?) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var rows by remember { mutableStateOf<List<LgaCoverage>>(emptyList()) }
+    var selectedLga by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(projectId) {
         loading = true
@@ -64,25 +79,25 @@ fun LgaCoverageScreen(projectId: Int?) {
         ) {
             item {
                 Text(
-                    "Coverage by LGA",
+                    "Coverage by LGA · tap for wards",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
-            items(rows) { LgaRow(it) }
+            items(rows) { LgaRow(it) { selectedLga = it.lga } }
         }
+    }
+
+    selectedLga?.let { lga ->
+        WardDrillDownDialog(lga = lga, projectId = projectId, onDismiss = { selectedLga = null })
     }
 }
 
 @Composable
-private fun LgaRow(row: LgaCoverage) {
+private fun LgaRow(row: LgaCoverage, onClick: () -> Unit) {
     val pct = row.coveragePct
-    val color = when {
-        pct >= 70 -> CoverageGood
-        pct >= 40 -> CoverageMid
-        else -> CoverageLow
-    }
-    Card(Modifier.fillMaxWidth()) {
+    val color = coverageColor(pct)
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(14.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -94,12 +109,19 @@ private fun LgaRow(row: LgaCoverage) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(
-                    "${pct.roundToInt()}%",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = color,
-                    fontWeight = FontWeight.Bold,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${pct.roundToInt()}%",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "View wards",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             LinearProgressIndicator(
                 progress = { (pct / 100.0).coerceIn(0.0, 1.0).toFloat() },
@@ -114,6 +136,68 @@ private fun LgaRow(row: LgaCoverage) {
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun WardDrillDownDialog(lga: String?, projectId: Int?, onDismiss: () -> Unit) {
+    var loading by remember { mutableStateOf(true) }
+    var wards by remember { mutableStateOf<List<WardCoverage>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(lga) {
+        loading = true
+        error = null
+        try {
+            wards = ServiceLocator.api.coverageWard(lga, projectId)
+        } catch (e: Exception) {
+            error = "Could not load wards: ${e.message ?: "network error"}"
+        }
+        loading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        title = { Text("${lga ?: "LGA"} · wards") },
+        text = {
+            when {
+                loading -> CircularProgressIndicator()
+                error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
+                wards.isEmpty() -> Text("No ward coverage for this LGA yet.")
+                else -> LazyColumn(
+                    Modifier.heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(wards) { WardRow(it) }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun WardRow(w: WardCoverage) {
+    val pct = w.coveragePct
+    val color = coverageColor(pct)
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(w.wardName ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "${pct.roundToInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                color = color,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { (pct / 100.0).coerceIn(0.0, 1.0).toFloat() },
+            modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 4.dp),
+            color = color,
+        )
     }
 }
 
