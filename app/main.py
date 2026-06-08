@@ -785,7 +785,7 @@ def _apk_landing_html(request: Request) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ERITAS Field Coverage · Download</title>
+  <title>ERITAS MDA Coverage · Download</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{{box-sizing:border-box}}
@@ -818,7 +818,7 @@ def _apk_landing_html(request: Request) -> str:
 <body>
   <div class="wrap">
     <div class="header">
-      <h1>ERITAS Field Coverage</h1>
+      <h1>ERITAS MDA Coverage</h1>
       <div class="sub">Android monitoring app · MDA geospatial coverage</div>
     </div>
     <div class="card">{action}
