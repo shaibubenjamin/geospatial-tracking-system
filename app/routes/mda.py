@@ -2730,7 +2730,7 @@ async def geo_wards_coverage(
           GROUP BY wardcode
         )
         SELECT w.ward_name, w.lga_name, w.wardcode,
-               ST_AsGeoJSON(ST_SimplifyPreserveTopology(w.geom, 0.0005)) AS geom,
+               ST_AsGeoJSON(w.geom) AS geom,
                COALESCE(cov.frac, 0)::float AS frac
         FROM wards w
         LEFT JOIN cov ON cov.wardcode = w.wardcode
@@ -2775,7 +2775,7 @@ async def geo_lgas_coverage(
           FROM settlement_analytics WHERE project_id = :pid GROUP BY lgacode
         )
         SELECT l.lga_name, l.lgacode,
-               ST_AsGeoJSON(ST_SimplifyPreserveTopology(l.geom, 0.001)) AS geom,
+               ST_AsGeoJSON(l.geom) AS geom,
                COALESCE(cov.frac, 0)::float AS frac
         FROM lgas l LEFT JOIN cov ON cov.lgacode = l.lgacode
         WHERE l.project_id = :bpid
@@ -2811,7 +2811,7 @@ async def geo_settlements_coverage(
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
                COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
-               ST_AsGeoJSON(ST_SimplifyPreserveTopology(s.geom, 0.0006)) AS geom
+               ST_AsGeoJSON(s.geom) AS geom
         FROM settlement_analytics sa
         JOIN settlements s ON s.id = sa.settlement_id
         WHERE {where}
