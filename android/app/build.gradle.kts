@@ -57,6 +57,14 @@ android {
             "BASE_URL",
             "\"https://eha-mda-dashboard.ehealthnigeria.org\"",
         )
+
+        // Ship only real-device CPU ABIs. MapLibre's native .so libs are the
+        // bulk of the APK and R8 can't shrink them; dropping x86/x86_64
+        // (emulator-only) roughly halves the native payload. For an even
+        // smaller download, switch to per-ABI splits / an app bundle.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     signingConfigs {
@@ -78,7 +86,10 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8090\"")
         }
         release {
-            isMinifyEnabled = false
+            // R8: strip unused Java/Kotlin bytecode + shrink resources.
+            // (Does not touch native .so libs — see abiFilters above.)
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

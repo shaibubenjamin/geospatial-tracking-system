@@ -14,6 +14,10 @@ services:
       - /opt/mda-dashboard/.env  # written by /opt/mda-dashboard/refresh-env.sh
     environment:
       - REDIS_URL=redis://redis:6379/0
+      # Serve the APK from the bind-mounted host dir (below), not the in-image
+      # default (/app/apk). Without this the /apk route looks in the wrong
+      # place and reports "APK not available yet".
+      - APK_DIR=/var/app-apk
     volumes:
       - uploads:/app/uploads
       # Static APK host. The app-build CI pipeline uploads the signed APK to
