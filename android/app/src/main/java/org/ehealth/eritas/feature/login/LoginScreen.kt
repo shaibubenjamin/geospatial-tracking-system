@@ -43,7 +43,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            "ERITAS Coverage",
+            "ERITAS MDA Coverage",
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.primary,
         )

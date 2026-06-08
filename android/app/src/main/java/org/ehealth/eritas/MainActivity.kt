@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.net.ServiceLocator
+import org.ehealth.eritas.feature.coverage.LgaCoverageScreen
 import org.ehealth.eritas.feature.dashboard.DashboardScreen
 import org.ehealth.eritas.feature.locate.MyAreaScreen
 import org.ehealth.eritas.feature.login.LoginScreen
@@ -67,7 +69,8 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String) {
     DASHBOARD("Dashboard"),
-    MAP("Coverage"),
+    COVERAGE("Coverage"),
+    MAP("Map"),
     MY_AREA("My Area"),
 }
 
@@ -110,6 +113,12 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                     label = { Text(Tab.DASHBOARD.label) },
                 )
                 NavigationBarItem(
+                    selected = selectedTab == Tab.COVERAGE,
+                    onClick = { selectedTab = Tab.COVERAGE },
+                    icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
+                    label = { Text(Tab.COVERAGE.label) },
+                )
+                NavigationBarItem(
                     selected = selectedTab == Tab.MAP,
                     onClick = { selectedTab = Tab.MAP },
                     icon = { Icon(Icons.Filled.Map, contentDescription = null) },
@@ -130,6 +139,7 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
             }
             when (selectedTab) {
                 Tab.DASHBOARD -> DashboardScreen(projectId)
+                Tab.COVERAGE -> LgaCoverageScreen(projectId)
                 Tab.MAP -> CoverageMapScreen(projectId)
                 Tab.MY_AREA -> MyAreaScreen(projectId)
             }

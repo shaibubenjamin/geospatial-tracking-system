@@ -33,3 +33,15 @@
 
 # ── MapLibre Native (ships consumer rules; silence remaining warnings) ───────
 -dontwarn org.maplibre.**
+
+# ── androidx.security:security-crypto → Tink → compile-only annotations ──────
+# Tink references errorprone / javax annotations that aren't on the runtime
+# classpath; they're safe to ignore (R8 fails the build without this).
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn javax.annotation.concurrent.**
+# Tink's optional KeysDownloader pulls in google-http-client + joda-time, which
+# we don't bundle (we never download remote keysets). Safe to ignore.
+-dontwarn com.google.api.client.**
+-dontwarn org.joda.time.**
+-keep class com.google.crypto.tink.** { *; }

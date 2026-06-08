@@ -33,9 +33,15 @@ import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.ui.CoverageGood
 import org.ehealth.eritas.ui.CoverageLow
 import org.ehealth.eritas.ui.CoverageMid
+import org.json.JSONArray
+import org.json.JSONObject
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import kotlin.math.max
+import kotlin.math.min
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -81,30 +87,47 @@ fun CoverageMapScreen(projectId: Int?) {
     // Re-style whenever the data or the map becomes available.
     LaunchedEffect(mapRef, geoJson) {
         val map = mapRef ?: return@LaunchedEffect
-        applyCoverageStyle(map, geoJson)
+        runCatching { applyCoverageStyle(map, geoJson) }
     }
 
     val mapView = remember { mutableStateOf<MapView?>(null) }
+    var mapError by remember { mutableStateOf<String?>(null) }
 
     Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = { context ->
-                MapView(context).apply {
-                    onCreate(null)
-                    mapView.value = this
-                    getMapAsync { map ->
-                        map.cameraPosition = CameraPosition.Builder()
-                            .target(LatLng(13.06, 5.24)) // Sokoto default
-                            .zoom(7.0)
-                            .build()
-                        mapRef = map
+        if (mapError != null) {
+            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    "The map couldn't load on this device. " +
+                        "Use the Coverage and My Area tabs instead.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        } else {
+            AndroidView(
+                factory = { context ->
+                    try {
+                        MapView(context).apply {
+                            onCreate(null)
+                            mapView.value = this
+                            getMapAsync { map ->
+                                runCatching {
+                                    map.cameraPosition = CameraPosition.Builder()
+                                        .target(LatLng(13.06, 5.24)) // Sokoto default
+                                        .zoom(7.0)
+                                        .build()
+                                    mapRef = map
+                                }.onFailure { mapError = it.message ?: "map error" }
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        mapError = t.message ?: "map init failed"
+                        android.view.View(context)
                     }
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        Legend(Modifier.align(Alignment.BottomStart).padding(12.dp))
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            Legend(Modifier.align(Alignment.BottomStart).padding(12.dp))
+        }
     }
 
     // Forward Compose lifecycle to the MapView (required by MapLibre).
@@ -153,7 +176,48 @@ private fun applyCoverageStyle(map: MapLibreMap, geoJson: String?) {
             )
         )
     }
-    map.setStyle(builder)
+    map.setStyle(builder) {
+        // Once the style (and the project's boundary source) is loaded, fit the
+        // camera to the actual extent of the selected project's boundaries —
+        // so the map works for ANY state/round, not a hardcoded location.
+        if (geoJson != null) {
+            boundsFromGeoJson(geoJson)?.let { bounds ->
+                runCatching {
+                    map.easeCamera(CameraUpdateFactory.newLatLngBounds(bounds, 48), 600)
+                }
+            }
+        }
+    }
+}
+
+/** Compute the lat/lng extent of every polygon in a GeoJSON FeatureCollection
+ *  so the camera can frame the selected project's boundaries. */
+private fun boundsFromGeoJson(geoJson: String): LatLngBounds? {
+    return try {
+        val features = JSONObject(geoJson).optJSONArray("features") ?: return null
+        var minLat = 90.0; var maxLat = -90.0; var minLon = 180.0; var maxLon = -180.0
+        var found = false
+
+        fun walk(arr: JSONArray) {
+            if (arr.length() == 2 && arr.opt(0) is Number && arr.opt(1) is Number) {
+                val lon = arr.getDouble(0); val lat = arr.getDouble(1)
+                minLat = min(minLat, lat); maxLat = max(maxLat, lat)
+                minLon = min(minLon, lon); maxLon = max(maxLon, lon)
+                found = true
+                return
+            }
+            for (i in 0 until arr.length()) (arr.opt(i) as? JSONArray)?.let { walk(it) }
+        }
+
+        for (i in 0 until features.length()) {
+            val coords = features.getJSONObject(i)
+                .optJSONObject("geometry")?.optJSONArray("coordinates") ?: continue
+            walk(coords)
+        }
+        if (found) LatLngBounds.from(maxLat, maxLon, minLat, minLon) else null
+    } catch (_: Exception) {
+        null
+    }
 }
 
 @Composable

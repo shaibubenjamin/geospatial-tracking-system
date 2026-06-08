@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import GeoProject, User
 from app.routes.auth import get_current_user
-from app.routes.mda import resolve_pid, mda_overview
+from app.routes.mda import resolve_pid, mda_overview, mda_coverage_lga
 from app.routes import mda as mda_route
 
 router = APIRouter(prefix="/app", tags=["app"])
@@ -80,6 +80,23 @@ async def app_overview(
     definitions of coverage_pct / qc flags / campaign day.
     """
     return await mda_overview(pid=pid, db=db, _u=user)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/app/coverage/lga — per-LGA coverage (mirrors the web overview).
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/coverage/lga")
+async def app_coverage_lga(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Coverage % per LGA (treated vs baseline) for the selected project.
+
+    Reuses the web dashboard's ``mda_coverage_lga`` so the app's LGA list
+    matches the overview page exactly.
+    """
+    return await mda_coverage_lga(pid=pid, db=db, _u=user)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

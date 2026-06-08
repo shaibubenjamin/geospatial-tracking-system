@@ -116,7 +116,7 @@ private fun UpdateRequiredScreen(info: VersionInfo) {
             )
             Spacer(Modifier.padding(8.dp))
             Text(
-                "This version of ERITAS Coverage is no longer supported. " +
+                "This version of ERITAS MDA Coverage is no longer supported. " +
                     "Please install the latest version (${info.latestName}) to continue.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onPrimary,

@@ -35,10 +35,10 @@ _root_logger = logging.getLogger()
 _root_logger.handlers = [_log_handler]
 _root_logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import select, text
 
 from app.database import create_all_tables, AsyncSessionLocal
@@ -701,19 +701,149 @@ def _serve_apk(filename: str):
     )
 
 
-@app.get("/apk")
-async def download_apk_latest():
-    """Fixed public download path for the latest signed APK."""
-    return _serve_apk(APK_FILENAME)
+def _apk_status() -> dict:
+    """Inspect APK_DIR: is the latest APK present, its size, and best-known
+    version (parsed from any eritas-<name>-<code>.apk siblings)."""
+    latest_path = os.path.join(APK_DIR, APK_FILENAME)
+    available = os.path.isfile(latest_path)
+    size_mb = round(os.path.getsize(latest_path) / (1024 * 1024), 1) if available else 0.0
+    version_name = LATEST_VERSION_NAME or "0.1"
+    version_code = LATEST_VERSION_CODE or 0
+    download_name = "eritas.apk"
+    try:
+        best = -1
+        for f in os.listdir(APK_DIR):
+            m = re.match(r"^eritas-(.+)-(\d+)\.apk$", f)
+            if m and int(m.group(2)) > best:
+                best = int(m.group(2))
+                version_name = m.group(1)
+                version_code = best
+                download_name = f
+    except OSError:
+        pass
+    return {
+        "available": available,
+        "size_mb": size_mb,
+        "version_name": version_name,
+        "version_code": version_code,
+        "download_name": download_name,
+    }
 
 
-# Alias kept because the blueprint mentions both /apk and /download.
+def _apk_landing_html(request: Request) -> str:
+    """Public download landing page for the Android app (served at /apk)."""
+    from urllib.parse import quote
+
+    s = _apk_status()
+    base = str(request.base_url).rstrip("/")
+    page_url = f"{base}/apk"
+    qr = (
+        "https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=0&data="
+        + quote(page_url, safe="")
+    )
+    ver = f"{s['version_name']}"
+    size_txt = f" · {s['size_mb']} MB" if s["available"] else ""
+
+    if s["available"]:
+        action = f"""
+      <div class="qr-row">
+        <img src="{qr}" alt="Scan to open this page on your phone" />
+        <div class="copy">
+          <h2>Scan with your phone</h2>
+          <p>Or, if you're already on your phone, tap Download below.</p>
+        </div>
+      </div>
+      <div class="btn-row">
+        <a class="btn" href="/download" download="{s['download_name']}">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download v{ver}
+        </a>
+        <div class="meta">
+          <strong>Version {ver}</strong>{size_txt}<br/>
+          Saves as <code>{s['download_name']}</code> · Android 7.0+
+        </div>
+      </div>
+      <h2>How to install</h2>
+      <ol class="steps">
+        <li>Tap <strong>Download v{ver}</strong> above. Your browser may warn you because this isn't from the Play Store — accept the download.</li>
+        <li>Open the downloaded file. If Android blocks it, go to <strong>Settings → Apps → Special access → Install unknown apps</strong>, find your browser, and allow it just this once.</li>
+        <li>Tap <strong>Install</strong>, then open <strong>ERITAS Coverage</strong>. Sign in with your dashboard username and password — you'll need internet for the first sign-in.</li>
+        <li>Pick your state &amp; round, then use the map and <strong>My Area</strong> to see what's left to cover.</li>
+      </ol>
+      <div class="warning">
+        <strong>One-time prompt:</strong> Android warns that this app is from outside the Play Store. That's expected — eHealth Nigeria signs and publishes it directly. The signature stays the same on every update.
+      </div>"""
+    else:
+        action = """
+      <div class="warning">
+        <strong>Not available yet.</strong> The latest build hasn't been published to this server.
+        Check back shortly, or contact your supervisor.
+      </div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ERITAS Field Coverage · Download</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{{box-sizing:border-box}}
+    html,body{{margin:0;padding:0;min-height:100%;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(135deg,#0A5C37 0%,#16A34A 100%);color:#fff;line-height:1.5}}
+    .wrap{{max-width:760px;margin:0 auto;padding:32px 20px 64px}}
+    .header{{text-align:center;padding:16px 0 8px}}
+    .header h1{{margin:0;font-size:28px;font-weight:800;letter-spacing:-0.01em}}
+    .header .sub{{margin-top:6px;font-size:14px;color:#BBF7D0}}
+    .card{{background:#fff;color:#0F172A;border-radius:20px;padding:32px 28px;margin-top:24px;box-shadow:0 10px 40px rgba(0,0,0,.18)}}
+    .qr-row{{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;padding:8px 0 16px}}
+    @media(max-width:540px){{.qr-row{{grid-template-columns:1fr;text-align:center}}}}
+    .qr-row img{{width:180px;height:180px;background:#fff;padding:6px;border-radius:10px;border:1px solid #E2E8F0}}
+    .qr-row .copy h2{{margin:0 0 6px;font-size:18px;font-weight:700}}
+    .qr-row .copy p{{margin:0;font-size:14px;color:#475569}}
+    .btn{{display:inline-flex;align-items:center;justify-content:center;gap:10px;background:#16A34A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700;font-size:16px;transition:background .15s;box-shadow:0 4px 12px rgba(22,163,74,.3)}}
+    .btn:hover{{background:#0A5C37}}
+    .btn-row{{text-align:center;margin:24px 0 8px}}
+    .meta{{font-size:12px;color:#64748B;text-align:center;margin-top:12px}}
+    .meta code{{font-family:ui-monospace,'SF Mono',Menlo,monospace}}
+    .steps{{padding:0;margin:16px 0 0;counter-reset:step;list-style:none}}
+    .steps li{{padding:12px 0 12px 44px;position:relative;font-size:14px;color:#0F172A;border-top:1px solid #F1F5F9}}
+    .steps li:first-child{{border-top:0;padding-top:4px}}
+    .steps li:before{{counter-increment:step;content:counter(step);position:absolute;left:0;top:12px;width:28px;height:28px;line-height:28px;text-align:center;background:#16A34A;color:#fff;border-radius:50%;font-weight:800;font-size:13px}}
+    .steps li:first-child:before{{top:4px}}
+    .warning{{background:#FEF3C7;color:#92400E;border-left:4px solid #F59E0B;padding:12px 16px;border-radius:8px;font-size:13px;margin:16px 0}}
+    .footer{{text-align:center;margin-top:32px;font-size:12px;color:#BBF7D0}}
+    h2{{margin:24px 0 12px;font-size:18px;font-weight:700;color:#0F172A}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>ERITAS Field Coverage</h1>
+      <div class="sub">Android monitoring app · MDA geospatial coverage</div>
+    </div>
+    <div class="card">{action}
+      <h2>Need help?</h2>
+      <p style="font-size:14px;color:#475569;margin:4px 0 0;">Contact your campaign supervisor or the ERITAS team.</p>
+    </div>
+    <div class="footer">ERITAS · eHealth Nigeria</div>
+  </div>
+</body>
+</html>"""
+
+
+@app.get("/apk", response_class=HTMLResponse)
+async def apk_landing(request: Request):
+    """Public, styled download landing page for the Android app."""
+    return HTMLResponse(_apk_landing_html(request))
+
+
 @app.get("/download")
-async def download_apk_alias():
+async def download_apk():
+    """The actual signed APK file (linked from the /apk landing page)."""
     return _serve_apk(APK_FILENAME)
 
 
 @app.get("/apk/{filename}")
 async def download_apk_versioned(filename: str):
-    """Fetch a specific versioned APK (e.g. /apk/eritas-0.1.apk)."""
+    """Fetch a specific versioned APK (e.g. /apk/eritas-0.1-106.apk)."""
     return _serve_apk(filename)

@@ -47,6 +47,17 @@ data class OverviewDto(
     @Json(name = "refusals") val refusals: Int = 0,
 )
 
+/** One row of GET /api/app/coverage/lga — per-LGA coverage vs baseline. */
+data class LgaCoverage(
+    val lga: String?,
+    val forms: Int = 0,
+    @Json(name = "actual_treated") val actualTreated: Int = 0,
+    @Json(name = "baseline_total") val baselineTotal: Int = 0,
+    @Json(name = "coverage_pct") val coveragePct: Double = 0.0,
+    val teams: Int = 0,
+    @Json(name = "days_reported") val daysReported: Int = 0,
+)
+
 /** Response of GET /api/app/near — the core field-coverage aid. */
 data class NearResponse(
     @Json(name = "project_id") val projectId: Int,
