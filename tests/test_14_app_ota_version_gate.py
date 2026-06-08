@@ -42,17 +42,23 @@ class TestVersionEndpoint:
         assert isinstance(body["latest"], int)
 
 
-# ── APK static host ───────────────────────────────────────────────────────────
+# ── APK landing page + file host ──────────────────────────────────────────────
 class TestApkHost:
-    """GET /apk, /download, /apk/{filename} — dumb public file host."""
+    """GET /apk (HTML landing), /download (file), /apk/{filename} (versioned)."""
 
-    async def test_apk_missing_returns_404_json(self, client):
-        # No APK has been uploaded in the test env → graceful 404, not a 500.
+    async def test_apk_is_html_landing_page(self, client):
+        # /apk is always a public HTML page (even when no APK is published yet).
         resp = await client.get("/apk")
-        assert resp.status_code == 404
-        assert "detail" in resp.json()
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/html")
+        assert "ERITAS" in resp.text
 
-    async def test_download_alias_behaves_like_apk(self, client):
+    async def test_apk_landing_shows_unavailable_without_file(self, client):
+        resp = await client.get("/apk")
+        assert "Not available yet" in resp.text
+
+    async def test_download_missing_returns_404_json(self, client):
+        # No APK in the test env → graceful 404, not a 500.
         resp = await client.get("/download")
         assert resp.status_code == 404
         assert "detail" in resp.json()
@@ -66,17 +72,26 @@ class TestApkHost:
         resp = await client.get("/apk/notanapk.txt")
         assert resp.status_code == 404
 
-    async def test_apk_served_when_present(self, client, tmp_path, monkeypatch):
-        """When an APK exists in APK_DIR it is served with the Android MIME."""
+    async def test_download_served_when_present(self, client, tmp_path, monkeypatch):
+        """When the APK exists in APK_DIR, /download serves it with Android MIME."""
         import app.main as main
 
-        apk = tmp_path / "served.apk"
+        apk = tmp_path / main.APK_FILENAME
         apk.write_bytes(b"PK\x03\x04 fake-apk-bytes")
         monkeypatch.setattr(main, "APK_DIR", str(tmp_path))
-        resp = await client.get("/apk/served.apk")
+        resp = await client.get("/download")
         assert resp.status_code == 200, resp.text
         assert resp.headers["content-type"] == "application/vnd.android.package-archive"
         assert resp.content == b"PK\x03\x04 fake-apk-bytes"
+
+    async def test_apk_landing_shows_download_when_present(self, client, tmp_path, monkeypatch):
+        import app.main as main
+
+        (tmp_path / main.APK_FILENAME).write_bytes(b"PK\x03\x04 fake")
+        monkeypatch.setattr(main, "APK_DIR", str(tmp_path))
+        resp = await client.get("/apk")
+        assert resp.status_code == 200
+        assert 'href="/download"' in resp.text
 
 
 # ── Version gate (force-update) middleware ────────────────────────────────────

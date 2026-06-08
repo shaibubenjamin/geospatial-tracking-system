@@ -40,4 +40,8 @@
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn javax.annotation.**
 -dontwarn javax.annotation.concurrent.**
+# Tink's optional KeysDownloader pulls in google-http-client + joda-time, which
+# we don't bundle (we never download remote keysets). Safe to ignore.
+-dontwarn com.google.api.client.**
+-dontwarn org.joda.time.**
 -keep class com.google.crypto.tink.** { *; }
