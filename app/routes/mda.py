@@ -2755,6 +2755,79 @@ async def geo_wards_coverage(
     return {"type": "FeatureCollection", "project_id": pid, "features": features}
 
 
+@router.get("/geo/lgas-coverage")
+async def geo_lgas_coverage(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """LGA polygons (GeoJSON) coloured by coverage — public aggregate."""
+    brow = (await db.execute(text("""
+        SELECT MIN(p2.id) FROM geo_projects p1
+        JOIN geo_projects p2 ON p2.state_name = p1.state_name
+        WHERE p1.id = :pid AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id)
+    """), {"pid": pid})).fetchone()
+    bpid = int(brow[0]) if brow and brow[0] is not None else pid
+    res = await db.execute(text("""
+        WITH cov AS (
+          SELECT lgacode,
+                 AVG(CASE WHEN is_visited OR COALESCE(completeness_pct,0) >= 70 THEN 1.0 ELSE 0.0 END) AS frac
+          FROM settlement_analytics WHERE project_id = :pid GROUP BY lgacode
+        )
+        SELECT l.lga_name, l.lgacode,
+               ST_AsGeoJSON(ST_SimplifyPreserveTopology(l.geom, 0.001)) AS geom,
+               COALESCE(cov.frac, 0)::float AS frac
+        FROM lgas l LEFT JOIN cov ON cov.lgacode = l.lgacode
+        WHERE l.project_id = :bpid
+    """), {"pid": pid, "bpid": bpid})
+    import json as _json
+    feats = []
+    for r in res.fetchall():
+        if not r.geom:
+            continue
+        frac = float(r.frac or 0)
+        feats.append({"type": "Feature", "geometry": _json.loads(r.geom),
+                      "properties": {"lga_name": r.lga_name, "lgacode": r.lgacode,
+                                     "coverage_pct": round(100.0 * frac, 1), "is_at_target": frac >= 0.7}})
+    return {"type": "FeatureCollection", "project_id": pid, "features": feats}
+
+
+@router.get("/geo/settlements-coverage")
+async def geo_settlements_coverage(
+    lgacode: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Settlement polygons (GeoJSON) coloured visited/not + completeness — the
+    core coverage mosaic. Public aggregate. Optional ?lgacode= to scope to one
+    LGA (lighter payload)."""
+    params: dict = {"pid": pid}
+    where = "sa.project_id = :pid"
+    if lgacode:
+        where += " AND sa.lgacode = :lgacode"
+        params["lgacode"] = lgacode
+    res = await db.execute(text(f"""
+        SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
+               COALESCE(sa.is_visited, FALSE) AS is_visited,
+               COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
+               ST_AsGeoJSON(ST_SimplifyPreserveTopology(s.geom, 0.0006)) AS geom
+        FROM settlement_analytics sa
+        JOIN settlements s ON s.id = sa.settlement_id
+        WHERE {where}
+    """), params)
+    import json as _json
+    feats = []
+    for r in res.fetchall():
+        if not r.geom:
+            continue
+        feats.append({"type": "Feature", "geometry": _json.loads(r.geom),
+                      "properties": {"settlement_name": r.settlement_name, "lga_name": r.lga_name,
+                                     "ward_name": r.ward_name, "is_visited": bool(r.is_visited),
+                                     "completeness_pct": round(float(r.completeness_pct or 0), 1)}})
+    return {"type": "FeatureCollection", "project_id": pid, "features": feats}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/settlement-status/download
 # ─────────────────────────────────────────────────────────────────────────────
