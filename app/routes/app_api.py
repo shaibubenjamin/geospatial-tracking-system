@@ -26,7 +26,7 @@ from app.models import GeoProject, User
 from app.routes.auth import get_current_user
 from app.routes.mda import (
     resolve_pid, mda_overview, mda_coverage_lga, mda_coverage_ward,
-    geo_completeness, geo_coverage_summary,
+    geo_completeness, geo_coverage_summary, mda_trends_daily,
 )
 from app.routes import mda as mda_route
 
@@ -83,6 +83,20 @@ async def app_overview(
     definitions of coverage_pct / qc flags / campaign day.
     """
     return await mda_overview(pid=pid, db=db, _u=user)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/app/trends/daily — daily forms/treated/teams (for the trend chart).
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/trends/daily")
+async def app_trends_daily(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Per-day forms/treated/teams for the selected project — the app derives
+    cumulative coverage over campaign days from this."""
+    return await mda_trends_daily(pid=pid, db=db, _u=user)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

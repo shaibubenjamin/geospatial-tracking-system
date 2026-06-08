@@ -117,8 +117,29 @@
              ['LGAs covered',d.lgas_covered||0],['Campaign day',day],['QC flags',k(d.total_qc_flags||0)],
              ['Error rate',Math.round(d.error_rate_pct||0)+'%'],['Refusals',k(d.refusals||0)]]
             .map(s=>`<div class="card"><div class="v">${s[1]}</div><div class="l">${s[0]}</div></div>`).join('')}
-          </div>`;
+          </div>
+          <div class="card" style="margin-top:12px"><div class="l" style="margin-bottom:6px">Cumulative coverage over campaign days</div>
+            <div id="trend"><div class="muted">Loading trend…</div></div></div>`;
+        loadTrend(d.baseline_total||0);
       }catch(e){body.innerHTML=`<div class="err">Overview: ${e}</div>`;}
+    }
+    async function loadTrend(baseline){
+      const el=document.getElementById('trend'); if(!el)return;
+      try{ const t=await api('/api/app/trends/daily'+(pid?('?project_id='+pid):''));
+        if(!t.length){el.innerHTML='<div class="muted">No daily data yet.</div>';return;}
+        let cum=0; const pts=t.map(r=>{cum+=(r.treated||0);return cum;});
+        const max=baseline>0?baseline:Math.max(...pts,1);
+        const W=320,H=110,P=6,n=pts.length;
+        const xs=i=>P+(n<=1?0:i*(W-2*P)/(n-1)), ys=v=>H-P-(v/max)*(H-2*P);
+        let line='',area='M '+xs(0)+' '+(H-P);
+        pts.forEach((v,i)=>{const x=xs(i),y=ys(v);line+=(i?'L':'M')+x+' '+y+' ';area+=' L '+x+' '+y;});
+        area+=' L '+xs(n-1)+' '+(H-P)+' Z';
+        const last=pts[pts.length-1];
+        const lab=baseline>0?(Math.round(100*last/max)+'% of target'):(k(last)+' treated');
+        el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="display:block">
+          <path d="${area}" fill="#16A34A" opacity="0.18"/><path d="${line}" fill="none" stroke="#16A34A" stroke-width="2"/></svg>
+          <div class="l" style="margin-top:4px">${n} day(s) · ${lab}</div>`;
+      }catch(e){ el.innerHTML='<div class="muted">Trend unavailable.</div>'; }
     }
     async function renderLgas(){
       const body=document.getElementById('body'); body.innerHTML='<div class="muted">Loading…</div>';
@@ -142,22 +163,15 @@
     }
     async function renderMap(){
       const body=document.getElementById('body');
-      body.innerHTML='<div class="gstats" id="gs"></div><div style="height:calc(100% - 70px);border-radius:12px;overflow:hidden"><div id="map"></div></div>';
+      const src='/app/map'+(pid?('?project_id='+pid):'');
+      body.innerHTML='<div class="gstats" id="gs"></div><div style="height:calc(100% - 70px);border-radius:12px;overflow:hidden">'+
+        '<iframe src="'+src+'" style="width:100%;height:100%;border:0"></iframe></div>';
       try{ const s=await api('/api/app/geo/summary'+(pid?('?project_id='+pid):''));
         const c=s.completeness, cs=s.coverage_summary, items=[];
         if(c){items.push(['Completeness',Math.round(c.overall_completeness)+'%']);items.push(['Visited',c.visited_settlements+'/'+c.total_settlements]);}
         if(cs){if(cs.lga)items.push(['LGAs ≥70%',cs.lga.at_target+'/'+cs.lga.total]);if(cs.ward)items.push(['Wards ≥70%',cs.ward.at_target+'/'+cs.ward.total]);if(cs.settlement)items.push(['Settl. ≥70%',cs.settlement.at_target+'/'+cs.settlement.total]);}
         document.getElementById('gs').innerHTML=items.map(i=>`<div class="card"><div class="v" style="font-size:16px">${i[1]}</div><div class="l">${i[0]}</div></div>`).join('');
       }catch(e){}
-      let data=null; try{ data=await api('/api/app/geo/wards'+(pid?('?project_id='+pid):'')); }catch(e){}
-      const map=new maplibregl.Map({container:'map',style:{version:8,sources:{c:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],tileSize:256}},layers:[{id:'bg',type:'background',paint:{'background-color':'#E8EAED'}},{id:'c',type:'raster',source:'c'}]},center:[5.24,13.06],zoom:6});
-      map.on('load',()=>{ if(data&&data.features&&data.features.length){
-        map.addSource('w',{type:'geojson',data});
-        map.addLayer({id:'wf',type:'fill',source:'w',paint:{'fill-color':['interpolate',['linear'],['get','coverage_pct'],0,'#C62828',50,'#F9A825',70,'#66BB6A',100,'#2E7D32'],'fill-opacity':.55}});
-        map.addLayer({id:'wl',type:'line',source:'w',paint:{'line-color':'#37474F','line-width':.7}});
-        const b=new maplibregl.LngLatBounds(); const ext=c=>{if(typeof c[0]==='number')b.extend(c);else c.forEach(ext);};
-        data.features.forEach(f=>f.geometry&&ext(f.geometry.coordinates)); if(!b.isEmpty())map.fitBounds(b,{padding:20,duration:0});
-      }});
     }
     function renderArea(){
       const body=document.getElementById('body');

@@ -467,6 +467,8 @@ _PUBLIC_GET_PATHS: set[str] = {
     "/api/mda/geo/coverage-summary",
     "/api/mda/geo/completeness",
     "/api/mda/geo/wards-coverage",
+    "/api/mda/geo/lgas-coverage",
+    "/api/mda/geo/settlements-coverage",
     "/api/mda/geo/settlement-breakdown",
     "/api/mda/geo/mop-up-shortlist",
     # Team + ward + individual aggregates
