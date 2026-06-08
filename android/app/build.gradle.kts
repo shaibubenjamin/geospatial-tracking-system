@@ -86,10 +86,10 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8090\"")
         }
         release {
-            // R8: strip unused Java/Kotlin bytecode + shrink resources.
-            // (Does not touch native .so libs — see abiFilters above.)
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 disabled: the APK no longer bundles native map libs, so the
+            // shrink savings are small and not worth the obfuscation risk.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
