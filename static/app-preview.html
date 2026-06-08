@@ -115,7 +115,8 @@
           <div class="grid">
           ${[['Children treated',k(d.total_treated||0)],['Forms',k(d.total_forms||0)],['Teams active',k(d.teams_active||0)],
              ['LGAs covered',d.lgas_covered||0],['Campaign day',day],['QC flags',k(d.total_qc_flags||0)],
-             ['Error rate',Math.round(d.error_rate_pct||0)+'%'],['Refusals',k(d.refusals||0)]]
+             ['Error rate',Math.round(d.error_rate_pct||0)+'%'],['Refusals',k(d.refusals||0)],
+             ['Avg forms/team',(d.teams_active>0?Math.round(d.total_forms/d.teams_active):'—')]]
             .map(s=>`<div class="card"><div class="v">${s[1]}</div><div class="l">${s[0]}</div></div>`).join('')}
           </div>
           <div class="card" style="margin-top:12px"><div class="l" style="margin-bottom:6px">Cumulative coverage over campaign days</div>
@@ -127,17 +128,24 @@
       const el=document.getElementById('trend'); if(!el)return;
       try{ const t=await api('/api/app/trends/daily'+(pid?('?project_id='+pid):''));
         if(!t.length){el.innerHTML='<div class="muted">No daily data yet.</div>';return;}
-        let cum=0; const pts=t.map(r=>{cum+=(r.treated||0);return cum;});
-        const max=baseline>0?baseline:Math.max(...pts,1);
-        const W=320,H=110,P=6,n=pts.length;
-        const xs=i=>P+(n<=1?0:i*(W-2*P)/(n-1)), ys=v=>H-P-(v/max)*(H-2*P);
-        let line='',area='M '+xs(0)+' '+(H-P);
-        pts.forEach((v,i)=>{const x=xs(i),y=ys(v);line+=(i?'L':'M')+x+' '+y+' ';area+=' L '+x+' '+y;});
+        let cum=0; const pts=t.map(r=>{cum+=(r.treated||0);return {d:r.date,v:cum};});
+        const max=baseline>0?baseline:Math.max(...pts.map(p=>p.v),1);
+        const W=320,H=120,P=8,n=pts.length;
+        const xs=i=>P+(n<=1?W/2:i*(W-2*P)/(n-1)), ys=v=>H-P-(v/max)*(H-2*P-14);
+        let line='',area='M '+xs(0)+' '+(H-P), dots='';
+        pts.forEach((p,i)=>{const x=xs(i),y=ys(p.v);line+=(i?'L':'M')+x+' '+y+' ';area+=' L '+x+' '+y;
+          dots+=`<circle cx="${x}" cy="${y}" r="1.6" fill="#16A34A"/>`;});
         area+=' L '+xs(n-1)+' '+(H-P)+' Z';
-        const last=pts[pts.length-1];
+        // x-axis date ticks: first, middle, last
+        const idxs=[...new Set([0,Math.floor((n-1)/2),n-1])];
+        let ticks=''; idxs.forEach(i=>{ const dd=(pts[i].d||'').slice(5); // MM-DD
+          ticks+=`<text x="${xs(i)}" y="${H-1}" font-size="7" fill="#9aa5b1" text-anchor="${i===0?'start':i===n-1?'end':'middle'}">${dd}</text>`;});
+        const last=pts[pts.length-1].v;
         const lab=baseline>0?(Math.round(100*last/max)+'% of target'):(k(last)+' treated');
-        el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="display:block">
-          <path d="${area}" fill="#16A34A" opacity="0.18"/><path d="${line}" fill="none" stroke="#16A34A" stroke-width="2"/></svg>
+        el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
+          <path d="${area}" fill="#16A34A" opacity="0.18"/>
+          <path d="${line}" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round"/>
+          ${dots}${ticks}</svg>
           <div class="l" style="margin-top:4px">${n} day(s) · ${lab}</div>`;
       }catch(e){ el.innerHTML='<div class="muted">Trend unavailable.</div>'; }
     }
