@@ -2701,6 +2701,60 @@ async def geo_completeness(
     }
 
 
+@router.get("/geo/wards-coverage")
+async def geo_wards_coverage(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Ward polygons (GeoJSON) tagged with coverage % — public aggregate, no
+    PII. Drives the app's map page (loaded in a WebView) and any web map.
+    Geometry comes from the state's boundary project; coverage from
+    settlement_analytics for the selected project, joined by round-stable
+    wardcode."""
+    bpid_res = await db.execute(text("""
+        SELECT MIN(p2.id) FROM geo_projects p1
+        JOIN geo_projects p2 ON p2.state_name = p1.state_name
+        WHERE p1.id = :pid
+          AND EXISTS (SELECT 1 FROM wards w WHERE w.project_id = p2.id)
+    """), {"pid": pid})
+    brow = bpid_res.fetchone()
+    bpid = int(brow[0]) if brow and brow[0] is not None else pid
+    res = await db.execute(text("""
+        WITH cov AS (
+          SELECT wardcode,
+                 AVG(CASE WHEN is_visited OR COALESCE(completeness_pct, 0) >= 70
+                          THEN 1.0 ELSE 0.0 END) AS frac
+          FROM settlement_analytics
+          WHERE project_id = :pid
+          GROUP BY wardcode
+        )
+        SELECT w.ward_name, w.lga_name, w.wardcode,
+               ST_AsGeoJSON(ST_SimplifyPreserveTopology(w.geom, 0.0005)) AS geom,
+               COALESCE(cov.frac, 0)::float AS frac
+        FROM wards w
+        LEFT JOIN cov ON cov.wardcode = w.wardcode
+        WHERE w.project_id = :bpid
+    """), {"pid": pid, "bpid": bpid})
+    import json as _json
+    features = []
+    for r in res.fetchall():
+        if not r.geom:
+            continue
+        frac = float(r.frac or 0)
+        features.append({
+            "type": "Feature",
+            "geometry": _json.loads(r.geom),
+            "properties": {
+                "ward_name": r.ward_name,
+                "lga_name": r.lga_name,
+                "coverage_pct": round(100.0 * frac, 1),
+                "is_at_target": frac >= 0.7,
+            },
+        })
+    return {"type": "FeatureCollection", "project_id": pid, "features": features}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/settlement-status/download
 # ─────────────────────────────────────────────────────────────────────────────

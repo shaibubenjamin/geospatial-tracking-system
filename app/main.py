@@ -466,6 +466,7 @@ _PUBLIC_GET_PATHS: set[str] = {
     # Geo summaries (aggregate; heatmap GeoJSON and movement tracks stay gated)
     "/api/mda/geo/coverage-summary",
     "/api/mda/geo/completeness",
+    "/api/mda/geo/wards-coverage",
     "/api/mda/geo/settlement-breakdown",
     "/api/mda/geo/mop-up-shortlist",
     # Team + ward + individual aggregates
@@ -665,6 +666,14 @@ async def app_preview_page():
     same /api/app/* data, so app UI/data changes can be previewed without
     building an APK. Not the APK itself."""
     return FileResponse(os.path.join(static_dir, "app-preview.html"))
+
+
+@app.get("/app/map")
+async def app_map_page():
+    """Standalone MapLibre GL JS map page the Android app loads in a WebView
+    (via loadUrl, so it runs in a normal browsing context — WebGL + CDN work).
+    Public: uses the aggregate /api/mda/geo/wards-coverage. Reads ?project_id."""
+    return FileResponse(os.path.join(static_dir, "app-map.html"))
 
 
 @app.get("/mda-admin")
