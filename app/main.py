@@ -738,7 +738,7 @@ def _apk_landing_html(request: Request) -> str:
     base = str(request.base_url).rstrip("/")
     page_url = f"{base}/apk"
     qr = (
-        "https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=0&data="
+        "https://api.qrserver.com/v1/create-qr-code/?size=440x440&margin=0&data="
         + quote(page_url, safe="")
     )
     ver = f"{s['version_name']}"
@@ -797,12 +797,13 @@ def _apk_landing_html(request: Request) -> str:
     .card{{background:#fff;color:#0F172A;border-radius:20px;padding:32px 28px;margin-top:24px;box-shadow:0 10px 40px rgba(0,0,0,.18)}}
     .qr-row{{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;padding:8px 0 16px}}
     @media(max-width:540px){{.qr-row{{grid-template-columns:1fr;text-align:center}}}}
-    .qr-row img{{width:180px;height:180px;background:#fff;padding:6px;border-radius:10px;border:1px solid #E2E8F0}}
+    .qr-row img{{width:240px;height:240px;background:#fff;padding:8px;border-radius:12px;border:1px solid #E2E8F0}}
     .qr-row .copy h2{{margin:0 0 6px;font-size:18px;font-weight:700}}
     .qr-row .copy p{{margin:0;font-size:14px;color:#475569}}
-    .btn{{display:inline-flex;align-items:center;justify-content:center;gap:10px;background:#16A34A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700;font-size:16px;transition:background .15s;box-shadow:0 4px 12px rgba(22,163,74,.3)}}
+    .btn{{display:inline-flex;align-items:center;justify-content:center;gap:12px;background:#16A34A;color:#fff;text-decoration:none;padding:20px 48px;border-radius:14px;font-weight:800;font-size:20px;min-width:260px;transition:background .15s;box-shadow:0 6px 18px rgba(22,163,74,.35)}}
+    .btn svg{{width:24px;height:24px}}
     .btn:hover{{background:#0A5C37}}
-    .btn-row{{text-align:center;margin:24px 0 8px}}
+    .btn-row{{text-align:center;margin:28px 0 8px}}
     .meta{{font-size:12px;color:#64748B;text-align:center;margin-top:12px}}
     .meta code{{font-family:ui-monospace,'SF Mono',Menlo,monospace}}
     .steps{{padding:0;margin:16px 0 0;counter-reset:step;list-style:none}}
