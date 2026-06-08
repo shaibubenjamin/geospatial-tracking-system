@@ -58,16 +58,19 @@ fun CoverageMapScreen(projectId: Int?) {
         status = "Loading boundaries…"
         geoJson = null
         summary = null
-        summary = runCatching { ServiceLocator.api.geoSummary(projectId) }.getOrNull()
         try {
             val gj = ServiceLocator.api.wardsGeoJson(projectId).string()
             val n = Regex("\"geometry\"").findAll(gj).count()
             status = if (n == 0) "No boundaries for this project" else null
             geoJson = gj
-        } catch (_: Exception) {
-            status = "Couldn't load boundaries"
+        } catch (e: Exception) {
+            // Surface the real cause so field issues are diagnosable.
+            val detail = (e as? retrofit2.HttpException)?.let { "HTTP ${it.code()}" }
+                ?: (e.message?.take(80) ?: e.javaClass.simpleName)
+            status = "Couldn't load boundaries · $detail"
             geoJson = null
         }
+        summary = runCatching { ServiceLocator.api.geoSummary(projectId) }.getOrNull()
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -93,39 +96,43 @@ fun CoverageMapScreen(projectId: Int?) {
     }
 }
 
-/** Horizontal strip of the Geographic View headline numbers, above the map. */
+/** Wrapping grid of the Geographic View headline numbers, above the map.
+ *  Fixed 3-per-row so everything is visible without sideways scrolling. */
 @Composable
 private fun GeoSummaryStrip(s: GeoSummary) {
-    val c = s.completeness
-    val cs = s.coverageSummary
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (c != null) {
-            GeoStat("Completeness", "${c.overallCompleteness.roundToInt()}%")
-            GeoStat("Settlements visited", "${c.visitedSettlements}/${c.totalSettlements}")
+    val items = buildList {
+        s.completeness?.let {
+            add("Completeness" to "${it.overallCompleteness.roundToInt()}%")
+            add("Visited" to "${it.visitedSettlements}/${it.totalSettlements}")
         }
-        cs?.lga?.let { GeoStat("LGAs ≥70%", "${it.atTarget}/${it.total}") }
-        cs?.ward?.let { GeoStat("Wards ≥70%", "${it.atTarget}/${it.total}") }
-        cs?.settlement?.let { GeoStat("Settlements ≥70%", "${it.atTarget}/${it.total}") }
+        s.coverageSummary?.lga?.let { add("LGAs ≥70%" to "${it.atTarget}/${it.total}") }
+        s.coverageSummary?.ward?.let { add("Wards ≥70%" to "${it.atTarget}/${it.total}") }
+        s.coverageSummary?.settlement?.let { add("Settl. ≥70%" to "${it.atTarget}/${it.total}") }
+    }
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { GeoStat(it.first, it.second, Modifier.weight(1f)) }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
     }
 }
 
 @Composable
-private fun GeoStat(label: String, value: String) {
-    Card(shape = RoundedCornerShape(12.dp)) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+private fun GeoStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier, shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 value,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Text(label, style = MaterialTheme.typography.labelSmall)
+            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
     }
 }
@@ -144,10 +151,15 @@ private fun MapWebView(geoJson: String?, modifier: Modifier = Modifier) {
             }
         },
         update = { web ->
-            // A null/empty baseUrl with https resources is fine; the CDN
-            // scripts and tiles load over https.
+            // Base64-encode: loadDataWithBaseURL with utf-8 mis-parses '#' and
+            // '%' (our HTML is full of '#' hex colors), which silently blanks
+            // the page. base64 avoids that. A real https baseUrl gives the
+            // page a proper origin so the CDN scripts + WebGL work.
+            val b64 = android.util.Base64.encodeToString(
+                html.toByteArray(Charsets.UTF_8), android.util.Base64.NO_PADDING,
+            )
             web.loadDataWithBaseURL(
-                "https://localhost/", html, "text/html", "utf-8", null,
+                org.ehealth.eritas.BuildConfig.BASE_URL, b64, "text/html", "base64", null,
             )
         },
         onRelease = { it.destroy() },

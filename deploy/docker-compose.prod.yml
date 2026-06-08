@@ -18,6 +18,11 @@ services:
       # default (/app/apk). Without this the /apk route looks in the wrong
       # place and reports "APK not available yet".
       - APK_DIR=/var/app-apk
+      # Force-update floor: installs with versionCode < this get HTTP 426 on
+      # /api/app/* and the blocking "Update required" wall. 116 = the first
+      # release-signed build. Raise this to force everyone onto a newer build
+      # (publish the APK first). 0 disables the gate.
+      - MIN_VERSION_CODE=116
     volumes:
       - uploads:/app/uploads
       # Static APK host. The app-build CI pipeline uploads the signed APK to

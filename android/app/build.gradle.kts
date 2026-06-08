@@ -86,8 +86,8 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8090\"")
         }
         release {
-            // R8: strip unused Java/Kotlin bytecode + shrink resources.
-            // (Does not touch native .so libs — see abiFilters above.)
+            // R8 on: confirmed safe (Moshi/Retrofit/Tink covered by
+            // proguard-rules.pro; the blank map was a base64 bug, not R8).
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
