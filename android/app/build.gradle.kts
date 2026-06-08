@@ -146,9 +146,9 @@ dependencies {
     // Secure token storage
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    // Maps — MapLibre Native (mirrors the web app's MapLibre GL JS)
-    implementation("org.maplibre.gl:android-sdk:11.5.2")
-    implementation("org.maplibre.gl:android-plugin-annotation-v9:3.0.1")
+    // Map: rendered with MapLibre GL JS inside a WebView (same engine as the
+    // web dashboard). No native map SDK — avoids the on-device native renderer
+    // crash and keeps the APK small (no bundled .so libraries).
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

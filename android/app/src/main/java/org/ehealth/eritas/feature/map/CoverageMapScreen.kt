@@ -1,18 +1,25 @@
 package org.ehealth.eritas.feature.map
 
-import android.graphics.Color
+import android.annotation.SuppressLint
+import android.webkit.WebView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,128 +30,52 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color as ComposeColor
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import org.ehealth.eritas.core.model.GeoSummary
 import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.ui.CoverageGood
 import org.ehealth.eritas.ui.CoverageLow
 import org.ehealth.eritas.ui.CoverageMid
-import org.json.JSONArray
-import org.json.JSONObject
-import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.camera.CameraUpdateFactory
-import org.maplibre.android.geometry.LatLng
-import org.maplibre.android.geometry.LatLngBounds
-import org.maplibre.android.maps.MapLibreMap
-import kotlin.math.max
-import kotlin.math.min
-import org.maplibre.android.maps.MapView
-import org.maplibre.android.maps.Style
-import org.maplibre.android.style.expressions.Expression
-import org.maplibre.android.style.layers.FillLayer
-import org.maplibre.android.style.layers.LineLayer
-import org.maplibre.android.style.layers.PropertyFactory
-import org.maplibre.android.style.sources.GeoJsonSource
+import kotlin.math.roundToInt
 
-// Keyless raster base map (CARTO Voyager). OSM's tile server blocks app
-// clients without an approved User-Agent, leaving the map blank — CARTO's
-// public basemap tiles are reliable for this use. A background layer keeps the
-// map neutral if tiles are slow/unreachable. For a high-traffic rollout, move
-// to a tile provider with an explicit usage agreement / API key.
-private const val BASE_STYLE_JSON = """
-{
-  "version": 8,
-  "sources": {
-    "carto": {
-      "type": "raster",
-      "tiles": [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
-      ],
-      "tileSize": 256,
-      "attribution": "© OpenStreetMap © CARTO"
-    }
-  },
-  "layers": [
-    { "id": "bg", "type": "background", "paint": { "background-color": "#E8EAED" } },
-    { "id": "carto", "type": "raster", "source": "carto" }
-  ]
-}
-"""
-
-private const val WARD_SOURCE = "wards"
-
+/**
+ * Coverage map rendered with MapLibre GL JS inside a WebView — the same map
+ * engine the web dashboard uses. This avoids the MapLibre Native Android SDK,
+ * whose native renderer was crashing on-device, and keeps the APK small (no
+ * bundled native map libraries). The ward polygons + coverage come from
+ * /api/app/geo/wards (fetched, authenticated, in Kotlin) and are injected into
+ * the page; the JS colors wards by coverage and fits to the project's extent.
+ */
 @Composable
 fun CoverageMapScreen(projectId: Int?) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
     var geoJson by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<String?>("Loading boundaries…") }
+    var summary by remember { mutableStateOf<GeoSummary?>(null) }
 
-    var boundariesStatus by remember { mutableStateOf<String?>(null) }
-
-    // Fetch ward polygons + coverage for the selected project as raw GeoJSON.
     LaunchedEffect(projectId) {
-        boundariesStatus = "Loading boundaries…"
-        geoJson = try {
+        status = "Loading boundaries…"
+        geoJson = null
+        summary = null
+        summary = runCatching { ServiceLocator.api.geoSummary(projectId) }.getOrNull()
+        try {
             val gj = ServiceLocator.api.wardsGeoJson(projectId).string()
             val n = Regex("\"geometry\"").findAll(gj).count()
-            boundariesStatus = if (n == 0) "No boundaries for this project" else null
-            gj
+            status = if (n == 0) "No boundaries for this project" else null
+            geoJson = gj
         } catch (_: Exception) {
-            boundariesStatus = "Couldn't load boundaries"
-            null
+            status = "Couldn't load boundaries"
+            geoJson = null
         }
     }
 
-    // Re-style whenever the data or the map becomes available.
-    LaunchedEffect(mapRef, geoJson) {
-        val map = mapRef ?: return@LaunchedEffect
-        runCatching { applyCoverageStyle(map, geoJson) }
-    }
-
-    val mapView = remember { mutableStateOf<MapView?>(null) }
-    var mapError by remember { mutableStateOf<String?>(null) }
-
-    Box(Modifier.fillMaxSize()) {
-        if (mapError != null) {
-            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "The map couldn't load on this device. " +
-                        "Use the Coverage and My Area tabs instead.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        } else {
-            AndroidView(
-                factory = { context ->
-                    try {
-                        MapView(context).apply {
-                            onCreate(null)
-                            mapView.value = this
-                            getMapAsync { map ->
-                                runCatching {
-                                    map.cameraPosition = CameraPosition.Builder()
-                                        .target(LatLng(13.06, 5.24)) // Sokoto default
-                                        .zoom(7.0)
-                                        .build()
-                                    mapRef = map
-                                }.onFailure { mapError = it.message ?: "map error" }
-                            }
-                        }
-                    } catch (t: Throwable) {
-                        mapError = t.message ?: "map init failed"
-                        android.view.View(context)
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
+    Column(Modifier.fillMaxSize()) {
+        summary?.let { GeoSummaryStrip(it) }
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            MapWebView(geoJson = geoJson, modifier = Modifier.fillMaxSize())
             Legend(Modifier.align(Alignment.BottomStart).padding(12.dp))
-            boundariesStatus?.let { msg ->
+            status?.let { msg ->
                 Surface(
                     Modifier.align(Alignment.TopCenter).padding(12.dp),
                     shape = RoundedCornerShape(8.dp),
@@ -160,95 +91,118 @@ fun CoverageMapScreen(projectId: Int?) {
             }
         }
     }
+}
 
-    // Forward Compose lifecycle to the MapView (required by MapLibre).
-    DisposableEffect(lifecycleOwner, mapView.value) {
-        val mv = mapView.value
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mv?.onStart()
-                Lifecycle.Event.ON_RESUME -> mv?.onResume()
-                Lifecycle.Event.ON_PAUSE -> mv?.onPause()
-                Lifecycle.Event.ON_STOP -> mv?.onStop()
-                Lifecycle.Event.ON_DESTROY -> mv?.onDestroy()
-                else -> {}
-            }
+/** Horizontal strip of the Geographic View headline numbers, above the map. */
+@Composable
+private fun GeoSummaryStrip(s: GeoSummary) {
+    val c = s.completeness
+    val cs = s.coverageSummary
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (c != null) {
+            GeoStat("Completeness", "${c.overallCompleteness.roundToInt()}%")
+            GeoStat("Settlements visited", "${c.visitedSettlements}/${c.totalSettlements}")
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            mv?.onDestroy()
+        cs?.lga?.let { GeoStat("LGAs ≥70%", "${it.atTarget}/${it.total}") }
+        cs?.ward?.let { GeoStat("Wards ≥70%", "${it.atTarget}/${it.total}") }
+        cs?.settlement?.let { GeoStat("Settlements ≥70%", "${it.atTarget}/${it.total}") }
+    }
+}
+
+@Composable
+private fun GeoStat(label: String, value: String) {
+    Card(shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(label, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
-private fun applyCoverageStyle(map: MapLibreMap, geoJson: String?) {
-    val builder = Style.Builder().fromJson(BASE_STYLE_JSON)
-    if (geoJson != null) {
-        builder.withSource(GeoJsonSource(WARD_SOURCE, geoJson))
-        val coverageColor = Expression.interpolate(
-            Expression.linear(),
-            Expression.get("coverage_pct"),
-            Expression.stop(0, Expression.color(Color.parseColor("#C62828"))),
-            Expression.stop(50, Expression.color(Color.parseColor("#F9A825"))),
-            Expression.stop(70, Expression.color(Color.parseColor("#66BB6A"))),
-            Expression.stop(100, Expression.color(Color.parseColor("#2E7D32"))),
-        )
-        builder.withLayer(
-            FillLayer("wards-fill", WARD_SOURCE).withProperties(
-                PropertyFactory.fillColor(coverageColor),
-                PropertyFactory.fillOpacity(0.55f),
-            )
-        )
-        builder.withLayer(
-            LineLayer("wards-line", WARD_SOURCE).withProperties(
-                PropertyFactory.lineColor(Color.parseColor("#37474F")),
-                PropertyFactory.lineWidth(0.8f),
-            )
-        )
-    }
-    map.setStyle(builder) {
-        // Once the style (and the project's boundary source) is loaded, fit the
-        // camera to the actual extent of the selected project's boundaries —
-        // so the map works for ANY state/round, not a hardcoded location.
-        if (geoJson != null) {
-            boundsFromGeoJson(geoJson)?.let { bounds ->
-                runCatching {
-                    map.easeCamera(CameraUpdateFactory.newLatLngBounds(bounds, 48), 600)
-                }
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun MapWebView(geoJson: String?, modifier: Modifier = Modifier) {
+    val html = remember(geoJson) { buildMapHtml(geoJson) }
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                setBackgroundColor(android.graphics.Color.parseColor("#E8EAED"))
             }
-        }
-    }
+        },
+        update = { web ->
+            // A null/empty baseUrl with https resources is fine; the CDN
+            // scripts and tiles load over https.
+            web.loadDataWithBaseURL(
+                "https://localhost/", html, "text/html", "utf-8", null,
+            )
+        },
+        onRelease = { it.destroy() },
+    )
 }
 
-/** Compute the lat/lng extent of every polygon in a GeoJSON FeatureCollection
- *  so the camera can frame the selected project's boundaries. */
-private fun boundsFromGeoJson(geoJson: String): LatLngBounds? {
-    return try {
-        val features = JSONObject(geoJson).optJSONArray("features") ?: return null
-        var minLat = 90.0; var maxLat = -90.0; var minLon = 180.0; var maxLon = -180.0
-        var found = false
-
-        fun walk(arr: JSONArray) {
-            if (arr.length() == 2 && arr.opt(0) is Number && arr.opt(1) is Number) {
-                val lon = arr.getDouble(0); val lat = arr.getDouble(1)
-                minLat = min(minLat, lat); maxLat = max(maxLat, lat)
-                minLon = min(minLon, lon); maxLon = max(maxLon, lon)
-                found = true
-                return
-            }
-            for (i in 0 until arr.length()) (arr.opt(i) as? JSONArray)?.let { walk(it) }
-        }
-
-        for (i in 0 until features.length()) {
-            val coords = features.getJSONObject(i)
-                .optJSONObject("geometry")?.optJSONArray("coordinates") ?: continue
-            walk(coords)
-        }
-        if (found) LatLngBounds.from(maxLat, maxLon, minLat, minLon) else null
-    } catch (_: Exception) {
-        null
-    }
+private fun buildMapHtml(geoJson: String?): String {
+    val data = geoJson?.takeIf { it.isNotBlank() } ?: "null"
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <style>html,body,#map{margin:0;padding:0;height:100%;width:100%}</style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var data = $data;
+    var map = new maplibregl.Map({
+      container: 'map',
+      style: {
+        version: 8,
+        sources: { carto: { type: 'raster',
+          tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                  'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+          tileSize: 256, attribution: '© OpenStreetMap © CARTO' } },
+        layers: [
+          { id: 'bg', type: 'background', paint: { 'background-color': '#E8EAED' } },
+          { id: 'carto', type: 'raster', source: 'carto' }
+        ]
+      },
+      center: [5.24, 13.06], zoom: 6
+    });
+    map.on('load', function () {
+      if (data && data.features && data.features.length) {
+        map.addSource('wards', { type: 'geojson', data: data });
+        map.addLayer({ id: 'wards-fill', type: 'fill', source: 'wards', paint: {
+          'fill-color': ['interpolate', ['linear'], ['get', 'coverage_pct'],
+            0, '#C62828', 50, '#F9A825', 70, '#66BB6A', 100, '#2E7D32'],
+          'fill-opacity': 0.55 } });
+        map.addLayer({ id: 'wards-line', type: 'line', source: 'wards', paint: {
+          'line-color': '#37474F', 'line-width': 0.8 } });
+        var b = new maplibregl.LngLatBounds();
+        function ext(c){ if(typeof c[0]==='number'){ b.extend(c);} else { c.forEach(ext);} }
+        data.features.forEach(function(f){ if(f.geometry) ext(f.geometry.coordinates); });
+        if(!b.isEmpty()) map.fitBounds(b, { padding: 28, duration: 0 });
+      }
+    });
+  </script>
+</body>
+</html>
+"""
 }
 
 @Composable
@@ -272,14 +226,9 @@ private fun Legend(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun LegendChip(color: ComposeColor, label: String) {
+private fun LegendChip(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .size(12.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(color)
-        )
+        Box(Modifier.size(12.dp).clip(RoundedCornerShape(2.dp)).background(color))
         Spacer(Modifier.size(4.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
