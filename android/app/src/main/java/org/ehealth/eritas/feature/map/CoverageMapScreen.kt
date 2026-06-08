@@ -42,8 +42,8 @@ import kotlin.math.roundToInt
  * Map tab: a stats strip (Geographic-View summary, fetched in Kotlin) above a
  * WebView that LOADS the server-rendered /app/map page (MapLibre GL JS). Using
  * loadUrl on a real page — instead of injecting HTML — runs in a normal
- * browsing context so WebGL + CDN scripts work (the same reason the web map
- * and /app-preview render correctly).
+ * browsing context so WebGL + CDN scripts work (the same reason the web
+ * dashboard map renders correctly).
  */
 @Composable
 fun CoverageMapScreen(projectId: Int?) {
@@ -84,7 +84,11 @@ private fun MapWebView(projectId: Int?, modifier: Modifier = Modifier) {
                 setBackgroundColor(android.graphics.Color.parseColor("#E8EAED"))
             }
         },
-        update = { web -> web.loadUrl(url) },
+        // update runs on EVERY recomposition; loading the URL unconditionally
+        // reloaded the WebView mid-map-init each time the summary cards arrived,
+        // which can leave MapLibre's WebGL canvas blank. Only (re)load when the
+        // URL actually changes (i.e. project switch).
+        update = { web -> if (web.tag != url) { web.tag = url; web.loadUrl(url) } },
         onRelease = { it.destroy() },
     )
 }

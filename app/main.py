@@ -407,23 +407,11 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Content-Security-Policy", _CSP_DEFAULT)
-    # The app map page is embedded same-origin by the preview (and is a benign
-    # public map), so allow same-origin framing for it specifically. Everything
-    # else keeps DENY / frame-ancestors 'none'.
-    if request.url.path in ("/app/map", "/app-preview"):
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
-        # Allow same-origin framing AND blob: web workers — MapLibre GL JS
-        # builds GeoJSON vector layers in a blob: worker; without worker-src
-        # the worker is blocked, so only the raster basemap rendered and the
-        # coverage layers stayed blank. Scoped to the map pages only; the
-        # global CSP (web dashboard etc.) is unchanged.
-        csp = _CSP_DEFAULT.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
-        csp = csp.replace(
-            "script-src 'self' 'unsafe-inline'",
-            "script-src 'self' 'unsafe-inline' blob:",
-        )
-        csp += " worker-src 'self' blob:; child-src 'self' blob:;"
-        response.headers["Content-Security-Policy"] = csp
+    # NOTE: the blob: web-worker allowance MapLibre needs now lives in the
+    # global _CSP_DEFAULT (so /mda and every map page get it). /app/map is
+    # loaded by the Android WebView via loadUrl (not framed), so it no longer
+    # needs a per-page frame-ancestors carve-out. The browser preview that used
+    # to embed it has been removed.
     # HTML pages (login, home, dashboard, admin) are session-sensitive and must
     # never be cached by browsers or intermediaries — otherwise a logged-out
     # user could see a previous user's authenticated render from the bfcache.
@@ -687,14 +675,6 @@ async def mda_dashboard():
     return FileResponse(os.path.join(static_dir, "mda.html"))
 
 
-@app.get("/app-preview")
-async def app_preview_page():
-    """Browser mirror of the Android app's screens — logs in and renders the
-    same /api/app/* data, so app UI/data changes can be previewed without
-    building an APK. Not the APK itself."""
-    return FileResponse(os.path.join(static_dir, "app-preview.html"))
-
-
 @app.get("/app/map")
 async def app_map_page():
     """Standalone MapLibre GL JS map page the Android app loads in a WebView
@@ -711,6 +691,31 @@ async def mda_admin_page():
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "geospatial-tracker"}
+
+
+# ── Temporary client-side diagnostic capture (debug only) ───────────────────
+# The map page POSTs its diagnostic lines here so the failure cause can be read
+# server-side without relying on device screenshots. Public, in-memory, capped.
+# REMOVE once the map rendering issue is resolved.
+_DIAG: list[str] = []
+
+
+@app.post("/_diag")
+async def diag_post(request: Request):
+    try:
+        body = await request.json()
+        items = body if isinstance(body, list) else [str(body)]
+        for it in items:
+            _DIAG.append(str(it)[:300])
+        del _DIAG[:-120]
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.get("/_diag")
+async def diag_get():
+    return {"lines": _DIAG[-120:]}
 
 
 # ── Android companion app: public version check + static APK host ───────────

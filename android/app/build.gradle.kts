@@ -86,8 +86,10 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8090\"")
         }
         release {
-            // R8 on: confirmed safe (Moshi/Retrofit/Tink covered by
-            // proguard-rules.pro; the blank map was a base64 bug, not R8).
+            // R8 re-enabled: ruling it out confirmed it is NOT the cause of the
+            // WebView map issue (the map page is a remote URL — R8 only shrinks
+            // the app's own Kotlin/Java and never touches the page's JS), so the
+            // normal release shrink/obfuscate is back on.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
