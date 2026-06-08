@@ -12,13 +12,14 @@
     .note{position:fixed;top:8px;left:8px;font-size:11px;color:#9aa5b1}
     .phone{width:100%;max-width:412px;height:860px;background:#0f1419;border-radius:28px;overflow:hidden;
            display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.5);color:#e8eaed}
-    .bar{background:#11161c;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
-    .bar .title{font-weight:700;font-size:16px}
+    .bar{background:#11161c;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222;gap:8px}
+    .bar .title{font-weight:700;font-size:15px;white-space:nowrap}
+    .bar select{background:#11161c;color:#e8eaed;border:1px solid #2b3540;border-radius:8px;padding:5px 8px;font-size:12px;max-width:170px}
     .body{flex:1;overflow-y:auto;padding:12px}
     .nav{display:flex;background:#11161c;border-top:1px solid #222}
-    .nav button{flex:1;background:none;border:0;color:#8a94a0;padding:10px 4px;font-size:11px;cursor:pointer}
+    .nav button{flex:1;background:none;border:0;color:#8a94a0;padding:9px 2px;font-size:10px;cursor:pointer}
     .nav button.active{color:#16A34A;font-weight:700}
-    .nav .ic{display:block;font-size:18px;margin-bottom:2px}
+    .nav .ic{display:block;font-size:17px;margin-bottom:2px}
     .hero{background:#16A34A;border-radius:16px;padding:18px;margin-bottom:12px;color:#fff}
     .hero .pct{font-size:40px;font-weight:800;line-height:1}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -31,29 +32,31 @@
     .barpct>i{display:block;height:100%}
     .login{padding:24px}
     .login input{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #2b3540;background:#11161c;color:#fff}
-    .login button{width:100%;padding:12px;margin-top:8px;border:0;border-radius:10px;background:#16A34A;color:#fff;font-weight:700;cursor:pointer}
+    .login button,.bigbtn{width:100%;padding:12px;margin-top:8px;border:0;border-radius:10px;background:#16A34A;color:#fff;font-weight:700;cursor:pointer}
     #map{width:100%;height:100%}
     .gstats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
     .err{color:#f87171;font-size:13px;padding:8px}
     .muted{color:#9aa5b1;font-size:13px;padding:8px}
     .back{background:none;border:0;color:#16A34A;font-size:14px;cursor:pointer;margin-bottom:8px}
+    .areacard{border-radius:16px;padding:18px;margin-bottom:12px;color:#fff}
   </style>
 </head>
 <body>
   <div class="note">App preview (browser mirror) · uses /api/app/* · not the APK</div>
   <div class="phone">
-    <div class="bar"><span class="title" id="barTitle">ERITAS MDA Coverage</span><span id="proj" style="font-size:12px;color:#9aa5b1"></span></div>
+    <div class="bar"><span class="title">ERITAS MDA</span><select id="projSel" onchange="onProj()"></select></div>
     <div class="body" id="body"></div>
     <div class="nav" id="nav" style="display:none">
       <button data-t="dash" class="active"><span class="ic">▦</span>Dashboard</button>
       <button data-t="cov"><span class="ic">▥</span>Coverage</button>
       <button data-t="map"><span class="ic">◔</span>Map</button>
+      <button data-t="area"><span class="ic">◎</span>My Area</button>
     </div>
   </div>
   <script>
-    const VC = 999999; // preview pretends to be current so the gate never blocks
+    const VC = 999999;
     let token = sessionStorage.getItem('preview_token');
-    let pid = null, tab = 'dash';
+    let pid = null, tab = 'dash', projects = [];
 
     async function api(path){
       const r = await fetch(path, {headers:{'Authorization':'Bearer '+token,'X-App-Version-Code':VC}});
@@ -65,6 +68,7 @@
 
     function loginView(msg){
       document.getElementById('nav').style.display='none';
+      document.getElementById('projSel').innerHTML='';
       document.getElementById('body').innerHTML =
         `<div class="login"><h3 style="margin-bottom:12px">Sign in</h3>
          ${msg?`<div class="err">${msg}</div>`:''}
@@ -81,36 +85,40 @@
     }
     async function start(){
       document.getElementById('nav').style.display='flex';
-      try{ const ps=await api('/api/app/projects');
-        const active=ps.find(x=>x.is_active)||ps[0]; pid=active?active.id:null;
-        document.getElementById('proj').textContent = active?((active.state_name||'')+' — R'+(active.round_number||'')):'';
+      try{ projects=await api('/api/app/projects');
+        const sel=document.getElementById('projSel');
+        sel.innerHTML=projects.map(p=>`<option value="${p.id}">${(p.state_name||p.name)} — R${p.round_number||''}${p.is_active?' (active)':''}</option>`).join('');
+        const active=projects.find(x=>x.is_active)||projects[0]; pid=active?active.id:null;
+        if(pid) sel.value=pid;
       }catch(e){ if(String(e).includes('401')){token=null;loginView('Session expired');return;} }
       render();
     }
+    function onProj(){ pid=parseInt(document.getElementById('projSel').value)||null; render(); }
     document.getElementById('nav').addEventListener('click',e=>{
       const b=e.target.closest('button'); if(!b)return;
       tab=b.dataset.t; [...document.querySelectorAll('.nav button')].forEach(x=>x.classList.toggle('active',x===b)); render();
     });
 
     async function render(){
-      const body=document.getElementById('body');
       const q = pid?('?project_id='+pid):'';
-      if(tab==='dash'){
-        body.innerHTML='<div class="muted">Loading…</div>';
-        try{ const d=await api('/api/app/overview'+q);
-          const day=d.current_campaign_day!=null?(d.current_campaign_day+(d.planned_duration_days?(' / '+d.planned_duration_days):'')):'—';
-          body.innerHTML=`<div class="hero"><div style="font-size:12px;opacity:.9">Administrative coverage</div>
-            <div class="pct">${Math.round(d.coverage_pct||0)}%</div></div>
-            <div class="grid">
-            ${[['Children treated',k(d.total_treated||0)],['Forms',k(d.total_forms||0)],['Teams active',k(d.teams_active||0)],
-               ['LGAs covered',d.lgas_covered||0],['Campaign day',day],['QC flags',k(d.total_qc_flags||0)],
-               ['Error rate',Math.round(d.error_rate_pct||0)+'%'],['Refusals',k(d.refusals||0)]]
-              .map(s=>`<div class="card"><div class="v">${s[1]}</div><div class="l">${s[0]}</div></div>`).join('')}
-            </div>`;
-        }catch(e){body.innerHTML=`<div class="err">Overview: ${e}</div>`;}
-      }
+      if(tab==='dash'){ renderDash(q); }
       else if(tab==='cov'){ renderLgas(); }
       else if(tab==='map'){ renderMap(); }
+      else if(tab==='area'){ renderArea(); }
+    }
+    async function renderDash(q){
+      const body=document.getElementById('body'); body.innerHTML='<div class="muted">Loading…</div>';
+      try{ const d=await api('/api/app/overview'+q);
+        const day=d.current_campaign_day!=null?(d.current_campaign_day+(d.planned_duration_days?(' / '+d.planned_duration_days):'')):'—';
+        body.innerHTML=`<div class="hero"><div style="font-size:12px;opacity:.9">Administrative coverage</div>
+          <div class="pct">${Math.round(d.coverage_pct||0)}%</div></div>
+          <div class="grid">
+          ${[['Children treated',k(d.total_treated||0)],['Forms',k(d.total_forms||0)],['Teams active',k(d.teams_active||0)],
+             ['LGAs covered',d.lgas_covered||0],['Campaign day',day],['QC flags',k(d.total_qc_flags||0)],
+             ['Error rate',Math.round(d.error_rate_pct||0)+'%'],['Refusals',k(d.refusals||0)]]
+            .map(s=>`<div class="card"><div class="v">${s[1]}</div><div class="l">${s[0]}</div></div>`).join('')}
+          </div>`;
+      }catch(e){body.innerHTML=`<div class="err">Overview: ${e}</div>`;}
     }
     async function renderLgas(){
       const body=document.getElementById('body'); body.innerHTML='<div class="muted">Loading…</div>';
@@ -150,6 +158,32 @@
         const b=new maplibregl.LngLatBounds(); const ext=c=>{if(typeof c[0]==='number')b.extend(c);else c.forEach(ext);};
         data.features.forEach(f=>f.geometry&&ext(f.geometry.coordinates)); if(!b.isEmpty())map.fitBounds(b,{padding:20,duration:0});
       }});
+    }
+    function renderArea(){
+      const body=document.getElementById('body');
+      body.innerHTML=`<div style="font-weight:700;margin-bottom:6px">Where am I?</div>
+        <div class="muted">Uses your browser location to find your settlement's coverage and the nearest place left to cover.</div>
+        <button class="bigbtn" onclick="locate()">Use my location</button><div id="area"></div>`;
+    }
+    function locate(){
+      const out=document.getElementById('area');
+      if(!navigator.geolocation){out.innerHTML='<div class="err">Geolocation not available.</div>';return;}
+      out.innerHTML='<div class="muted">Getting GPS…</div>';
+      navigator.geolocation.getCurrentPosition(async pos=>{
+        try{ const r=await api(`/api/app/near?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`+(pid?('&project_id='+pid):''));
+          const cur=r.current, nx=r.nearest_uncovered;
+          let h='';
+          if(cur){ const bg=cur.is_covered?'#2E7D32':'#C62828';
+            h+=`<div class="areacard" style="background:${bg};margin-top:12px"><div style="font-size:12px;opacity:.9">You are in</div>
+              <div style="font-size:22px;font-weight:800">${cur.settlement_name||'Unknown'}</div>
+              <div>${cur.ward_name||'—'} · ${cur.lga_name||'—'}</div>
+              <div style="margin-top:6px;font-weight:700">${cur.is_covered?'Covered':'Not covered'} · ${Math.round(cur.completeness_pct)}%</div></div>`;
+          } else { h+='<div class="card" style="margin-top:12px">Outside any mapped settlement for this campaign.</div>'; }
+          if(nx){ h+=`<div class="card" style="margin-top:10px"><div class="l">Nearest settlement left to cover</div>
+            <div style="font-weight:700">${nx.settlement_name||'Unknown'}</div><div class="l">${nx.ward_name||'—'} · ${Math.round(nx.distance_m)} m away · ${Math.round(nx.completeness_pct)}%</div></div>`; }
+          out.innerHTML=h;
+        }catch(e){ out.innerHTML=`<div class="err">Lookup failed: ${e}</div>`; }
+      }, err=>{ out.innerHTML=`<div class="err">Location denied/failed: ${err.message}</div>`; }, {enableHighAccuracy:true,timeout:10000});
     }
 
     if(token) start(); else loginView();

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <style>
+    html,body,#map{margin:0;padding:0;height:100%;width:100%}
+    #msg{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:5;
+         background:#fff;border-radius:8px;padding:6px 12px;font:13px -apple-system,sans-serif;
+         box-shadow:0 2px 8px rgba(0,0,0,.2)}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="msg">Loading boundaries…</div>
+  <script>
+    function qp(n){ return new URLSearchParams(location.search).get(n); }
+    var pid = qp('project_id');
+    var msg = document.getElementById('msg');
+    var map = new maplibregl.Map({
+      container: 'map',
+      style: { version: 8,
+        sources: { carto: { type: 'raster',
+          tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                  'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+          tileSize: 256, attribution: '© OpenStreetMap © CARTO' } },
+        layers: [ { id:'bg', type:'background', paint:{'background-color':'#E8EAED'} },
+                  { id:'carto', type:'raster', source:'carto' } ] },
+      center: [8.5, 10.0], zoom: 5
+    });
+    map.on('load', function () {
+      var url = '/api/mda/geo/wards-coverage' + (pid ? ('?project_id=' + encodeURIComponent(pid)) : '');
+      fetch(url).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(function(data){
+          if (!data.features || !data.features.length) { msg.textContent='No boundaries for this campaign'; return; }
+          map.addSource('wards', { type:'geojson', data:data });
+          map.addLayer({ id:'wf', type:'fill', source:'wards', paint:{
+            'fill-color':['interpolate',['linear'],['get','coverage_pct'],0,'#C62828',50,'#F9A825',70,'#66BB6A',100,'#2E7D32'],
+            'fill-opacity':0.55 } });
+          map.addLayer({ id:'wl', type:'line', source:'wards', paint:{ 'line-color':'#37474F','line-width':0.7 } });
+          var b=new maplibregl.LngLatBounds(); function ext(c){ if(typeof c[0]==='number')b.extend(c); else c.forEach(ext); }
+          data.features.forEach(function(f){ if(f.geometry) ext(f.geometry.coordinates); });
+          if(!b.isEmpty()) map.fitBounds(b,{padding:24,duration:0});
+          msg.style.display='none';
+        })
+        .catch(function(e){ msg.textContent='Couldn’t load boundaries · '+e.message; });
+    });
+  </script>
+</body>
+</html>
