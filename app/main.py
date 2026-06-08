@@ -768,10 +768,10 @@ def _apk_landing_html(request: Request) -> str:
       <div class="btn-row">
         <a class="btn" href="/download" download="{s['download_name']}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download v{ver}
+          Download v{ver} (build {s['version_code']})
         </a>
         <div class="meta">
-          <strong>Version {ver}</strong>{size_txt}<br/>
+          <strong>Version {ver} · build {s['version_code']}</strong>{size_txt}<br/>
           Saves as <code>{s['download_name']}</code> · Android 7.0+
         </div>
       </div>
