@@ -81,30 +81,47 @@ fun CoverageMapScreen(projectId: Int?) {
     // Re-style whenever the data or the map becomes available.
     LaunchedEffect(mapRef, geoJson) {
         val map = mapRef ?: return@LaunchedEffect
-        applyCoverageStyle(map, geoJson)
+        runCatching { applyCoverageStyle(map, geoJson) }
     }
 
     val mapView = remember { mutableStateOf<MapView?>(null) }
+    var mapError by remember { mutableStateOf<String?>(null) }
 
     Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = { context ->
-                MapView(context).apply {
-                    onCreate(null)
-                    mapView.value = this
-                    getMapAsync { map ->
-                        map.cameraPosition = CameraPosition.Builder()
-                            .target(LatLng(13.06, 5.24)) // Sokoto default
-                            .zoom(7.0)
-                            .build()
-                        mapRef = map
+        if (mapError != null) {
+            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    "The map couldn't load on this device. " +
+                        "Use the Coverage and My Area tabs instead.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        } else {
+            AndroidView(
+                factory = { context ->
+                    try {
+                        MapView(context).apply {
+                            onCreate(null)
+                            mapView.value = this
+                            getMapAsync { map ->
+                                runCatching {
+                                    map.cameraPosition = CameraPosition.Builder()
+                                        .target(LatLng(13.06, 5.24)) // Sokoto default
+                                        .zoom(7.0)
+                                        .build()
+                                    mapRef = map
+                                }.onFailure { mapError = it.message ?: "map error" }
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        mapError = t.message ?: "map init failed"
+                        android.view.View(context)
                     }
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        Legend(Modifier.align(Alignment.BottomStart).padding(12.dp))
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            Legend(Modifier.align(Alignment.BottomStart).padding(12.dp))
+        }
     }
 
     // Forward Compose lifecycle to the MapView (required by MapLibre).
