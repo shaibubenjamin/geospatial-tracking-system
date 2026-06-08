@@ -404,9 +404,18 @@ async def add_security_headers(request, call_next):
     # else keeps DENY / frame-ancestors 'none'.
     if request.url.path in ("/app/map", "/app-preview"):
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
-        response.headers["Content-Security-Policy"] = _CSP_DEFAULT.replace(
-            "frame-ancestors 'none'", "frame-ancestors 'self'"
+        # Allow same-origin framing AND blob: web workers — MapLibre GL JS
+        # builds GeoJSON vector layers in a blob: worker; without worker-src
+        # the worker is blocked, so only the raster basemap rendered and the
+        # coverage layers stayed blank. Scoped to the map pages only; the
+        # global CSP (web dashboard etc.) is unchanged.
+        csp = _CSP_DEFAULT.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+        csp = csp.replace(
+            "script-src 'self' 'unsafe-inline'",
+            "script-src 'self' 'unsafe-inline' blob:",
         )
+        csp += " worker-src 'self' blob:; child-src 'self' blob:;"
+        response.headers["Content-Security-Policy"] = csp
     # HTML pages (login, home, dashboard, admin) are session-sensitive and must
     # never be cached by browsers or intermediaries — otherwise a logged-out
     # user could see a previous user's authenticated render from the bfcache.

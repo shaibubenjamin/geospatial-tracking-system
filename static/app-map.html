@@ -39,7 +39,8 @@
     function setStatus(){ stEl.textContent='LGA '+st.lga+' · Ward '+st.ward+' · Settl '+st.sett; }
     function get(u){ return fetch(u,{headers:{'Authorization':'Bearer '+token,'X-App-Version-Code':'999999'}})
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
-    var covColor=['interpolate',['linear'],['to-number',['get','coverage_pct'],0],0,'#dc2626',40,'#f59e0b',70,'#66bb6a',100,'#16a34a'];
+    // step (not interpolate-on-color) — matches the web's proven expression.
+    var covColor=['step',['to-number',['get','coverage_pct'],0],'#dc2626',40,'#f59e0b',70,'#16a34a'];
 
     var map=new maplibregl.Map({container:'map',
       style:{version:8,
