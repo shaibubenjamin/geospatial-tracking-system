@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base theme; the Compose UI applies its own Material3 color scheme. A
+         Material3 parent here keeps the splash/system bars consistent. -->
+    <style name="Theme.Eritas" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
