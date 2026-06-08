@@ -8,78 +8,105 @@
   <style>
     html,body,#map{margin:0;padding:0;height:100%;width:100%;font-family:-apple-system,sans-serif}
     .pill{position:absolute;z-index:5;background:#fff;border-radius:8px;padding:5px 10px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-    #status{top:8px;left:50%;transform:translateX(-50%);max-width:92%}
-    #legend{bottom:8px;left:8px;display:flex;gap:9px;align-items:center}
-    #legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:3px;vertical-align:-1px}
     #toggles{top:8px;right:8px;display:flex;flex-direction:column;gap:3px}
     #toggles label{font-size:11px;display:block}
+    #log{bottom:8px;left:8px;right:8px;max-height:38%;overflow:auto;background:rgba(0,0,0,.82);color:#d1fae5;
+         border-radius:8px;padding:8px 10px;font-family:ui-monospace,monospace;font-size:10px;line-height:1.45;z-index:6;white-space:pre-wrap}
+    .err{color:#fca5a5}
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div id="status" class="pill">Loading…</div>
   <div id="toggles" class="pill">
     <label><input type="checkbox" id="t-lga" checked> LGA</label>
     <label><input type="checkbox" id="t-ward" checked> Ward</label>
     <label><input type="checkbox" id="t-sett"> Settlement</label>
   </div>
-  <div id="legend" class="pill" style="display:none">
-    <span><i style="background:#dc2626"></i>Not covered</span>
-    <span><i style="background:#f59e0b"></i>Partial</span>
-    <span><i style="background:#16a34a"></i>≥70%</span>
-  </div>
+  <div id="log"></div>
   <script>
+    // ── Diagnostics: surface EVERY failure mode on screen AND ship the lines
+    // to the server (/_diag) so the WebView failure is readable off-device —
+    // the on-screen box alone needs someone holding the phone. Batched +
+    // debounced so it never floods. REMOVE with the /_diag endpoint once the
+    // WebView map-render issue is resolved.
+    var logEl=document.getElementById('log');
+    var _diagBuf=[], _diagTimer=null;
+    function _flushDiag(){ _diagTimer=null; if(!_diagBuf.length) return;
+      var batch=_diagBuf.splice(0,_diagBuf.length);
+      try{ fetch('/_diag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(batch)}); }catch(e){} }
+    function log(m,err){ var d=new Date(); var ts=('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2);
+      var line=document.createElement('div');
+      if(err)line.className='err'; line.textContent=ts+' '+m;
+      logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight;
+      _diagBuf.push((err?'[ERR] ':'')+ts+' '+m);
+      if(!_diagTimer) _diagTimer=setTimeout(_flushDiag,600); }
+    document.addEventListener('securitypolicyviolation',function(e){ log('CSP BLOCK: '+e.violatedDirective+' → '+(e.blockedURI||'').slice(0,40),true); });
+    window.onerror=function(m){ log('JS ERROR: '+m,true); };
+    window.addEventListener('unhandledrejection',function(e){ log('PROMISE REJECT: '+((e.reason&&e.reason.message)||e.reason),true); });
+    log('MapLibre '+(window.maplibregl?maplibregl.version:'NOT LOADED'));
+
     function qp(n){ return new URLSearchParams(location.search).get(n); }
-    // Token comes from the URL fragment (#token=…) so the data stays gated —
-    // the page itself is public HTML but carries no data without a valid token.
     var token=(location.hash.match(/token=([^&]+)/)||[])[1]||'';
     var pid=qp('project_id'), q=pid?('?project_id='+encodeURIComponent(pid)):'';
-    var st=state={lga:'…',ward:'…',sett:'off'};
-    var stEl=document.getElementById('status');
-    function setStatus(){ stEl.textContent='LGA '+st.lga+' · Ward '+st.ward+' · Settl '+st.sett; }
+    log('pid='+(pid||'(active)')+'  token='+(token?('yes('+token.length+')'):'NONE'));
     function get(u){ return fetch(u,{headers:{'Authorization':'Bearer '+token,'X-App-Version-Code':'999999'}})
-      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
-    // step (not interpolate-on-color) — matches the web's proven expression.
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' on '+u); return r.json(); }); }
     var covColor=['step',['to-number',['get','coverage_pct'],0],'#dc2626',40,'#f59e0b',70,'#16a34a'];
 
-    var map=new maplibregl.Map({container:'map',
-      style:{version:8,
-        sources:{carto:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap © CARTO'}},
-        layers:[{id:'bg',type:'background',paint:{'background-color':'#E8EAED'}},{id:'carto',type:'raster',source:'carto'}]},
-      center:[8.5,10.0],zoom:5});
+    var map;
+    try {
+      map=new maplibregl.Map({container:'map',
+        style:{version:8,
+          sources:{carto:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OSM © CARTO'}},
+          layers:[{id:'bg',type:'background',paint:{'background-color':'#E8EAED'}},{id:'carto',type:'raster',source:'carto'}]},
+        center:[5.24,13.05],zoom:7});
+    } catch(e){ log('MAP CTOR FAILED: '+e.message,true); }
+    map.on('error',function(e){ log('MAP ERROR: '+((e&&e.error&&e.error.message)||'unknown'),true); });
+
+    var idleChecked=false;
+    map.on('idle',function(){
+      if(idleChecked) return; if(!map.getLayer('lga-fill')) return; idleChecked=true;
+      try{
+        var nL=map.querySourceFeatures('lga').length;
+        var nW=map.querySourceFeatures('ward').length;
+        log('RENDERED features in view → lga:'+nL+' ward:'+nW);
+        if(nL===0) log('→ source has 0 parsed features (worker/parse problem)',true);
+        else log('→ source parsed OK; if no colour shows it is a PAINT problem',true);
+      }catch(e){ log('querySourceFeatures failed: '+e.message,true); }
+    });
 
     var settLoaded=false;
     map.on('load',function(){
-      ['lga','ward','sett'].forEach(function(s){ map.addSource(s,{type:'geojson',data:{type:'FeatureCollection',features:[]}}); });
-      map.addLayer({id:'sett-fill',type:'fill',source:'sett',layout:{visibility:'none'},paint:{'fill-color':['case',['get','is_visited'],'#16a34a','#dc2626'],'fill-opacity':0.5}});
-      map.addLayer({id:'ward-fill',type:'fill',source:'ward',paint:{'fill-color':covColor,'fill-opacity':0.35}});
-      map.addLayer({id:'ward-line',type:'line',source:'ward',paint:{'line-color':'#78350f','line-width':0.8,'line-opacity':0.8}});
-      map.addLayer({id:'lga-fill',type:'fill',source:'lga',paint:{'fill-color':covColor,'fill-opacity':0.45}});
-      map.addLayer({id:'lga-line',type:'line',source:'lga',paint:{'line-color':'#111827','line-width':2,'line-opacity':0.9}});
+      log('style loaded');
+      try{
+        ['lga','ward','sett'].forEach(function(s){ map.addSource(s,{type:'geojson',data:{type:'FeatureCollection',features:[]}}); });
+        map.addLayer({id:'sett-fill',type:'fill',source:'sett',layout:{visibility:'none'},paint:{'fill-color':['case',['get','is_visited'],'#16a34a','#dc2626'],'fill-opacity':0.5}});
+        map.addLayer({id:'ward-fill',type:'fill',source:'ward',paint:{'fill-color':covColor,'fill-opacity':0.4}});
+        map.addLayer({id:'ward-line',type:'line',source:'ward',paint:{'line-color':'#78350f','line-width':0.8}});
+        map.addLayer({id:'lga-fill',type:'fill',source:'lga',paint:{'fill-color':covColor,'fill-opacity':0.5}});
+        map.addLayer({id:'lga-line',type:'line',source:'lga',paint:{'line-color':'#111827','line-width':2}});
+        log('layers added');
+      }catch(e){ log('addLayer FAILED: '+e.message,true); }
 
       document.getElementById('t-lga').addEventListener('change',function(e){ ['lga-fill','lga-line'].forEach(function(L){map.setLayoutProperty(L,'visibility',e.target.checked?'visible':'none');}); });
       document.getElementById('t-ward').addEventListener('change',function(e){ ['ward-fill','ward-line'].forEach(function(L){map.setLayoutProperty(L,'visibility',e.target.checked?'visible':'none');}); });
       document.getElementById('t-sett').addEventListener('change',function(e){
-        if(e.target.checked){
-          map.setLayoutProperty('sett-fill','visibility','visible');
-          if(!settLoaded){ st.sett='loading…'; setStatus();
-            get('/api/app/geo/settlements'+q).then(function(d){ map.getSource('sett').setData(d); settLoaded=true; st.sett=(d.features||[]).length; setStatus(); })
-              .catch(function(err){ st.sett='ERR '+err.message; setStatus(); }); }
-        } else { map.setLayoutProperty('sett-fill','visibility','none'); }
+        map.setLayoutProperty('sett-fill','visibility',e.target.checked?'visible':'none');
+        if(e.target.checked && !settLoaded){ log('loading settlements…');
+          get('/api/app/geo/settlements'+q).then(function(d){ map.getSource('sett').setData(d); settLoaded=true; log('settlements set: '+(d.features||[]).length); })
+            .catch(function(err){ log('settlements FAILED: '+err.message,true); }); }
       });
 
-      // Default load: LGA + ward (light, fast). Settlements load on toggle.
       get('/api/app/geo/lgas'+q).then(function(d){
-        map.getSource('lga').setData(d); st.lga=(d.features||[]).length; setStatus();
+        log('lgas fetched: '+(d.features||[]).length+' (geom '+(d.features&&d.features[0]&&d.features[0].geometry.type)+')');
+        map.getSource('lga').setData(d);
         var b=new maplibregl.LngLatBounds(); function ext(c){if(typeof c[0]==='number')b.extend(c);else c.forEach(ext);}
         (d.features||[]).forEach(function(f){ if(f.geometry) ext(f.geometry.coordinates); });
-        if(!b.isEmpty()) map.fitBounds(b,{padding:20,maxZoom:9,duration:0});
-        document.getElementById('legend').style.display='flex';
-      }).catch(function(e){ st.lga='ERR '+e.message; setStatus(); });
-      get('/api/app/geo/wards'+q).then(function(d){ map.getSource('ward').setData(d); st.ward=(d.features||[]).length; setStatus(); })
-        .catch(function(e){ st.ward='ERR '+e.message; setStatus(); });
+        if(!b.isEmpty()){ map.fitBounds(b,{padding:20,maxZoom:9,duration:0}); log('fit to lga bounds'); }
+      }).catch(function(e){ log('lgas FAILED: '+e.message,true); });
+      get('/api/app/geo/wards'+q).then(function(d){ map.getSource('ward').setData(d); log('wards set: '+(d.features||[]).length); })
+        .catch(function(e){ log('wards FAILED: '+e.message,true); });
     });
-    map.on('error',function(e){ stEl.textContent='Map error: '+(e&&e.error&&e.error.message||'unknown'); });
   </script>
 </body>
 </html>

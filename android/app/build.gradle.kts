@@ -86,11 +86,12 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8090\"")
         }
         release {
-            // R8 disabled (per request, to rule it out). The map fix was the
-            // CSP blob: worker-src, not R8 — but keeping it off is harmless;
-            // the APK has no native libs to shrink.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 re-enabled: ruling it out confirmed it is NOT the cause of the
+            // WebView map issue (the map page is a remote URL — R8 only shrinks
+            // the app's own Kotlin/Java and never touches the page's JS), so the
+            // normal release shrink/obfuscate is back on.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

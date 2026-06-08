@@ -42,8 +42,8 @@ import kotlin.math.roundToInt
  * Map tab: a stats strip (Geographic-View summary, fetched in Kotlin) above a
  * WebView that LOADS the server-rendered /app/map page (MapLibre GL JS). Using
  * loadUrl on a real page — instead of injecting HTML — runs in a normal
- * browsing context so WebGL + CDN scripts work (the same reason the web map
- * and /app-preview render correctly).
+ * browsing context so WebGL + CDN scripts work (the same reason the web
+ * dashboard map renders correctly).
  */
 @Composable
 fun CoverageMapScreen(projectId: Int?) {
