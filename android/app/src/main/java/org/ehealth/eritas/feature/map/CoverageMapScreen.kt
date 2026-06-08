@@ -84,7 +84,11 @@ private fun MapWebView(projectId: Int?, modifier: Modifier = Modifier) {
                 setBackgroundColor(android.graphics.Color.parseColor("#E8EAED"))
             }
         },
-        update = { web -> web.loadUrl(url) },
+        // update runs on EVERY recomposition; loading the URL unconditionally
+        // reloaded the WebView mid-map-init each time the summary cards arrived,
+        // which can leave MapLibre's WebGL canvas blank. Only (re)load when the
+        // URL actually changes (i.e. project switch).
+        update = { web -> if (web.tag != url) { web.tag = url; web.loadUrl(url) } },
         onRelease = { it.destroy() },
     )
 }
