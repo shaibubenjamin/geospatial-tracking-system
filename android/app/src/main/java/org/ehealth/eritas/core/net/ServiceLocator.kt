@@ -42,6 +42,7 @@ object ServiceLocator {
         val client = OkHttpClient.Builder()
             .addInterceptor(VersionInterceptor())
             .addInterceptor(AuthInterceptor(tokenStore))
+            .addInterceptor(UnauthorizedInterceptor(tokenStore))
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

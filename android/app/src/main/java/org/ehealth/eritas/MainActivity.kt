@@ -35,6 +35,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.LaunchedEffect
+import org.ehealth.eritas.core.auth.SessionManager
 import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.feature.coverage.LgaCoverageScreen
@@ -60,13 +62,24 @@ class MainActivity : ComponentActivity() {
                 // never reach login or the data screens.
                 UpdateGate { optionalUpdate ->
                     var loggedIn by remember { mutableStateOf(ServiceLocator.tokenStore.isLoggedIn) }
+                    // Auto-logout: when the server rejects our token (401), the
+                    // networking layer trips SessionManager. Observe it and drop
+                    // back to login instead of every screen showing "HTTP 401".
+                    val sessionExpired = SessionManager.sessionExpired
+                    LaunchedEffect(sessionExpired) {
+                        if (sessionExpired) loggedIn = false
+                    }
                     if (!loggedIn) {
-                        LoginScreen(onLoggedIn = { loggedIn = true })
+                        LoginScreen(onLoggedIn = {
+                            SessionManager.reset()
+                            loggedIn = true
+                        })
                     } else {
                         MainScaffold(
                             optionalUpdate = optionalUpdate,
                             onLogout = {
                                 ServiceLocator.tokenStore.clear()
+                                SessionManager.reset()
                                 loggedIn = false
                             },
                         )
