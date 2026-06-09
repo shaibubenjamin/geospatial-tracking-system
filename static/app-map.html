@@ -3,30 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <!-- Coverage drill-down (LGA → Ward → Settlement) as pure DOM — no map tiles,
-       no canvas, no WebGL. MapLibre AND Leaflet both painted blank in the
-       Android WebView (across devices) while DOM chrome rendered fine; this
-       list is plain DOM and fills the viewport via absolute positioning, so it
-       renders the same way the toggles always did. -->
+  <!-- LGA → Ward → Settlement coverage drill-down as plain DOM (no map engine).
+       Uses NATURAL document flow (not a fixed-viewport flex layout): the Android
+       WebView reports an unreliable CSS viewport height, which collapsed an
+       absolute/flex layout to ~1 row. Letting the page grow with its content and
+       scroll naturally sidesteps the frame-height issue entirely. -->
   <style>
     *{box-sizing:border-box}
-    html,body{margin:0;padding:0;height:100%;background:#f3f4f6;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111827}
-    /* Absolute inset (not height:100%) — the % height chain can resolve to 0 in
-       a WebView and hide everything; absolute positioning fills the viewport. */
-    #app{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column}
-    #head{flex:0 0 auto;background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 12px;display:flex;align-items:center;gap:10px}
+    html,body{margin:0;padding:0;background:#f3f4f6;
+      font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111827}
+    /* Sticky header so the breadcrumb/back stay put while the list scrolls. */
+    #bar{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid #e5e7eb}
+    #head{padding:10px 12px;display:flex;align-items:center;gap:10px}
     #back{border:0;background:#eef2ff;color:#3730a3;border-radius:8px;padding:7px 11px;font-size:14px;font-weight:600;cursor:pointer}
     #back[disabled]{visibility:hidden}
     #crumb{font-size:13px;font-weight:700;line-height:1.25;flex:1;min-width:0}
     #crumb small{display:block;font-weight:500;color:#6b7280;font-size:11px}
-    #sub{flex:0 0 auto;background:#fff;border-bottom:1px solid #e5e7eb;padding:6px 12px;font-size:11.5px;color:#374151}
-    #list{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 10px 18px}
-    .row{background:#fff;border:1px solid #eceef1;border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer}
+    #sub{padding:6px 12px;font-size:11.5px;color:#374151;border-top:1px solid #f1f3f5}
+    #list{padding:8px 10px 24px}
+    .row{background:#fff;border:1px solid #eceef1;border-radius:12px;padding:11px 12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer}
     .row:active{background:#f9fafb}
     .row.leaf{cursor:default}
     .rname{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .rname small{display:block;font-weight:500;color:#6b7280;font-size:11px}
-    .rright{flex:0 0 96px;text-align:right}
+    .rright{flex:0 0 92px;text-align:right}
     .rpct{font-size:15px;font-weight:800}
     .bar{height:6px;border-radius:4px;background:#eceef1;margin-top:5px;overflow:hidden}
     .bar>i{display:block;height:100%}
@@ -36,14 +36,14 @@
   </style>
 </head>
 <body>
-  <div id="app">
+  <div id="bar">
     <div id="head">
       <button id="back" disabled>‹ Back</button>
       <div id="crumb">Loading… <small></small></div>
     </div>
     <div id="sub"></div>
-    <div id="list"><div id="msg">Loading coverage…</div></div>
   </div>
+  <div id="list"><div id="msg">Loading coverage…</div></div>
   <script>
     function qp(n){ return new URLSearchParams(location.search).get(n); }
     var token=(location.hash.match(/token=([^&]+)/)||[])[1]||'';
@@ -62,7 +62,6 @@
     function feats(d){ return (d&&d.features?d.features.map(function(f){return f.properties||{};}):[]); }
     function avg(rows,key){ if(!rows.length)return 0; var s=0,n=0; rows.forEach(function(r){ if(r[key]!=null){s+=+r[key];n++;} }); return n?s/n:0; }
 
-    // Build one tappable row. `cov` is the coverage %, `onTap` null = leaf.
     function rowEl(title, subtitle, cov, onTap){
       var r=document.createElement('div'); r.className='row'+(onTap?'':' leaf');
       var c=covColor(cov);
@@ -73,21 +72,16 @@
       if(onTap) r.addEventListener('click',onTap);
       return r;
     }
-
-    function setHead(title, sub, canBack){
-      crumbEl.innerHTML=title+(sub?'<small>'+sub+'</small>':'');
-      backEl.disabled=!canBack;
-    }
+    function setHead(title, sub, canBack){ crumbEl.innerHTML=title+(sub?'<small>'+sub+'</small>':''); backEl.disabled=!canBack; }
+    function toTop(){ window.scrollTo(0,0); }
 
     function renderLgas(){
       level='lga'; curLga=null; curWard=null;
       var rows=feats(lgas).slice().sort(function(a,b){return (b.coverage_pct||0)-(a.coverage_pct||0);});
       setHead('LGA coverage', (pid?'Project '+pid:'Active campaign'), false);
       subEl.textContent=rows.length+' LGAs · avg '+avg(rows,'coverage_pct').toFixed(1)+'%';
-      listEl.innerHTML='';
-      rows.forEach(function(p){
-        listEl.appendChild(rowEl(p.lga_name||p.lgacode||'—', null, p.coverage_pct, function(){ openLga(p); }));
-      });
+      listEl.innerHTML=''; toTop();
+      rows.forEach(function(p){ listEl.appendChild(rowEl(p.lga_name||p.lgacode||'—', null, p.coverage_pct, function(){ openLga(p); })); });
     }
 
     function openLga(p){
@@ -96,20 +90,17 @@
         .sort(function(a,b){return (b.coverage_pct||0)-(a.coverage_pct||0);});
       setHead(p.lga_name||'LGA', 'Wards · LGA '+fnum(p.coverage_pct), true);
       subEl.textContent=rows.length+' wards · avg '+avg(rows,'coverage_pct').toFixed(1)+'%';
-      listEl.innerHTML='';
+      listEl.innerHTML=''; toTop();
       if(!rows.length){ msg('No wards found for this LGA.'); return; }
-      rows.forEach(function(w){
-        listEl.appendChild(rowEl(w.ward_name||w.wardcode||'—',
-          (w.settlements_covered||0)+' / '+(w.settlements||0)+' settlements ≥70%',
-          w.coverage_pct, function(){ openWard(w); }));
-      });
+      rows.forEach(function(w){ listEl.appendChild(rowEl(w.ward_name||w.wardcode||'—',
+        (w.settlements_covered||0)+' / '+(w.settlements||0)+' settlements ≥70%', w.coverage_pct, function(){ openWard(w); })); });
     }
 
     function openWard(w){
       curWard=w; level='settlement';
       setHead(w.ward_name||'Ward', (curLga&&curLga.lga_name?curLga.lga_name+' · ':'')+'Settlements', true);
       var code=curLga&&curLga.lgacode;
-      msg('Loading settlements…');
+      msg('Loading settlements…'); toTop();
       var done=function(all){
         var rows=feats(all).filter(function(s){return (s.ward_name||'')===(w.ward_name||'');})
           .map(function(s){ s._cov=(s.completeness_pct!=null?s.completeness_pct:(s.is_visited?100:0)); return s; })
@@ -117,10 +108,7 @@
         subEl.textContent=rows.length+' settlements · avg '+avg(rows,'_cov').toFixed(1)+'%';
         listEl.innerHTML='';
         if(!rows.length){ msg('No settlements found for this ward.'); return; }
-        rows.forEach(function(s){
-          listEl.appendChild(rowEl(s.settlement_name||'—',
-            (s.is_visited?'Visited':'Not visited'), s._cov, null));
-        });
+        rows.forEach(function(s){ listEl.appendChild(rowEl(s.settlement_name||'—', (s.is_visited?'Visited':'Not visited'), s._cov, null)); });
       };
       if(settCache[code]){ done(settCache[code]); return; }
       get('/api/app/geo/settlements?lgacode='+encodeURIComponent(code)+(pid?'&project_id='+encodeURIComponent(pid):''))
@@ -128,16 +116,11 @@
         .catch(function(e){ msg('Could not load settlements: '+e.message,true); });
     }
 
-    backEl.addEventListener('click',function(){
-      if(level==='settlement'){ openLga(curLga); }
-      else if(level==='ward'){ renderLgas(); }
-    });
+    backEl.addEventListener('click',function(){ if(level==='settlement'){ openLga(curLga); } else if(level==='ward'){ renderLgas(); } });
 
-    // Load LGA + ward coverage up front (both light — 23 + ~213 rows).
     Promise.all([ get('/api/app/geo/lgas'+q), get('/api/app/geo/wards'+q) ])
       .then(function(res){ lgas=res[0]; wards=res[1]; renderLgas(); })
-      .catch(function(e){ msg('Could not load coverage: '+e.message+'. Pull down to retry or re-open the tab.',true);
-        setHead('Coverage', 'error', false); });
+      .catch(function(e){ msg('Could not load coverage: '+e.message+'. Re-open the tab to retry.',true); setHead('Coverage','error',false); });
   </script>
 </body>
 </html>
