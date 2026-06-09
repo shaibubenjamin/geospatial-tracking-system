@@ -3,109 +3,105 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
-  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <!-- Leaflet renders raster tiles as <img> and polygons on a 2D canvas — NO
+       WebGL. MapLibre (WebGL) initialised but painted a blank canvas inside the
+       Android WebView on real devices; Leaflet renders in virtually any WebView. -->
+  <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    html,body,#map{margin:0;padding:0;height:100%;width:100%;font-family:-apple-system,sans-serif}
-    .pill{position:absolute;z-index:5;background:#fff;border-radius:8px;padding:5px 10px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+    html,body,#map{margin:0;padding:0;height:100%;width:100%;font-family:-apple-system,sans-serif;background:#E8EAED}
+    .pill{position:absolute;z-index:1000;background:#fff;border-radius:8px;padding:5px 10px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
     #toggles{top:8px;right:8px;display:flex;flex-direction:column;gap:3px}
-    #toggles label{font-size:11px;display:block}
-    #log{bottom:8px;left:8px;right:8px;max-height:38%;overflow:auto;background:rgba(0,0,0,.82);color:#d1fae5;
-         border-radius:8px;padding:8px 10px;font-family:ui-monospace,monospace;font-size:10px;line-height:1.45;z-index:6;white-space:pre-wrap}
-    .err{color:#fca5a5}
+    #toggles label{font-size:12px;display:flex;align-items:center;gap:6px}
+    #legend{bottom:8px;left:8px;display:flex;gap:10px;align-items:center}
+    #legend i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:3px;vertical-align:-1px}
+    #status{top:8px;left:8px;max-width:55%;color:#374151}
+    .leaflet-popup-content{font-size:12px;margin:8px 10px;line-height:1.45}
+    .leaflet-popup-content b{font-size:13px}
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="status" class="pill">Loading…</div>
   <div id="toggles" class="pill">
     <label><input type="checkbox" id="t-lga" checked> LGA</label>
     <label><input type="checkbox" id="t-ward" checked> Ward</label>
     <label><input type="checkbox" id="t-sett"> Settlement</label>
   </div>
-  <div id="log"></div>
+  <div id="legend" class="pill" style="display:none">
+    <span><i style="background:#dc2626"></i>&lt;40%</span>
+    <span><i style="background:#f59e0b"></i>40–70%</span>
+    <span><i style="background:#16a34a"></i>≥70%</span>
+  </div>
   <script>
-    // ── Diagnostics: surface EVERY failure mode on screen AND ship the lines
-    // to the server (/_diag) so the WebView failure is readable off-device —
-    // the on-screen box alone needs someone holding the phone. Batched +
-    // debounced so it never floods. REMOVE with the /_diag endpoint once the
-    // WebView map-render issue is resolved.
-    var logEl=document.getElementById('log');
-    var _diagBuf=[], _diagTimer=null;
-    function _flushDiag(){ _diagTimer=null; if(!_diagBuf.length) return;
-      var batch=_diagBuf.splice(0,_diagBuf.length);
-      try{ fetch('/_diag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(batch)}); }catch(e){} }
-    function log(m,err){ var d=new Date(); var ts=('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2);
-      var line=document.createElement('div');
-      if(err)line.className='err'; line.textContent=ts+' '+m;
-      logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight;
-      _diagBuf.push((err?'[ERR] ':'')+ts+' '+m);
-      if(!_diagTimer) _diagTimer=setTimeout(_flushDiag,600); }
-    document.addEventListener('securitypolicyviolation',function(e){ log('CSP BLOCK: '+e.violatedDirective+' → '+(e.blockedURI||'').slice(0,40),true); });
-    window.onerror=function(m){ log('JS ERROR: '+m,true); };
-    window.addEventListener('unhandledrejection',function(e){ log('PROMISE REJECT: '+((e.reason&&e.reason.message)||e.reason),true); });
-    log('MapLibre '+(window.maplibregl?maplibregl.version:'NOT LOADED'));
-
     function qp(n){ return new URLSearchParams(location.search).get(n); }
+    // Token comes from the URL fragment (#token=…) so the data stays gated.
     var token=(location.hash.match(/token=([^&]+)/)||[])[1]||'';
     var pid=qp('project_id'), q=pid?('?project_id='+encodeURIComponent(pid)):'';
-    log('pid='+(pid||'(active)')+'  token='+(token?('yes('+token.length+')'):'NONE'));
+    var stEl=document.getElementById('status');
+    function setStatus(t){ stEl.textContent=t; }
+
     function get(u){ return fetch(u,{headers:{'Authorization':'Bearer '+token,'X-App-Version-Code':'999999'}})
-      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status+' on '+u); return r.json(); }); }
-    var covColor=['step',['to-number',['get','coverage_pct'],0],'#dc2626',40,'#f59e0b',70,'#16a34a'];
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
 
-    var map;
-    try {
-      map=new maplibregl.Map({container:'map',
-        style:{version:8,
-          sources:{carto:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OSM © CARTO'}},
-          layers:[{id:'bg',type:'background',paint:{'background-color':'#E8EAED'}},{id:'carto',type:'raster',source:'carto'}]},
-        center:[5.24,13.05],zoom:7});
-    } catch(e){ log('MAP CTOR FAILED: '+e.message,true); }
-    map.on('error',function(e){ log('MAP ERROR: '+((e&&e.error&&e.error.message)||'unknown'),true); });
+    // Coverage colour — matches the web map: <40 red, 40–70 amber, ≥70 green.
+    function covColor(p){ p=+p||0; return p>=70?'#16a34a':p>=40?'#f59e0b':'#dc2626'; }
+    function pctTxt(p){ return (p==null?'—':(+p).toFixed(1)+'%'); }
 
-    var idleChecked=false;
-    map.on('idle',function(){
-      if(idleChecked) return; if(!map.getLayer('lga-fill')) return; idleChecked=true;
-      try{
-        var nL=map.querySourceFeatures('lga').length;
-        var nW=map.querySourceFeatures('ward').length;
-        log('RENDERED features in view → lga:'+nL+' ward:'+nW);
-        if(nL===0) log('→ source has 0 parsed features (worker/parse problem)',true);
-        else log('→ source parsed OK; if no colour shows it is a PAINT problem',true);
-      }catch(e){ log('querySourceFeatures failed: '+e.message,true); }
-    });
+    // preferCanvas: draw vector layers on a 2D <canvas> (fast for thousands of
+    // polygons, and no WebGL). Carto raster basemap loads as plain <img> tiles.
+    var map=L.map('map',{preferCanvas:true, zoomControl:true, attributionControl:false}).setView([13.02,5.24],7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+      {subdomains:'abcd', maxZoom:19}).addTo(map);
 
-    var settLoaded=false;
-    map.on('load',function(){
-      log('style loaded');
-      try{
-        ['lga','ward','sett'].forEach(function(s){ map.addSource(s,{type:'geojson',data:{type:'FeatureCollection',features:[]}}); });
-        map.addLayer({id:'sett-fill',type:'fill',source:'sett',layout:{visibility:'none'},paint:{'fill-color':['case',['get','is_visited'],'#16a34a','#dc2626'],'fill-opacity':0.5}});
-        map.addLayer({id:'ward-fill',type:'fill',source:'ward',paint:{'fill-color':covColor,'fill-opacity':0.4}});
-        map.addLayer({id:'ward-line',type:'line',source:'ward',paint:{'line-color':'#78350f','line-width':0.8}});
-        map.addLayer({id:'lga-fill',type:'fill',source:'lga',paint:{'fill-color':covColor,'fill-opacity':0.5}});
-        map.addLayer({id:'lga-line',type:'line',source:'lga',paint:{'line-color':'#111827','line-width':2}});
-        log('layers added');
-      }catch(e){ log('addLayer FAILED: '+e.message,true); }
+    var lgaLayer=null, wardLayer=null, settLayer=null, settLoaded=false;
+    var st={lga:'…',ward:'…',sett:'off'};
+    function render(){ setStatus('LGA '+st.lga+' · Ward '+st.ward+' · Settl '+st.sett); }
 
-      document.getElementById('t-lga').addEventListener('change',function(e){ ['lga-fill','lga-line'].forEach(function(L){map.setLayoutProperty(L,'visibility',e.target.checked?'visible':'none');}); });
-      document.getElementById('t-ward').addEventListener('change',function(e){ ['ward-fill','ward-line'].forEach(function(L){map.setLayoutProperty(L,'visibility',e.target.checked?'visible':'none');}); });
-      document.getElementById('t-sett').addEventListener('change',function(e){
-        map.setLayoutProperty('sett-fill','visibility',e.target.checked?'visible':'none');
-        if(e.target.checked && !settLoaded){ log('loading settlements…');
-          get('/api/app/geo/settlements'+q).then(function(d){ map.getSource('sett').setData(d); settLoaded=true; log('settlements set: '+(d.features||[]).length); })
-            .catch(function(err){ log('settlements FAILED: '+err.message,true); }); }
-      });
+    function styleFor(weight, fillOpacity){
+      return function(f){ var p=f.properties||{}; return {
+        color:'#111827', weight:weight, opacity:0.7,
+        fillColor:covColor(p.coverage_pct), fillOpacity:fillOpacity }; };
+    }
+    function popupFor(nameKey){
+      return function(f, layer){
+        var p=f.properties||{};
+        var name=p[nameKey]||p.settlement_name||p.ward_name||p.lga_name||'—';
+        var extra='';
+        if(p.lga_name && nameKey!=='lga_name') extra='<br><span style="color:#6b7280">'+p.lga_name+(p.ward_name&&nameKey!=='ward_name'?' › '+p.ward_name:'')+'</span>';
+        if(p.settlements!=null) extra+='<br><span style="color:#6b7280">'+(p.settlements_covered||0)+' / '+p.settlements+' settlements ≥70%</span>';
+        layer.bindPopup('<b>'+name+'</b>'+extra+'<br>Coverage: <b style="color:'+covColor(p.coverage_pct)+'">'+pctTxt(p.coverage_pct)+'</b>');
+      };
+    }
 
-      get('/api/app/geo/lgas'+q).then(function(d){
-        log('lgas fetched: '+(d.features||[]).length+' (geom '+(d.features&&d.features[0]&&d.features[0].geometry.type)+')');
-        map.getSource('lga').setData(d);
-        var b=new maplibregl.LngLatBounds(); function ext(c){if(typeof c[0]==='number')b.extend(c);else c.forEach(ext);}
-        (d.features||[]).forEach(function(f){ if(f.geometry) ext(f.geometry.coordinates); });
-        if(!b.isEmpty()){ map.fitBounds(b,{padding:20,maxZoom:9,duration:0}); log('fit to lga bounds'); }
-      }).catch(function(e){ log('lgas FAILED: '+e.message,true); });
-      get('/api/app/geo/wards'+q).then(function(d){ map.getSource('ward').setData(d); log('wards set: '+(d.features||[]).length); })
-        .catch(function(e){ log('wards FAILED: '+e.message,true); });
+    // LGA + Ward load immediately (light). Settlements load on toggle (9k polys).
+    get('/api/app/geo/lgas'+q).then(function(d){
+      lgaLayer=L.geoJSON(d,{style:styleFor(2,0.5), onEachFeature:popupFor('lga_name')}).addTo(map);
+      st.lga=(d.features||[]).length; render();
+      try{ map.fitBounds(lgaLayer.getBounds(),{padding:[20,20],maxZoom:9}); }catch(e){}
+      document.getElementById('legend').style.display='flex';
+    }).catch(function(e){ st.lga='ERR '+e.message; render(); });
+
+    get('/api/app/geo/wards'+q).then(function(d){
+      wardLayer=L.geoJSON(d,{style:styleFor(0.8,0.35), onEachFeature:popupFor('ward_name')}).addTo(map);
+      st.ward=(d.features||[]).length; render();
+    }).catch(function(e){ st.ward='ERR '+e.message; render(); });
+
+    document.getElementById('t-lga').addEventListener('change',function(e){
+      if(!lgaLayer)return; e.target.checked?lgaLayer.addTo(map):map.removeLayer(lgaLayer); });
+    document.getElementById('t-ward').addEventListener('change',function(e){
+      if(!wardLayer)return; e.target.checked?wardLayer.addTo(map):map.removeLayer(wardLayer); });
+    document.getElementById('t-sett').addEventListener('change',function(e){
+      if(!e.target.checked){ if(settLayer)map.removeLayer(settLayer); return; }
+      if(settLoaded){ if(settLayer)settLayer.addTo(map); return; }
+      st.sett='loading…'; render();
+      get('/api/app/geo/settlements'+q).then(function(d){
+        settLayer=L.geoJSON(d,{
+          style:function(f){var p=f.properties||{}; return {color:'#15803d',weight:0.4,opacity:0.6,
+            fillColor:(p.is_visited?'#16a34a':'#dc2626'),fillOpacity:0.5};},
+          onEachFeature:popupFor('settlement_name')}).addTo(map);
+        settLoaded=true; st.sett=(d.features||[]).length; render();
+      }).catch(function(err){ st.sett='ERR '+err.message; render(); });
     });
   </script>
 </body>

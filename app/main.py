@@ -685,31 +685,6 @@ async def health():
     return {"status": "ok", "service": "geospatial-tracker"}
 
 
-# ── Temporary client-side diagnostic capture (debug only) ───────────────────
-# The map page POSTs its diagnostic lines here so the failure cause can be read
-# server-side without relying on device screenshots. Public, in-memory, capped.
-# REMOVE once the map rendering issue is resolved.
-_DIAG: list[str] = []
-
-
-@app.post("/_diag")
-async def diag_post(request: Request):
-    try:
-        body = await request.json()
-        items = body if isinstance(body, list) else [str(body)]
-        for it in items:
-            _DIAG.append(str(it)[:300])
-        del _DIAG[:-120]
-    except Exception:
-        pass
-    return {"ok": True}
-
-
-@app.get("/_diag")
-async def diag_get():
-    return {"lines": _DIAG[-120:]}
-
-
 # ── Android companion app: public version check + static APK host ───────────
 # Both are deliberately unauthenticated and un-gated: the launch-time version
 # check must work for any client (including one about to be force-updated),
