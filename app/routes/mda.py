@@ -2771,12 +2771,16 @@ async def geo_lgas_coverage(
     res = await db.execute(text("""
         WITH cov AS (
           SELECT lgacode,
-                 AVG(CASE WHEN is_visited OR COALESCE(completeness_pct,0) >= 70 THEN 1.0 ELSE 0.0 END) AS frac
+                 AVG(CASE WHEN is_visited OR COALESCE(completeness_pct,0) >= 70 THEN 1.0 ELSE 0.0 END) AS frac,
+                 -- visitation = share of settlements with >=1 GPS point (matches
+                 -- the web map's LGA choropleth; "have we reached here at all?").
+                 AVG(CASE WHEN COALESCE(point_count,0) > 0 THEN 1.0 ELSE 0.0 END) AS visit_frac
           FROM settlement_analytics WHERE project_id = :pid GROUP BY lgacode
         )
         SELECT l.lga_name, l.lgacode,
                ST_AsGeoJSON(l.geom) AS geom,
-               COALESCE(cov.frac, 0)::float AS frac
+               COALESCE(cov.frac, 0)::float AS frac,
+               COALESCE(cov.visit_frac, 0)::float AS visit_frac
         FROM lgas l LEFT JOIN cov ON cov.lgacode = l.lgacode
         WHERE l.project_id = :bpid
     """), {"pid": pid, "bpid": bpid})
@@ -2788,7 +2792,9 @@ async def geo_lgas_coverage(
         frac = float(r.frac or 0)
         feats.append({"type": "Feature", "geometry": _json.loads(r.geom),
                       "properties": {"lga_name": r.lga_name, "lgacode": r.lgacode,
-                                     "coverage_pct": round(100.0 * frac, 1), "is_at_target": frac >= 0.7}})
+                                     "coverage_pct": round(100.0 * frac, 1),
+                                     "visitation_pct": round(100.0 * float(r.visit_frac or 0), 1),
+                                     "is_at_target": frac >= 0.7}})
     return {"type": "FeatureCollection", "project_id": pid, "features": feats}
 
 

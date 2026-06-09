@@ -183,21 +183,19 @@ async def app_geo_wards(
             """
             WITH cov AS (
               SELECT wardcode,
-                     AVG(CASE WHEN is_visited OR COALESCE(completeness_pct, 0) >= 70
-                              THEN 1.0 ELSE 0.0 END) AS frac,
+                     -- visitation = share of settlements with >=1 GPS point.
+                     AVG(CASE WHEN COALESCE(point_count, 0) > 0 THEN 1.0 ELSE 0.0 END) AS visit_frac,
                      COUNT(*) AS settlements,
-                     COUNT(*) FILTER (
-                       WHERE is_visited OR COALESCE(completeness_pct, 0) >= 70
-                     ) AS settlements_covered
+                     COUNT(*) FILTER (WHERE COALESCE(point_count, 0) > 0) AS settlements_visited
               FROM settlement_analytics
               WHERE project_id = :pid
               GROUP BY wardcode
             )
             SELECT w.ward_name, w.lga_name, w.wardcode,
                    ST_AsGeoJSON(ST_SimplifyPreserveTopology(w.geom, 0.0005)) AS geom,
-                   COALESCE(cov.frac, 0)::float        AS frac,
-                   COALESCE(cov.settlements, 0)        AS settlements,
-                   COALESCE(cov.settlements_covered, 0) AS settlements_covered
+                   COALESCE(cov.visit_frac, 0)::float   AS visit_frac,
+                   COALESCE(cov.settlements, 0)         AS settlements,
+                   COALESCE(cov.settlements_visited, 0) AS settlements_visited
             FROM wards w
             LEFT JOIN cov ON cov.wardcode = w.wardcode
             WHERE w.project_id = :bpid
@@ -211,7 +209,7 @@ async def app_geo_wards(
     for r in res.fetchall():
         if not r.geom:
             continue
-        frac = float(r.frac or 0)
+        vfrac = float(r.visit_frac or 0)
         features.append(
             {
                 "type": "Feature",
@@ -220,10 +218,10 @@ async def app_geo_wards(
                     "ward_name": r.ward_name,
                     "lga_name": r.lga_name,
                     "wardcode": r.wardcode,
-                    "coverage_pct": round(100.0 * frac, 1),
+                    "visitation_pct": round(100.0 * vfrac, 1),
                     "settlements": int(r.settlements or 0),
-                    "settlements_covered": int(r.settlements_covered or 0),
-                    "is_at_target": frac >= 0.7,
+                    "settlements_visited": int(r.settlements_visited or 0),
+                    "is_at_target": vfrac >= 0.7,
                 },
             }
         )

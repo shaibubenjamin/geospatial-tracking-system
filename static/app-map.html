@@ -3,35 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <!-- Leaflet map (raster <img> tiles + Canvas2D polygons — no WebGL) ABOVE a
-       DOM drill-down list. The earlier "blank map" was the WebView frame-height
-       bug: a height:100% map box resolved to ~0px. Here the map has an EXPLICIT
-       pixel height and the page uses natural flow, so the map gets real size and
-       the list scrolls. If the map still can't paint, the list below still works. -->
   <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111827}
-    #bar{position:sticky;top:0;z-index:1200;background:#fff;border-bottom:1px solid #e5e7eb}
+    /* Header + map = one STICKY block so the map stays visible while the list
+       scrolls under it. Explicit px heights only (WebView % height is unreliable). */
+    #top{position:sticky;top:0;z-index:1200;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.08)}
     #head{padding:10px 12px;display:flex;align-items:center;gap:10px}
-    #back{border:0;background:#eef2ff;color:#3730a3;border-radius:8px;padding:7px 11px;font-size:14px;font-weight:600;cursor:pointer}
-    #back[disabled]{visibility:hidden}
-    #crumb{font-size:13px;font-weight:700;line-height:1.25;flex:1;min-width:0}
+    /* display:none (not visibility:hidden) so the title isn't shifted right by a
+       reserved-but-invisible back button at the root level. */
+    #back{display:none;border:0;background:#eef2ff;color:#3730a3;border-radius:8px;padding:7px 11px;font-size:14px;font-weight:600;cursor:pointer}
+    #back.show{display:inline-block}
+    #crumb{font-size:14px;font-weight:700;line-height:1.25;flex:1;min-width:0}
     #crumb small{display:block;font-weight:500;color:#6b7280;font-size:11px}
-    #sub{padding:6px 12px;font-size:11.5px;color:#374151;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center}
-    #legend{font-size:10px;color:#6b7280}
+    #sub{padding:5px 12px;font-size:11.5px;color:#374151;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:8px}
+    #legend{font-size:10px;color:#6b7280;white-space:nowrap}
     #legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 3px 0 7px;vertical-align:-1px}
-    /* EXPLICIT pixel height — never % (WebView viewport height is unreliable). */
-    #map{height:300px;width:100%;background:#E8EAED}
-    #list{padding:8px 10px 24px}
+    #map{height:250px;width:100%;background:#E8EAED}
+    #list{padding:8px 10px 28px}
     .row{background:#fff;border:1px solid #eceef1;border-radius:12px;padding:11px 12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer}
-    .row:active{background:#f9fafb}
+    .row:active{background:#f3f4f6}
     .row.leaf{cursor:default}
     .rname{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .rname small{display:block;font-weight:500;color:#6b7280;font-size:11px}
-    .rright{flex:0 0 92px;text-align:right}
-    .rpct{font-size:15px;font-weight:800}
+    .rright{flex:0 0 96px;text-align:right}
+    .rpct{font-size:14px;font-weight:800}
     .bar{height:6px;border-radius:4px;background:#eceef1;margin-top:5px;overflow:hidden}
     .bar>i{display:block;height:100%}
     .chev{flex:0 0 auto;color:#9ca3af;font-size:18px}
@@ -41,28 +39,29 @@
   </style>
 </head>
 <body>
-  <div id="bar">
+  <div id="top">
     <div id="head">
-      <button id="back" disabled>‹ Back</button>
-      <div id="crumb">Loading… <small></small></div>
+      <button id="back">‹ Back</button>
+      <div id="crumb">Loading…</div>
     </div>
     <div id="sub">
       <span id="subtext"></span>
       <span id="legend"><i style="background:#dc2626"></i>&lt;40<i style="background:#f59e0b"></i>40–70<i style="background:#16a34a"></i>≥70%</span>
     </div>
+    <div id="map"></div>
   </div>
-  <div id="map"></div>
-  <div id="list"><div id="msg">Loading coverage…</div></div>
+  <div id="list"><div id="msg">Loading…</div></div>
   <script>
     function qp(n){ return new URLSearchParams(location.search).get(n); }
     var token=(location.hash.match(/token=([^&]+)/)||[])[1]||'';
     var pid=qp('project_id'), q=pid?('?project_id='+encodeURIComponent(pid)):'';
     function get(u){ return fetch(u,{headers:{'Authorization':'Bearer '+token,'X-App-Version-Code':'999999'}})
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
-    function covColor(p){ p=+p||0; return p>=70?'#16a34a':p>=40?'#f59e0b':'#dc2626'; }
-    function fnum(n){ return (n==null?'—':(+n).toFixed(1)+'%'); }
-    function feats(d){ return (d&&d.features?d.features:[]); }
-    function props(d){ return feats(d).map(function(f){return f.properties||{};}); }
+    // Colour by % visited: <40 red, 40–70 amber, ≥70 green.
+    function visColor(p){ p=+p||0; return p>=70?'#16a34a':p>=40?'#f59e0b':'#dc2626'; }
+    function fpct(n){ return (n==null?'—':(+n).toFixed(0)+'%'); }
+    function fc_feats(d){ return (d&&d.features?d.features:[]); }
+    function fc_props(d){ return fc_feats(d).map(function(f){return f.properties||{};}); }
     function avg(rows,key){ if(!rows.length)return 0; var s=0,n=0; rows.forEach(function(r){ if(r[key]!=null){s+=+r[key];n++;} }); return n?s/n:0; }
 
     var listEl=document.getElementById('list'), crumbEl=document.getElementById('crumb'),
@@ -76,57 +75,58 @@
     setTimeout(fixMap,400); setTimeout(fixMap,1200);
 
     function msg(t,err){ listEl.innerHTML='<div id="msg"'+(err?' class="err"':'')+'>'+t+'</div>'; }
-    function setHead(title,sub,canBack){ crumbEl.innerHTML=title+(sub?'<small>'+sub+'</small>':''); backEl.disabled=!canBack; }
+    function setHead(title,sub,canBack){ crumbEl.innerHTML=title+(sub?'<small>'+sub+'</small>':''); backEl.className=canBack?'show':''; }
 
-    function rowEl(title,subtitle,cov,onTap){
-      var r=document.createElement('div'); r.className='row'+(onTap?'':' leaf'); var c=covColor(cov);
+    // valueText overrides the % (used for binary Visited/Not visited at settlement level).
+    function rowEl(title,subtitle,vis,onTap,valueText){
+      var r=document.createElement('div'); r.className='row'+(onTap?'':' leaf'); var c=visColor(vis);
       r.innerHTML='<div class="rname">'+title+(subtitle?'<small>'+subtitle+'</small>':'')+'</div>'+
-        '<div class="rright"><div class="rpct" style="color:'+c+'">'+fnum(cov)+'</div>'+
-        '<div class="bar"><i style="width:'+Math.max(0,Math.min(100,+cov||0))+'%;background:'+c+'"></i></div></div>'+
+        '<div class="rright"><div class="rpct" style="color:'+c+'">'+(valueText||fpct(vis))+'</div>'+
+        '<div class="bar"><i style="width:'+Math.max(0,Math.min(100,+vis||0))+'%;background:'+c+'"></i></div></div>'+
         (onTap?'<div class="chev">›</div>':'');
       if(onTap) r.addEventListener('click',onTap);
       return r;
     }
 
-    // Draw a GeoJSON FeatureCollection on the map, coloured by coverage, with an
-    // optional drill handler when a polygon is tapped. Fits the view to it.
-    function drawMap(fc, covKey, onTap, weight){
+    // Draw a FeatureCollection coloured by % visited (`visKey`), fit the view.
+    function drawMap(fc, visKey, onTap, weight, binary){
       if(mapLayer){ map.removeLayer(mapLayer); mapLayer=null; }
-      if(!fc || !feats(fc).length) return;
+      if(!fc || !fc_feats(fc).length) return;
       mapLayer=L.geoJSON(fc,{
-        style:function(f){ var p=f.properties||{}; var v=(covKey==='_cov'?p._cov:p[covKey]);
-          return {color:'#111827',weight:weight,opacity:0.7,fillColor:covColor(v),fillOpacity:0.55}; },
-        onEachFeature:function(f,layer){ var p=f.properties||{};
-          var v=(covKey==='_cov'?p._cov:p[covKey]);
+        style:function(f){ var v=(f.properties||{})[visKey];
+          return {color:'#374151',weight:weight,opacity:0.7,fillColor:visColor(v),fillOpacity:0.6}; },
+        onEachFeature:function(f,layer){ var p=f.properties||{}; var v=p[visKey];
           var nm=p.settlement_name||p.ward_name||p.lga_name||'—';
-          layer.bindPopup('<b>'+nm+'</b><br>Coverage: <b style="color:'+covColor(v)+'">'+fnum(v)+'</b>');
+          var val=binary?(v>=100?'Visited':'Not visited'):(fpct(v)+' visited');
+          layer.bindPopup('<b>'+nm+'</b><br><b style="color:'+visColor(v)+'">'+val+'</b>');
           if(onTap) layer.on('click',function(){ onTap(p); }); }
       }).addTo(map);
-      try{ map.fitBounds(mapLayer.getBounds(),{padding:[12,12],maxZoom:13}); }catch(e){}
+      try{ map.fitBounds(mapLayer.getBounds(),{padding:[14,14],maxZoom:13}); }catch(e){}
       fixMap();
     }
 
+    // ── LGA level — entire state, coloured by % settlements visited ──────────
     function renderLgas(){
       level='lga'; curLga=null; curWard=null;
-      var rows=props(lgasFC).slice().sort(function(a,b){return (b.coverage_pct||0)-(a.coverage_pct||0);});
-      setHead('LGA coverage',(pid?'Project '+pid:'Active campaign'),false);
-      subEl.textContent=rows.length+' LGAs · avg '+avg(rows,'coverage_pct').toFixed(1)+'%';
-      drawMap(lgasFC,'coverage_pct',function(p){ openLga(p); },2);
+      var rows=fc_props(lgasFC).slice().sort(function(a,b){return (b.visitation_pct||0)-(a.visitation_pct||0);});
+      setHead('Statewide','% settlements visited · tap an LGA',false);
+      subEl.textContent=rows.length+' LGAs · avg '+avg(rows,'visitation_pct').toFixed(0)+'% visited';
+      drawMap(lgasFC,'visitation_pct',function(p){ openLga(p); },2,false);
       listEl.innerHTML=''; window.scrollTo(0,0);
-      rows.forEach(function(p){ listEl.appendChild(rowEl(p.lga_name||p.lgacode||'—',null,p.coverage_pct,function(){ openLga(p); })); });
+      rows.forEach(function(p){ listEl.appendChild(rowEl(p.lga_name||p.lgacode||'—',null,p.visitation_pct,function(){ openLga(p); })); });
     }
 
     function openLga(p){
       curLga=p; level='ward';
-      var fc={type:'FeatureCollection',features:feats(wardsFC).filter(function(f){return (f.properties.lga_name||'')===(p.lga_name||'');})};
-      var rows=props(fc).sort(function(a,b){return (b.coverage_pct||0)-(a.coverage_pct||0);});
-      setHead(p.lga_name||'LGA','Wards · LGA '+fnum(p.coverage_pct),true);
-      subEl.textContent=rows.length+' wards · avg '+avg(rows,'coverage_pct').toFixed(1)+'%';
-      drawMap(fc,'coverage_pct',function(wp){ openWard(wp); },1.2);
+      var fc={type:'FeatureCollection',features:fc_feats(wardsFC).filter(function(f){return (f.properties.lga_name||'')===(p.lga_name||'');})};
+      var rows=fc_props(fc).sort(function(a,b){return (b.visitation_pct||0)-(a.visitation_pct||0);});
+      setHead(p.lga_name||'LGA','Wards · '+fpct(p.visitation_pct)+' visited',true);
+      subEl.textContent=rows.length+' wards · avg '+avg(rows,'visitation_pct').toFixed(0)+'% visited';
+      drawMap(fc,'visitation_pct',function(wp){ openWard(wp); },1.2,false);
       listEl.innerHTML=''; window.scrollTo(0,0);
       if(!rows.length){ msg('No wards found for this LGA.'); return; }
       rows.forEach(function(w){ listEl.appendChild(rowEl(w.ward_name||w.wardcode||'—',
-        (w.settlements_covered||0)+' / '+(w.settlements||0)+' settlements ≥70%',w.coverage_pct,function(){ openWard(w); })); });
+        (w.settlements_visited||0)+' / '+(w.settlements||0)+' settlements visited',w.visitation_pct,function(){ openWard(w); })); });
     }
 
     function openWard(w){
@@ -135,15 +135,20 @@
       var code=curLga&&curLga.lgacode;
       msg('Loading settlements…'); window.scrollTo(0,0);
       var done=function(all){
-        var fc={type:'FeatureCollection',features:feats(all)
+        var rows=fc_feats(all).filter(function(f){return (f.properties.ward_name||'')===(w.ward_name||'');})
+          .map(function(f){ return f.properties||{}; })
+          .sort(function(a,b){return (b.is_visited?1:0)-(a.is_visited?1:0);});
+        var nv=rows.filter(function(r){return r.is_visited;}).length;
+        subEl.textContent=rows.length+' settlements · '+nv+' visited ('+(rows.length?Math.round(100*nv/rows.length):0)+'%)';
+        // map: colour each settlement green (visited) / red (not)
+        var fc={type:'FeatureCollection',features:fc_feats(all)
           .filter(function(f){return (f.properties.ward_name||'')===(w.ward_name||'');})
-          .map(function(f){ var p=f.properties; p._cov=(p.completeness_pct!=null?p.completeness_pct:(p.is_visited?100:0)); return f; })};
-        var rows=props(fc).sort(function(a,b){return b._cov-a._cov;});
-        subEl.textContent=rows.length+' settlements · avg '+avg(rows,'_cov').toFixed(1)+'%';
-        drawMap(fc,'_cov',null,0.6);
+          .map(function(f){ f.properties._vis=(f.properties.is_visited?100:0); return f; })};
+        drawMap(fc,'_vis',null,0.6,true);
         listEl.innerHTML='';
         if(!rows.length){ msg('No settlements found for this ward.'); return; }
-        rows.forEach(function(s){ listEl.appendChild(rowEl(s.settlement_name||'—',(s.is_visited?'Visited':'Not visited'),s._cov,null)); });
+        rows.forEach(function(s){ listEl.appendChild(rowEl(s.settlement_name||'—',null,
+          (s.is_visited?100:0),null,(s.is_visited?'Visited':'Not visited'))); });
       };
       if(settCache[code]){ done(settCache[code]); return; }
       get('/api/app/geo/settlements?lgacode='+encodeURIComponent(code)+(pid?'&project_id='+encodeURIComponent(pid):''))
@@ -155,7 +160,7 @@
 
     Promise.all([ get('/api/app/geo/lgas'+q), get('/api/app/geo/wards'+q) ])
       .then(function(res){ lgasFC=res[0]; wardsFC=res[1]; renderLgas(); })
-      .catch(function(e){ msg('Could not load coverage: '+e.message+'. Re-open the tab to retry.',true); setHead('Coverage','error',false); });
+      .catch(function(e){ msg('Could not load coverage: '+e.message+'. Re-open the tab to retry.',true); setHead('Coverage','',false); });
   </script>
 </body>
 </html>
