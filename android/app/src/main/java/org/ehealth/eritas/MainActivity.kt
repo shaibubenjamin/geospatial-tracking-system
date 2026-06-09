@@ -108,26 +108,38 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     var bannerDismissed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
+    // Campaign switching is allowed ONLY on the Dashboard — switching mid-screen
+    // (esp. on the WebView map) was unreliable. On every other tab the title is
+    // static. Changing the project on Dashboard updates `projectId`, which every
+    // tab reads, so they all reload with the new campaign when next shown.
+    val canSwitch = selectedTab == Tab.DASHBOARD
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    // The title itself is the campaign switcher: tap it to pick
-                    // a state/round. The dropdown caret makes that obvious.
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { showPicker = true },
-                    ) {
+                    if (canSwitch) {
+                        // On Dashboard the title IS the switcher (tap to pick a
+                        // state/round); the caret makes that obvious.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { showPicker = true },
+                        ) {
+                            Text(projectLabel ?: "Active campaign")
+                            Icon(
+                                Icons.Filled.ArrowDropDown,
+                                contentDescription = "Switch campaign",
+                            )
+                        }
+                    } else {
                         Text(projectLabel ?: "Active campaign")
-                        Icon(
-                            Icons.Filled.ArrowDropDown,
-                            contentDescription = "Switch campaign",
-                        )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showPicker = true }) {
-                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch campaign")
+                    if (canSwitch) {
+                        IconButton(onClick = { showPicker = true }) {
+                            Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch campaign")
+                        }
                     }
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")

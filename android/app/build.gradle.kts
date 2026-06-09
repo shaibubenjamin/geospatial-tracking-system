@@ -1,4 +1,3 @@
-import java.io.ByteArrayOutputStream
 import java.util.Properties
 
 plugins {
@@ -7,28 +6,16 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// ── Git-derived versioning ───────────────────────────────────────────────────
-// versionCode  = number of commits on HEAD (monotonic; matches the server's
-//                MIN_VERSION_CODE gate — see docs/apk-app-blueprint.md).
-// versionName  = latest annotated tag (e.g. "0.1"), falling back to "0.1".
-// Both degrade gracefully when git is unavailable (e.g. a source export) so
-// the project still builds.
-fun git(vararg args: String): String? = try {
-    val out = ByteArrayOutputStream()
-    val result = exec {
-        commandLine(listOf("git") + args)
-        standardOutput = out
-        errorOutput = ByteArrayOutputStream()
-        isIgnoreExitValue = true
-    }
-    if (result.exitValue == 0) out.toString().trim().ifBlank { null } else null
-} catch (_: Exception) {
-    null
-}
-
-val gitCommitCount: Int = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
-val gitVersionName: String =
-    (git("describe", "--tags", "--abbrev=0") ?: "0.1").removePrefix("v")
+// ── App version (set explicitly per release) ─────────────────────────────────
+// Was auto-derived from git commit count/tags; switched to explicit semantic
+// versioning at v1.0 (build 250). RULES when cutting a release:
+//   • appVersionCode MUST increase every release — Android won't install an
+//     update whose code isn't higher (and the server's update check compares it).
+//   • appVersionName is the human-facing label shown in-app and on /apk.
+// The CI workflow reads these same two values from this file, so the built APK,
+// its published filename, and /version always agree.
+val appVersionCode = 250
+val appVersionName = "1.0"
 
 // ── Release signing ──────────────────────────────────────────────────────────
 // CI injects the keystore via a keystore.properties file (or env vars) it
@@ -48,8 +35,8 @@ android {
         applicationId = "org.ehealth.eritas"
         minSdk = 24
         targetSdk = 34
-        versionCode = gitCommitCount
-        versionName = gitVersionName
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         // The backend the app talks to. Override per build type below.
         buildConfigField(
