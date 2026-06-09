@@ -101,9 +101,15 @@ private fun DashboardContent(d: OverviewDto, projectId: Int?) {
         Stat("Avg forms/team", avgPerTeam, Icons.Filled.Groups),
         Stat("GPS outside LGA", formatCount(d.gpsOutsideLga), Icons.Filled.Place),
         Stat("Fast forms", formatCount(d.fastForms), Icons.Filled.Description),
-        // "Days active" (distinct submission days, e.g. 11) was removed — it
-        // read as wrong next to "Campaign day" (5/5, the calendar day of the
-        // planned window). Campaign day is the number the team reasons about.
+        // Campaign DURATION (planned window length, e.g. 5 days) — NOT the count
+        // of distinct submission days (11), which read as wrong for the 5-day R5
+        // campaign. Mirrors the web, which drives this off the planned window.
+        Stat(
+            "Campaign duration",
+            d.plannedDurationDays?.let { "$it days" }
+                ?: d.currentCampaignDay?.let { "$it days" } ?: "—",
+            Icons.Filled.Event,
+        ),
     )
 
     Column(
@@ -156,6 +162,25 @@ private fun TrendCard(projectId: Int?, baseline: Int) {
                     drawPath(area, color = EritasGreen.copy(alpha = 0.18f))
                     drawPath(line, color = EritasGreen, style = Stroke(width = 3f))
                     cum.forEachIndexed { i, p -> drawCircle(EritasGreen, 3f, Offset(px(i), py(p.second))) }
+                }
+                // Daily date labels along the x-axis (sampled so they don't
+                // crowd on a phone — shows MM-DD, e.g. 05-19).
+                val dates = cum.mapNotNull { it.first }
+                if (dates.isNotEmpty()) {
+                    val step = ((dates.size + 5) / 6).coerceAtLeast(1)
+                    val shown = dates.filterIndexed { i, _ -> i % step == 0 || i == dates.lastIndex }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        shown.forEach {
+                            Text(
+                                it.takeLast(5),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 val last = cum.last().second
                 val lab = if (baseline > 0) "${(100.0 * last / maxV).roundToInt()}% of target"
