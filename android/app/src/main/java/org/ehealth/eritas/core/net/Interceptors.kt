@@ -3,6 +3,7 @@ package org.ehealth.eritas.core.net
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.ehealth.eritas.BuildConfig
+import org.ehealth.eritas.core.auth.SessionManager
 import org.ehealth.eritas.core.auth.TokenStore
 
 /**
@@ -31,5 +32,22 @@ class AuthInterceptor(private val tokenStore: TokenStore) : Interceptor {
                 .build()
         }
         return chain.proceed(request)
+    }
+}
+
+/**
+ * Turns an expired/invalid token into a clean logout. On HTTP 401 the stored
+ * token is cleared and [SessionManager] is tripped so the root composable
+ * returns to the login screen — instead of every screen showing a raw
+ * "HTTP 401". (426 / force-update is handled separately by the update gate.)
+ */
+class UnauthorizedInterceptor(private val tokenStore: TokenStore) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val response = chain.proceed(chain.request())
+        if (response.code == 401) {
+            tokenStore.clear()
+            SessionManager.onUnauthorized()
+        }
+        return response
     }
 }
