@@ -101,7 +101,9 @@ private fun DashboardContent(d: OverviewDto, projectId: Int?) {
         Stat("Avg forms/team", avgPerTeam, Icons.Filled.Groups),
         Stat("GPS outside LGA", formatCount(d.gpsOutsideLga), Icons.Filled.Place),
         Stat("Fast forms", formatCount(d.fastForms), Icons.Filled.Description),
-        Stat("Days active", d.daysActive.toString(), Icons.Filled.Event),
+        // "Days active" (distinct submission days, e.g. 11) was removed — it
+        // read as wrong next to "Campaign day" (5/5, the calendar day of the
+        // planned window). Campaign day is the number the team reasons about.
     )
 
     Column(
