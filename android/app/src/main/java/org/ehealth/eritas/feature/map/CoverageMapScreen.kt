@@ -56,10 +56,9 @@ fun CoverageMapScreen(projectId: Int?) {
 
     Column(Modifier.fillMaxSize()) {
         summary?.let { GeoSummaryStrip(it) }
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            MapWebView(projectId = projectId, modifier = Modifier.fillMaxSize())
-            Legend(Modifier.align(Alignment.BottomStart).padding(12.dp))
-        }
+        // The coverage page (Leaflet map + drill-down list) carries its own
+        // legend, so no Compose legend overlay here.
+        MapWebView(projectId = projectId, modifier = Modifier.fillMaxWidth().weight(1f))
     }
 }
 
