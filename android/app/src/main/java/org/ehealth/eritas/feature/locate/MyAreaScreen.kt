@@ -1,10 +1,14 @@
 package org.ehealth.eritas.feature.locate
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +40,7 @@ import org.ehealth.eritas.core.model.NearResponse
 import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.ui.CoverageGood
 import org.ehealth.eritas.ui.CoverageLow
+import org.ehealth.eritas.ui.CoverageMid
 import kotlin.math.roundToInt
 
 /**
@@ -156,25 +161,76 @@ fun MyAreaScreen(projectId: Int?) {
 
             Spacer(Modifier.height(12.dp))
 
-            r.nearestUncovered?.let { next ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Nearest settlement left to cover", style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            next.settlementName ?: "Unknown",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text("${next.wardName ?: "—"} • ${next.lgaName ?: "—"}")
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "${formatDistance(next.distanceM)} away • ${next.completenessPct.roundToInt()}% complete",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+            if (r.recommendations.isNotEmpty()) {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        "Where to cover next",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "Nearest settlements still needing coverage — tap one for directions.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    r.recommendations.forEach { next ->
+                        val canNavigate = next.lat != null && next.lon != null
+                        Card(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .then(
+                                    if (canNavigate) Modifier.clickable {
+                                        openDirections(context, next.lat!!, next.lon!!, next.settlementName)
+                                    } else Modifier
+                                ),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        next.settlementName ?: "Unknown",
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    Text(
+                                        "${next.wardName ?: "—"} • ${next.lgaName ?: "—"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        formatDistance(next.distanceM) + " away" +
+                                            if (canNavigate) " • tap for directions" else "",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                Spacer(Modifier.height(0.dp))
+                                Text(
+                                    "${next.completenessPct.roundToInt()}%",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = covColor(next.completenessPct),
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** Open the device's maps app pointed at the settlement so the team can route to it. */
+private fun openDirections(context: android.content.Context, lat: Double, lon: Double, label: String?) {
+    val q = "$lat,$lon" + (label?.let { "(${Uri.encode(it)})" } ?: "")
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$lat,$lon?q=$q"))
+    runCatching { context.startActivity(intent) }
+}
+
+private fun covColor(pct: Double): Color = when {
+    pct >= 70 -> CoverageGood
+    pct >= 40 -> CoverageMid
+    else -> CoverageLow
 }
 
 private fun formatDistance(meters: Double): String =

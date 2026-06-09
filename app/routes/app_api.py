@@ -321,11 +321,15 @@ async def app_near(
             "point_count": int(cur.point_count or 0),
         }
 
+    # Ranked "where to cover next" list: the nearest settlements not yet
+    # covered (no GPS point AND grid completeness < 70%), closest first — a
+    # practical to-do list for the team standing at (lat, lon).
     near_res = await db.execute(
         text(
             f"""
             SELECT sa.settlement_name, sa.ward_name, sa.lga_name,
                    COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
+                   COALESCE(sa.is_visited, FALSE) AS is_visited,
                    ST_Distance(s.geom::geography, {point}::geography) AS dist_m,
                    ST_Y(ST_Centroid(s.geom)) AS lat,
                    ST_X(ST_Centroid(s.geom)) AS lon
@@ -334,27 +338,30 @@ async def app_near(
             WHERE sa.project_id = :pid
               AND NOT (sa.is_visited OR COALESCE(sa.completeness_pct, 0) >= 70)
             ORDER BY s.geom <-> {point}
-            LIMIT 1
+            LIMIT 12
             """
         ),
         {"pid": pid, "lat": lat, "lon": lon},
     )
-    nxt = near_res.fetchone()
-    nearest_uncovered = None
-    if nxt:
-        nearest_uncovered = {
-            "settlement_name": nxt.settlement_name,
-            "ward_name": nxt.ward_name,
-            "lga_name": nxt.lga_name,
-            "completeness_pct": round(float(nxt.completeness_pct or 0), 1),
-            "distance_m": round(float(nxt.dist_m or 0), 0),
-            "lat": float(nxt.lat) if nxt.lat is not None else None,
-            "lon": float(nxt.lon) if nxt.lon is not None else None,
+    recommendations = [
+        {
+            "settlement_name": r.settlement_name,
+            "ward_name": r.ward_name,
+            "lga_name": r.lga_name,
+            "completeness_pct": round(float(r.completeness_pct or 0), 1),
+            "is_visited": bool(r.is_visited),
+            "distance_m": round(float(r.dist_m or 0), 0),
+            "lat": float(r.lat) if r.lat is not None else None,
+            "lon": float(r.lon) if r.lon is not None else None,
         }
+        for r in near_res.fetchall()
+    ]
 
     return {
         "project_id": pid,
         "query": {"lat": lat, "lon": lon},
         "current": current,
-        "nearest_uncovered": nearest_uncovered,
+        # Kept for older clients; equals recommendations[0].
+        "nearest_uncovered": recommendations[0] if recommendations else None,
+        "recommendations": recommendations,
     }

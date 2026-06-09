@@ -112,6 +112,7 @@ data class NearResponse(
     @Json(name = "project_id") val projectId: Int,
     val current: NearCurrent?,
     @Json(name = "nearest_uncovered") val nearestUncovered: NearTarget?,
+    val recommendations: List<NearTarget> = emptyList(),
 )
 
 data class NearCurrent(
@@ -128,6 +129,7 @@ data class NearTarget(
     @Json(name = "ward_name") val wardName: String?,
     @Json(name = "lga_name") val lgaName: String?,
     @Json(name = "completeness_pct") val completenessPct: Double,
+    @Json(name = "is_visited") val isVisited: Boolean = false,
     @Json(name = "distance_m") val distanceM: Double,
     val lat: Double?,
     val lon: Double?,
