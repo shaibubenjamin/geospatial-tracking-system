@@ -20,3 +20,17 @@ object SessionManager {
     /** Called after a successful (re)login. */
     fun reset() { sessionExpired = false }
 }
+
+/**
+ * Tripped when the server returns HTTP 426 (Upgrade Required) — i.e. this
+ * install is below the deliberate force-update floor. The root composable shows
+ * the blocking "Update required" wall instead of a raw "HTTP 426" error on a
+ * screen. (Routine new releases are NOT 426 — they surface as the optional
+ * "update available" prompt via the launch /version check.)
+ */
+object UpdateRequiredState {
+    var required by mutableStateOf(false)
+        private set
+
+    fun trip() { required = true }
+}

@@ -18,11 +18,11 @@ services:
       # default (/app/apk). Without this the /apk route looks in the wrong
       # place and reports "APK not available yet".
       - APK_DIR=/var/app-apk
-      # Force-update floor FALLBACK. The effective floor now auto-tracks the
-      # APK published in APK_DIR (see _force_min in app/main.py): publishing a
-      # new build automatically forces older installs onto it via the "Update
-      # required" wall. This static value is used only if no APK is discoverable
-      # in APK_DIR (so the gate still works before the first publish). 0 = off.
+      # DELIBERATE force-update floor: installs with versionCode < this get the
+      # blocking "Update required" wall. Does NOT auto-track the latest build —
+      # routine releases surface as an "update available" prompt (driven by the
+      # auto-detected `latest`), not a 426 lockout. Raise this ONLY for a build
+      # that is genuinely incompatible. 0 disables the gate.
       - MIN_VERSION_CODE=116
     volumes:
       - uploads:/app/uploads

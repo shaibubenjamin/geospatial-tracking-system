@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.ehealth.eritas.BuildConfig
+import org.ehealth.eritas.core.auth.UpdateRequiredState
 import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.net.ServiceLocator
 
@@ -77,6 +78,19 @@ fun UpdateGate(content: @Composable (optionalUpdate: VersionInfo?) -> Unit) {
             }
         } catch (_: Exception) {
             UpdateState.Ok
+        }
+    }
+
+    // A mid-session 426 (server rejected this build as too old) trips this —
+    // flip to the blocking wall instead of letting a raw "HTTP 426" surface on
+    // a screen. We fetch the latest /version for the wall's copy; if that fails,
+    // fall back to a generic message pointing at the download URL.
+    val forced = UpdateRequiredState.required
+    LaunchedEffect(forced) {
+        if (forced && state !is UpdateState.Required) {
+            val info = runCatching { ServiceLocator.api.version() }.getOrNull()
+                ?: VersionInfo(0, 0, "the latest version", "/apk")
+            state = UpdateState.Required(info)
         }
     }
 

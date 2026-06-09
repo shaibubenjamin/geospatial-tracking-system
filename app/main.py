@@ -569,7 +569,13 @@ def _version_payload(detail: str) -> dict:
     s = _apk_status()
     return {
         "detail": detail,
-        "min": _force_min(),
+        # min = a DELIBERATE static floor (only force-updates genuinely-too-old
+        # builds). It does NOT auto-track the latest build — a routine release
+        # must be an "update available" prompt (driven by `latest` below), not a
+        # 426 lockout for everyone. Raise MIN_VERSION_CODE only for a build that
+        # is truly incompatible.
+        "min": MIN_VERSION_CODE,
+        # latest auto-tracks the published APK → drives the optional-update prompt.
         "latest": s["version_code"] or LATEST_VERSION_CODE,
         "latest_name": s["version_name"] or LATEST_VERSION_NAME,
         "update_url": UPDATE_URL,
@@ -581,7 +587,7 @@ async def enforce_app_version(request, call_next):
     path = request.url.path
     if request.method == "OPTIONS" or path == "/version":
         return await call_next(request)
-    min_code = _force_min()
+    min_code = MIN_VERSION_CODE
     if min_code and min_code > 0:
         raw = request.headers.get("X-App-Version-Code")
         is_app_path = path.startswith(APP_API_PREFIX)
@@ -710,7 +716,7 @@ async def app_version():
     """
     s = _apk_status()
     return {
-        "min": _force_min(),
+        "min": MIN_VERSION_CODE,
         "latest": s["version_code"] or LATEST_VERSION_CODE,
         "latest_name": s["version_name"] or LATEST_VERSION_NAME,
         "update_url": UPDATE_URL,
@@ -742,25 +748,12 @@ def _serve_apk(filename: str, download_as: str | None = None):
 _APK_STATUS_CACHE: dict = {"val": None, "ts": 0.0}
 
 
-def _force_min() -> int:
-    """Force-update floor (the value the version gate enforces).
-
-    Auto-tracks the published APK's versionCode, so publishing a new build
-    forces every older install onto it — the app's UpdateGate shows the
-    blocking "Update required" wall when its versionCode < this. The floor is
-    derived from the APK actually on disk, so it can never demand a build that
-    isn't downloadable (no lock-out). Falls back to the static MIN_VERSION_CODE
-    only when no APK is discoverable in APK_DIR."""
-    code = _apk_status().get("version_code") or 0
-    return code if code > 0 else MIN_VERSION_CODE
-
-
 def _apk_status() -> dict:
     """Inspect APK_DIR: is the latest APK present, its size, and best-known
     version (parsed from any eritas-<name>-<code>.apk siblings).
 
-    Cached ~30s because the version-gate middleware calls this on every request
-    (via _force_min) — without the cache that would be an os.listdir per call."""
+    Cached ~30s because /version + the landing page call this; the result feeds
+    the optional-update prompt (latest), not the force floor."""
     now = time.time()
     if _APK_STATUS_CACHE["val"] is not None and now - _APK_STATUS_CACHE["ts"] < 30:
         return _APK_STATUS_CACHE["val"]

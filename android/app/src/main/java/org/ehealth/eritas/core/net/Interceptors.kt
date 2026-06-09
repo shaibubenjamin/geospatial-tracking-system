@@ -5,6 +5,7 @@ import okhttp3.Response
 import org.ehealth.eritas.BuildConfig
 import org.ehealth.eritas.core.auth.SessionManager
 import org.ehealth.eritas.core.auth.TokenStore
+import org.ehealth.eritas.core.auth.UpdateRequiredState
 
 /**
  * Stamps every outgoing request with the installed app's versionCode. This is
@@ -44,9 +45,15 @@ class AuthInterceptor(private val tokenStore: TokenStore) : Interceptor {
 class UnauthorizedInterceptor(private val tokenStore: TokenStore) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())
-        if (response.code == 401) {
-            tokenStore.clear()
-            SessionManager.onUnauthorized()
+        when (response.code) {
+            401 -> {
+                tokenStore.clear()
+                SessionManager.onUnauthorized()
+            }
+            // 426 Upgrade Required: this install is below the force-update floor.
+            // Trip the global signal so the UI shows the "Update required" wall
+            // instead of a raw "HTTP 426" error on whatever screen made the call.
+            426 -> UpdateRequiredState.trip()
         }
         return response
     }
