@@ -67,6 +67,7 @@
     var listEl=document.getElementById('list'), crumbEl=document.getElementById('crumb'),
         subEl=document.getElementById('subtext'), backEl=document.getElementById('back');
     var lgasFC=null, wardsFC=null, settCache={}, level='lga', curLga=null, curWard=null, mapLayer=null;
+    var pointsLayer=null, pointsCache={};
 
     var map=L.map('map',{preferCanvas:true, zoomControl:true, attributionControl:false}).setView([13.02,5.24],7);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{subdomains:'abcd',maxZoom:19}).addTo(map);
@@ -105,6 +106,23 @@
       fixMap();
     }
 
+    // GPS submission points — green = in a settlement/grid (in_bounds), red =
+    // outside. Drawn ON TOP of the polygons; loaded as you drill in.
+    function clearPoints(){ if(pointsLayer){ map.removeLayer(pointsLayer); pointsLayer=null; } }
+    function drawPoints(fc){
+      clearPoints();
+      if(!fc || !fc_feats(fc).length) return;
+      pointsLayer=L.geoJSON(fc,{ pointToLayer:function(f,latlng){
+        var ib=(f.properties||{}).in_bounds;
+        return L.circleMarker(latlng,{radius:3,fillColor:ib?'#16a34a':'#dc2626',color:'#ffffff',weight:0.6,fillOpacity:0.9});
+      }}).addTo(map);
+    }
+    function loadPoints(qs){
+      if(pointsCache[qs]){ drawPoints(pointsCache[qs]); return; }
+      get('/api/app/geo/points?'+qs+(pid?'&project_id='+encodeURIComponent(pid):''))
+        .then(function(d){ pointsCache[qs]=d; drawPoints(d); }).catch(function(){});
+    }
+
     // ── LGA level — entire state, coloured by % settlements visited ──────────
     function renderLgas(){
       level='lga'; curLga=null; curWard=null;
@@ -112,6 +130,7 @@
       setHead('Statewide','% settlements visited · tap an LGA',false);
       subEl.textContent=rows.length+' LGAs · avg '+avg(rows,'visitation_pct').toFixed(0)+'% visited';
       drawMap(lgasFC,'visitation_pct',function(p){ openLga(p); },2,false);
+      clearPoints();  // statewide view — too many points; appear as you drill in
       listEl.innerHTML=''; window.scrollTo(0,0);
       rows.forEach(function(p){ listEl.appendChild(rowEl(p.lga_name||p.lgacode||'—',null,p.visitation_pct,function(){ openLga(p); })); });
     }
@@ -123,6 +142,7 @@
       setHead(p.lga_name||'LGA','Wards · '+fpct(p.visitation_pct)+' visited',true);
       subEl.textContent=rows.length+' wards · avg '+avg(rows,'visitation_pct').toFixed(0)+'% visited';
       drawMap(fc,'visitation_pct',function(wp){ openWard(wp); },1.2,false);
+      if(p.lgacode) loadPoints('lgacode='+encodeURIComponent(p.lgacode));  // GPS points across the LGA
       listEl.innerHTML=''; window.scrollTo(0,0);
       if(!rows.length){ msg('No wards found for this LGA.'); return; }
       rows.forEach(function(w){ listEl.appendChild(rowEl(w.ward_name||w.wardcode||'—',
@@ -133,6 +153,7 @@
       curWard=w; level='settlement';
       setHead(w.ward_name||'Ward',(curLga&&curLga.lga_name?curLga.lga_name+' · ':'')+'Settlements',true);
       var code=curLga&&curLga.lgacode;
+      if(w.wardcode) loadPoints('wardcode='+encodeURIComponent(w.wardcode));  // GPS points in this ward
       msg('Loading settlements…'); window.scrollTo(0,0);
       var done=function(all){
         var rows=fc_feats(all).filter(function(f){return (f.properties.ward_name||'')===(w.ward_name||'');})

@@ -32,6 +32,7 @@ from app.routes.mda import (
     geo_lgas_coverage, geo_wards_coverage, geo_settlements_coverage,
 )
 from app.routes import mda as mda_route
+from app.services.spatial_engine import get_points_geojson
 
 router = APIRouter(prefix="/app", tags=["app"])
 
@@ -250,6 +251,35 @@ async def app_geo_settlements(
     user: User = Depends(get_current_user),
 ):
     return await geo_settlements_coverage(lgacode=lgacode, pid=pid, db=db, _u=user)
+
+
+@router.get("/geo/points")
+async def app_geo_points(
+    lgacode: _Optional[str] = None,
+    wardcode: _Optional[str] = None,
+    unique_cod: _Optional[str] = None,
+    limit: int = 4000,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """GPS submission points for the map, filtered to the drilled LGA/ward/
+    settlement. Green = inside a settlement or grid cell (``in_bounds``), red =
+    outside. Slimmed to geometry + in_bounds (no PII, small payload) since the
+    app only needs to plot dots — the web dashboard keeps the full detail."""
+    fc = await get_points_geojson(
+        pid, db, unique_cod=unique_cod, wardcode=wardcode, lgacode=lgacode, limit=limit
+    )
+    features = [
+        {
+            "type": "Feature",
+            "geometry": f["geometry"],
+            "properties": {"in_bounds": bool((f.get("properties") or {}).get("in_bounds"))},
+        }
+        for f in fc.get("features", [])
+        if f.get("geometry")
+    ]
+    return {"type": "FeatureCollection", "features": features}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
