@@ -566,11 +566,12 @@ async def require_auth_on_protected_apis(request, call_next):
 #   • header absent on a non-app path (web browser)  → pass through untouched
 # GET /version is always exempt so the client launch-check can run.
 def _version_payload(detail: str) -> dict:
+    s = _apk_status()
     return {
         "detail": detail,
-        "min": MIN_VERSION_CODE,
-        "latest": LATEST_VERSION_CODE,
-        "latest_name": LATEST_VERSION_NAME,
+        "min": _force_min(),
+        "latest": s["version_code"] or LATEST_VERSION_CODE,
+        "latest_name": s["version_name"] or LATEST_VERSION_NAME,
         "update_url": UPDATE_URL,
     }
 
@@ -580,7 +581,8 @@ async def enforce_app_version(request, call_next):
     path = request.url.path
     if request.method == "OPTIONS" or path == "/version":
         return await call_next(request)
-    if MIN_VERSION_CODE and MIN_VERSION_CODE > 0:
+    min_code = _force_min()
+    if min_code and min_code > 0:
         raw = request.headers.get("X-App-Version-Code")
         is_app_path = path.startswith(APP_API_PREFIX)
         if raw is not None:
@@ -588,7 +590,7 @@ async def enforce_app_version(request, call_next):
                 version_code = int(raw)
             except ValueError:
                 version_code = -1
-            if version_code < MIN_VERSION_CODE:
+            if version_code < min_code:
                 return JSONResponse(
                     _version_payload("Upgrade required"), status_code=426
                 )
@@ -708,7 +710,7 @@ async def app_version():
     """
     s = _apk_status()
     return {
-        "min": MIN_VERSION_CODE,
+        "min": _force_min(),
         "latest": s["version_code"] or LATEST_VERSION_CODE,
         "latest_name": s["version_name"] or LATEST_VERSION_NAME,
         "update_url": UPDATE_URL,
@@ -737,9 +739,31 @@ def _serve_apk(filename: str, download_as: str | None = None):
     )
 
 
+_APK_STATUS_CACHE: dict = {"val": None, "ts": 0.0}
+
+
+def _force_min() -> int:
+    """Force-update floor (the value the version gate enforces).
+
+    Auto-tracks the published APK's versionCode, so publishing a new build
+    forces every older install onto it — the app's UpdateGate shows the
+    blocking "Update required" wall when its versionCode < this. The floor is
+    derived from the APK actually on disk, so it can never demand a build that
+    isn't downloadable (no lock-out). Falls back to the static MIN_VERSION_CODE
+    only when no APK is discoverable in APK_DIR."""
+    code = _apk_status().get("version_code") or 0
+    return code if code > 0 else MIN_VERSION_CODE
+
+
 def _apk_status() -> dict:
     """Inspect APK_DIR: is the latest APK present, its size, and best-known
-    version (parsed from any eritas-<name>-<code>.apk siblings)."""
+    version (parsed from any eritas-<name>-<code>.apk siblings).
+
+    Cached ~30s because the version-gate middleware calls this on every request
+    (via _force_min) — without the cache that would be an os.listdir per call."""
+    now = time.time()
+    if _APK_STATUS_CACHE["val"] is not None and now - _APK_STATUS_CACHE["ts"] < 30:
+        return _APK_STATUS_CACHE["val"]
     latest_path = os.path.join(APK_DIR, APK_FILENAME)
     available = os.path.isfile(latest_path)
     size_mb = round(os.path.getsize(latest_path) / (1024 * 1024), 1) if available else 0.0
@@ -757,13 +781,16 @@ def _apk_status() -> dict:
                 download_name = f
     except OSError:
         pass
-    return {
+    result = {
         "available": available,
         "size_mb": size_mb,
         "version_name": version_name,
         "version_code": version_code,
         "download_name": download_name,
     }
+    _APK_STATUS_CACHE["val"] = result
+    _APK_STATUS_CACHE["ts"] = now
+    return result
 
 
 def _apk_landing_html(request: Request) -> str:
