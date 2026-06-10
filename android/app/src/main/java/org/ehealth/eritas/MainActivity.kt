@@ -67,7 +67,11 @@ class MainActivity : ComponentActivity() {
                         if (sessionExpired) loggedIn = false
                     }
                     if (!loggedIn) {
-                        LoginScreen(onLoggedIn = {
+                        // Surface the non-blocking "update available" banner on the
+                        // login screen too (it used to appear only post-login). A
+                        // too-old build never reaches here — UpdateGate shows the
+                        // blocking wall first — so this is purely the optional case.
+                        LoginScreen(optionalUpdate = optionalUpdate, onLoggedIn = {
                             SessionManager.reset()
                             loggedIn = true
                         })

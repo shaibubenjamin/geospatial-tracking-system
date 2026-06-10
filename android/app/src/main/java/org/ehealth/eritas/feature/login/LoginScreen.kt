@@ -33,18 +33,28 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.ehealth.eritas.R
 import org.ehealth.eritas.core.model.LoginRequest
+import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.net.ServiceLocator
+import org.ehealth.eritas.feature.update.UpdateBanner
 
 @Composable
-fun LoginScreen(onLoggedIn: () -> Unit) {
+fun LoginScreen(optionalUpdate: VersionInfo? = null, onLoggedIn: () -> Unit) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var bannerDismissed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    Column(
-        Modifier.fillMaxSize().padding(28.dp),
+    Column(Modifier.fillMaxSize()) {
+      // Optional "update available" banner, pinned above the form. A too-old
+      // build never reaches login (UpdateGate shows the blocking wall first),
+      // so this only ever shows the soft, dismissible update prompt.
+      if (optionalUpdate != null && !bannerDismissed) {
+          UpdateBanner(optionalUpdate) { bannerDismissed = true }
+      }
+      Column(
+        Modifier.fillMaxWidth().weight(1f).padding(28.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -124,5 +134,6 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                 }
             }
         }
+      }
     }
 }
