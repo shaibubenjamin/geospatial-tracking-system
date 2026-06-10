@@ -2780,7 +2780,8 @@ async def geo_lgas_coverage(
         SELECT l.lga_name, l.lgacode,
                ST_AsGeoJSON(l.geom) AS geom,
                COALESCE(cov.frac, 0)::float AS frac,
-               COALESCE(cov.visit_frac, 0)::float AS visit_frac
+               COALESCE(cov.visit_frac, 0)::float AS visit_frac,
+               (cov.lgacode IS NOT NULL) AS in_campaign
         FROM lgas l LEFT JOIN cov ON cov.lgacode = l.lgacode
         WHERE l.project_id = :bpid
     """), {"pid": pid, "bpid": bpid})
@@ -2790,11 +2791,15 @@ async def geo_lgas_coverage(
         if not r.geom:
             continue
         frac = float(r.frac or 0)
+        # in_campaign: the LGA has settlement_analytics rows (it was part of this
+        # round's plan). LGAs in the boundary but NOT in the campaign have none —
+        # the map renders those blank instead of grading them red (0% coverage).
         feats.append({"type": "Feature", "geometry": _json.loads(r.geom),
                       "properties": {"lga_name": r.lga_name, "lgacode": r.lgacode,
                                      "coverage_pct": round(100.0 * frac, 1),
                                      "visitation_pct": round(100.0 * float(r.visit_frac or 0), 1),
-                                     "is_at_target": frac >= 0.7}})
+                                     "is_at_target": frac >= 0.7,
+                                     "in_campaign": bool(r.in_campaign)}})
     return {"type": "FeatureCollection", "project_id": pid, "features": feats}
 
 

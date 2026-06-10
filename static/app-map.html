@@ -67,8 +67,13 @@
       return L.latLngBounds([[minLat,minLon],[maxLat,maxLon]]);
     }
 
-    function lgaStyle(f){ return {color:'#1f2937',weight:1.5,opacity:0.85,
-      fillColor:visColor((f.properties||{}).visitation_pct),fillOpacity:0.55}; }
+    function lgaStyle(f){ var p=f.properties||{};
+      // LGAs not part of this campaign (no settlement plan) are shown blank —
+      // a faint neutral fill + dashed border — never graded red for "0%".
+      if(p.in_campaign===false) return {color:'#94a3b8',weight:1,opacity:0.6,
+        dashArray:'4 3',fillColor:'#cbd5e1',fillOpacity:0.12};
+      return {color:'#1f2937',weight:1.5,opacity:0.85,
+        fillColor:visColor(p.visitation_pct),fillOpacity:0.55}; }
     function wardStyle(f){ return {color:'#374151',weight:0.8,opacity:0.7,
       fillColor:visColor((f.properties||{}).visitation_pct),fillOpacity:0.45}; }
     function settStyle(f){ var v=(f.properties||{}).is_visited;
@@ -76,6 +81,7 @@
 
     function popupArea(kind){ return function(f,layer){ var p=f.properties||{};
       var nm=p.ward_name||p.lga_name||'—';
+      if(p.in_campaign===false){ layer.bindPopup('<b>'+nm+'</b><br><i>Not part of this campaign</i>'); return; }
       layer.bindPopup('<b>'+nm+'</b><br>'+kind+': <b style="color:'+visColor(p.visitation_pct)+'">'+fpct(p.visitation_pct)+' visited</b>'); }; }
 
     // ── progressive reveal by zoom ───────────────────────────────────────────
