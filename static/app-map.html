@@ -130,10 +130,12 @@
         l.bindPopup('<b>'+(p.settlement_name||'—')+'</b><br>'+(p.is_visited?'Visited':'Not visited')); }});
       pointsLayer=L.geoJSON(null,{pointToLayer:function(f,ll){ var ib=(f.properties||{}).in_bounds;
         return L.circleMarker(ll,{radius:3,fillColor:ib?'#16a34a':'#dc2626',color:'#fff',weight:0.6,fillOpacity:0.9}); }});
-      feats(lgasFC).forEach(function(f){ if(f.geometry) lgaItems.push({lgacode:f.properties.lgacode,bounds:boundsOf(f)}); });
-      // ?focus=<lgacode> (from the dashboard's "View on map") → zoom to that LGA
-      // so its wards reveal; otherwise fit the whole state.
-      var focus=qp('focus'), fit=focus&&lgaItems.filter(function(x){return x.lgacode===focus;})[0];
+      feats(lgasFC).forEach(function(f){ if(f.geometry){ var p=f.properties||{}; lgaItems.push({lgacode:p.lgacode,name:(p.lga_name||p.lga||''),bounds:boundsOf(f)}); } });
+      // ?focus=<lgacode OR lga name> (from the app's Coverage tab "View on map")
+      // → zoom to that LGA so its wards reveal; otherwise fit the whole state.
+      // The app passes the LGA name (it has no code), so match either.
+      var focus=qp('focus'), fl=focus?String(focus).trim().toLowerCase():'';
+      var fit=focus&&lgaItems.filter(function(x){return x.lgacode===focus || (x.name||'').trim().toLowerCase()===fl;})[0];
       try{ if(fit){ map.fitBounds(fit.bounds,{padding:[24,24],maxZoom:11}); } else { map.fitBounds(lgaLayer.getBounds(),{padding:[16,16],maxZoom:8}); } }catch(e){}
       sizeMap(); update();
       map.on('zoomend moveend', update);
