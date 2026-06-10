@@ -133,6 +133,24 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
    chart/table grids to one column (charts were squished side-by-side), bounds
    chart heights, stacks KPI card internals, lets tables scroll, shrinks type. */
 @media(max-width:860px){
+  /* ── SHELL: the desktop layout is a fixed 100vh flex row with a 252px sidebar
+     and an inner-scrolling .page. On a phone that left the content crushed into
+     a ~100px sliver beside the sidebar. Unlock the height-lock → natural document
+     scroll, and turn the sidebar into a sticky horizontal pill bar on top. (Same
+     shape app-mode uses, but plain web keeps ALL nav items.) ── */
+  body{height:auto!important;overflow:visible!important}
+  .app{flex-direction:column;height:auto;min-height:100vh}
+  .main{min-width:0}
+  .page{flex:none;height:auto;overflow:visible!important}
+  .topbar{flex-wrap:wrap;padding:8px 12px}
+  .search{width:auto;flex:1 1 140px;min-width:120px}
+  .sidebar{position:sticky;top:0;z-index:100;width:100%;height:auto;flex-direction:row;align-items:center;
+    overflow-x:auto;overflow-y:hidden;flex-shrink:0;padding:7px 8px;gap:4px;box-shadow:0 1px 8px rgba(0,0,0,.2)}
+  .sidebar .brand,.sidebar .nav-section,.sidebar-toggle,.sidebar-footer{display:none!important}
+  .sidebar .nav-item{flex:0 0 auto;margin:0;padding:8px 13px;border-radius:999px;font-size:12.5px;
+    white-space:nowrap;transform:none!important;border-left:0!important}
+  .sidebar .nav-item:hover{transform:none!important}
+  .sidebar .nav-item.active{border-radius:999px;border-left:0;transform:none!important}
   .kpi-grid,.kpi-grid.cols-6,.kpi-grid.cols-5,.kpi-grid.cols-4,.kpi-grid.cols-3,.kpi-grid.cols-2{grid-template-columns:1fr 1fr!important}
   .grid-2,.grid-3,.grid-22,.qc-grid,.geo-wrap{grid-template-columns:1fr!important}
   .page{padding:12px 12px 48px}
