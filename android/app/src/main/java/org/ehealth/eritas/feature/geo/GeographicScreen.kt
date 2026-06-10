@@ -1,6 +1,5 @@
 package org.ehealth.eritas.feature.geo
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import org.ehealth.eritas.core.model.GeoBucket
 import org.ehealth.eritas.core.model.GeoSummary
 import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.feature.web.AppWebScreen
@@ -98,65 +95,13 @@ private fun GeoSummaryHeader(summary: GeoSummary?) {
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
-            val cs = summary?.coverageSummary
-            if (cs != null) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "% AT TARGET",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    // The distinction that confused: visited ≠ at target.
-                    "Share of areas that MEET the coverage threshold — not the same " +
-                        "as 'visited' above (a settlement can be visited but still " +
-                        "below target).",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 1.dp, bottom = 8.dp),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BucketChip("LGAs", cs.lga, Modifier.weight(1f))
-                    BucketChip("Wards", cs.ward, Modifier.weight(1f))
-                    BucketChip("Settlements", cs.settlement, Modifier.weight(1f))
-                }
-            }
+            // The LGA/Ward/Settlement "at target" cards moved to the LGA Coverage
+            // tab so the map has room. The settlements-visited bar above stays.
         }
     }
 }
 
 private fun fmt(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n.toLong())
-
-@Composable
-private fun BucketChip(label: String, bucket: GeoBucket?, modifier: Modifier = Modifier) {
-    val pct = bucket?.pct ?: 0.0
-    Surface(
-        modifier,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(Modifier.padding(10.dp)) {
-            Text(
-                label.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "${pct.roundToInt()}%",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = covColor(pct),
-            )
-            Text(
-                if (bucket == null) "—" else "${fmt(bucket.atTarget)} of ${fmt(bucket.total)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
 
 private fun covColor(pct: Double): Color = when {
     pct >= 70 -> CoverageGood

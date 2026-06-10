@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -22,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import org.ehealth.eritas.core.model.GeoBucket
+import org.ehealth.eritas.core.model.GeoCoverageSummary
+import org.ehealth.eritas.core.model.GeoSummary
 import org.ehealth.eritas.core.model.LgaCoverage
 import org.ehealth.eritas.core.model.SettlementCoverage
 import org.ehealth.eritas.core.model.WardCoverage
@@ -63,6 +68,7 @@ fun LgaCoverageScreen(projectId: Int?, onOpenMap: (String) -> Unit = {}) {
                 ward = selectedWard!!,
                 projectId = projectId,
                 onBack = { selectedWard = null },
+                onOpenMap = onOpenMap,
             )
         }
         // Level 2: wards within the selected LGA (tap a ward → its settlements).
@@ -94,6 +100,7 @@ private fun LgaListPage(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var rows by remember { mutableStateOf<List<LgaCoverage>>(emptyList()) }
+    var summary by remember { mutableStateOf<GeoSummary?>(null) }
 
     LaunchedEffect(projectId) {
         loading = true
@@ -103,6 +110,8 @@ private fun LgaListPage(
         } catch (e: Exception) {
             error = "Could not load LGA coverage: ${e.message ?: "network error"}"
         }
+        // For the "% at target" summary cards (moved here from the Geo tab).
+        summary = runCatching { ServiceLocator.api.geoSummary(projectId) }.getOrNull()
         loading = false
     }
 
@@ -118,6 +127,9 @@ private fun LgaListPage(
             Modifier.fillMaxSize().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            summary?.coverageSummary?.let { cs ->
+                item { AtTargetCard(cs) }
+            }
             item {
                 Text(
                     "Coverage by LGA · tap to view wards",
@@ -128,6 +140,62 @@ private fun LgaListPage(
             items(rows) { row ->
                 LgaRow(row, onOpenMap = { row.lga?.let(onOpenMap) }) { onOpenLga(row.lga) }
             }
+        }
+    }
+}
+
+/** "% at target" summary (moved here from the Geo tab so the map has room). */
+@Composable
+private fun AtTargetCard(cs: GeoCoverageSummary) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                "% AT TARGET",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Share of LGAs / wards / settlements meeting the coverage threshold.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 1.dp, bottom = 8.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BucketChip("LGAs", cs.lga, Modifier.weight(1f))
+                BucketChip("Wards", cs.ward, Modifier.weight(1f))
+                BucketChip("Settlements", cs.settlement, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun BucketChip(label: String, bucket: GeoBucket?, modifier: Modifier = Modifier) {
+    val pct = bucket?.pct ?: 0.0
+    Surface(
+        modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Text(
+                label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "${pct.roundToInt()}%",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = coverageColor(pct),
+            )
+            Text(
+                if (bucket == null) "—" else "${formatCount(bucket.atTarget)} of ${formatCount(bucket.total)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -169,11 +237,6 @@ private fun WardCoveragePage(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
-            // View this LGA on the map (ward-level focus isn't supported by the
-            // map, so the pin zooms to the parent LGA).
-            IconButton(onClick = { onOpenMap(lga) }) {
-                Icon(Icons.Filled.Place, contentDescription = "View on map", tint = MaterialTheme.colorScheme.primary)
-            }
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
@@ -187,7 +250,12 @@ private fun WardCoveragePage(
                 Modifier.fillMaxSize().padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(wards) { w -> WardCard(w) { w.wardName?.let(onOpenWard) } }
+                items(wards) { w ->
+                    WardCard(
+                        w,
+                        onViewMap = { (w.lga ?: lga).let(onOpenMap) },
+                    ) { w.wardName?.let(onOpenWard) }
+                }
             }
         }
     }
@@ -250,11 +318,11 @@ private fun LgaRow(row: LgaCoverage, onOpenMap: (String) -> Unit, onClick: () ->
 }
 
 @Composable
-private fun WardCard(w: WardCoverage, onClick: () -> Unit) {
+private fun WardCard(w: WardCoverage, onViewMap: () -> Unit, onClick: () -> Unit) {
     val pct = w.coveragePct
     val color = coverageColor(pct)
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(start = 14.dp, end = 4.dp, top = 14.dp, bottom = 14.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -272,6 +340,9 @@ private fun WardCard(w: WardCoverage, onClick: () -> Unit) {
                     color = color,
                     fontWeight = FontWeight.Bold,
                 )
+                IconButton(onClick = onViewMap) {
+                    Icon(Icons.Filled.Place, contentDescription = "View on map", tint = MaterialTheme.colorScheme.primary)
+                }
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = "View settlements",
@@ -284,24 +355,37 @@ private fun WardCard(w: WardCoverage, onClick: () -> Unit) {
                 color = color,
             )
             // Wards with treatment data show treated/target; wards derived from
-            // settlement visitation (LGAs whose households lack ward_name) show
-            // the visitation read-out instead of a misleading "0 / 0".
+            // settlement visitation (LGAs whose households lack ward_name) show a
+            // visitation read-out instead of a misleading "0 / 0".
             val hasTreatment = w.baselineTotal > 0 || w.actualTreated > 0
             Text(
                 if (hasTreatment)
                     "${formatCount(w.actualTreated)} treated / ${formatCount(w.baselineTotal)} target  ·  ${w.teams} team(s)"
                 else
-                    "${pct.roundToInt()}% of settlements visited · tap to view",
+                    "${pct.roundToInt()}% of settlements visited",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
+            )
+            Text(
+                "Tap to view settlements",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 3.dp),
             )
         }
     }
 }
 
 @Composable
-private fun SettlementCoveragePage(lga: String, ward: String, projectId: Int?, onBack: () -> Unit) {
+private fun SettlementCoveragePage(
+    lga: String,
+    ward: String,
+    projectId: Int?,
+    onBack: () -> Unit,
+    onOpenMap: (String) -> Unit,
+) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var setts by remember { mutableStateOf<List<SettlementCoverage>>(emptyList()) }
@@ -339,21 +423,20 @@ private fun SettlementCoveragePage(lga: String, ward: String, projectId: Int?, o
             setts.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                 Text("No settlement data for this ward yet.", textAlign = TextAlign.Center)
             }
-            else -> {
-                val visited = setts.count { it.isVisited }
-                LazyColumn(
-                    Modifier.fillMaxSize().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
-                        Text(
-                            "$visited of ${setts.size} settlements visited",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 2.dp),
-                        )
-                    }
-                    items(setts) { SettlementCard(it) }
+            else -> LazyColumn(
+                Modifier.fillMaxSize().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    Text(
+                        "${setts.size} settlements · % shows completeness",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 2.dp),
+                    )
+                }
+                items(setts) { s ->
+                    SettlementCard(s, onViewMap = { (s.lgaName ?: lga).let(onOpenMap) })
                 }
             }
         }
@@ -361,11 +444,11 @@ private fun SettlementCoveragePage(lga: String, ward: String, projectId: Int?, o
 }
 
 @Composable
-private fun SettlementCard(s: SettlementCoverage) {
+private fun SettlementCard(s: SettlementCoverage, onViewMap: () -> Unit) {
     val pct = s.completenessPct
     val color = coverageColor(pct)
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -377,16 +460,22 @@ private fun SettlementCard(s: SettlementCoverage) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                // No more Visited/Not-visited badge — it contradicted the % (a
+                // settlement could read 'Not visited' at 20%, or 'Visited' at 0%).
+                // The completeness % is the single source of truth now.
                 Text(
-                    if (s.isVisited) "Visited" else "Not visited",
-                    style = MaterialTheme.typography.labelSmall,
+                    "${pct.roundToInt()}%",
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (s.isVisited) CoverageGood else CoverageLow,
+                    color = color,
                 )
+                IconButton(onClick = onViewMap) {
+                    Icon(Icons.Filled.Place, contentDescription = "View on map", tint = MaterialTheme.colorScheme.primary)
+                }
             }
             LinearProgressIndicator(
                 progress = { (pct / 100.0).coerceIn(0.0, 1.0).toFloat() },
-                modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 6.dp),
+                modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 6.dp, end = 8.dp),
                 color = color,
             )
             Text(
