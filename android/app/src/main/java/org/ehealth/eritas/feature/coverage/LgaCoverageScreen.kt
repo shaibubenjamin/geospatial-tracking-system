@@ -58,6 +58,7 @@ fun LgaCoverageScreen(projectId: Int?, onOpenMap: (String) -> Unit = {}) {
             lga = selectedLga!!,
             projectId = projectId,
             onBack = { selectedLga = null },
+            onOpenMap = onOpenMap,
         )
     } else {
         LgaListPage(
@@ -116,7 +117,12 @@ private fun LgaListPage(
 }
 
 @Composable
-private fun WardCoveragePage(lga: String, projectId: Int?, onBack: () -> Unit) {
+private fun WardCoveragePage(
+    lga: String,
+    projectId: Int?,
+    onBack: () -> Unit,
+    onOpenMap: (String) -> Unit,
+) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var wards by remember { mutableStateOf<List<WardCoverage>>(emptyList()) }
@@ -144,7 +150,13 @@ private fun WardCoveragePage(lga: String, projectId: Int?, onBack: () -> Unit) {
                 "$lga · wards",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
             )
+            // View this LGA on the map (ward-level focus isn't supported by the
+            // map, so the pin zooms to the parent LGA).
+            IconButton(onClick = { onOpenMap(lga) }) {
+                Icon(Icons.Filled.Place, contentDescription = "View on map", tint = MaterialTheme.colorScheme.primary)
+            }
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
@@ -257,8 +269,5 @@ private fun WardCard(w: WardCoverage) {
     }
 }
 
-private fun formatCount(n: Int): String = when {
-    n >= 1_000_000 -> "${(n / 100_000) / 10.0}M"
-    n >= 1_000 -> "${(n / 100) / 10.0}k"
-    else -> n.toString()
-}
+/** Full numbers with thousands separators (e.g. 296,237) — no k/M abbreviation. */
+private fun formatCount(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n.toLong())
