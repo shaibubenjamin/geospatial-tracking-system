@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -48,7 +49,7 @@ private fun coverageColor(pct: Double) = when {
 }
 
 @Composable
-fun LgaCoverageScreen(projectId: Int?) {
+fun LgaCoverageScreen(projectId: Int?, onOpenMap: (String) -> Unit = {}) {
     var selectedLga by remember { mutableStateOf<String?>(null) }
 
     if (selectedLga != null) {
@@ -59,12 +60,20 @@ fun LgaCoverageScreen(projectId: Int?) {
             onBack = { selectedLga = null },
         )
     } else {
-        LgaListPage(projectId = projectId, onOpenLga = { selectedLga = it })
+        LgaListPage(
+            projectId = projectId,
+            onOpenLga = { selectedLga = it },
+            onOpenMap = onOpenMap,
+        )
     }
 }
 
 @Composable
-private fun LgaListPage(projectId: Int?, onOpenLga: (String?) -> Unit) {
+private fun LgaListPage(
+    projectId: Int?,
+    onOpenLga: (String?) -> Unit,
+    onOpenMap: (String) -> Unit,
+) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var rows by remember { mutableStateOf<List<LgaCoverage>>(emptyList()) }
@@ -99,7 +108,9 @@ private fun LgaListPage(projectId: Int?, onOpenLga: (String?) -> Unit) {
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
-            items(rows) { row -> LgaRow(row) { onOpenLga(row.lga) } }
+            items(rows) { row ->
+                LgaRow(row, onOpenMap = { row.lga?.let(onOpenMap) }) { onOpenLga(row.lga) }
+            }
         }
     }
 }
@@ -154,11 +165,11 @@ private fun WardCoveragePage(lga: String, projectId: Int?, onBack: () -> Unit) {
 }
 
 @Composable
-private fun LgaRow(row: LgaCoverage, onClick: () -> Unit) {
+private fun LgaRow(row: LgaCoverage, onOpenMap: (String) -> Unit, onClick: () -> Unit) {
     val pct = row.coveragePct
     val color = coverageColor(pct)
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(start = 14.dp, end = 4.dp, top = 14.dp, bottom = 14.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -168,6 +179,7 @@ private fun LgaRow(row: LgaCoverage, onClick: () -> Unit) {
                     row.lga ?: "Unknown",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -176,6 +188,15 @@ private fun LgaRow(row: LgaCoverage, onClick: () -> Unit) {
                         color = color,
                         fontWeight = FontWeight.Bold,
                     )
+                    // Tapping the pin opens the Map tab on this LGA (doesn't
+                    // trigger the card's drill-to-wards — the button consumes it).
+                    IconButton(onClick = { row.lga?.let(onOpenMap) }) {
+                        Icon(
+                            Icons.Filled.Place,
+                            contentDescription = "View on map",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = "View wards",

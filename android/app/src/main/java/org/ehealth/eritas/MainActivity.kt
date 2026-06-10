@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
@@ -38,6 +39,8 @@ import androidx.compose.runtime.LaunchedEffect
 import org.ehealth.eritas.core.auth.SessionManager
 import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.net.ServiceLocator
+import org.ehealth.eritas.feature.coverage.LgaCoverageScreen
+import org.ehealth.eritas.feature.dashboard.DashboardScreen
 import org.ehealth.eritas.feature.locate.MyAreaScreen
 import org.ehealth.eritas.feature.login.LoginScreen
 import org.ehealth.eritas.feature.web.AppWebScreen
@@ -93,9 +96,10 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Tab(val label: String) {
-    DASHBOARD("Dashboard"),   // web clone: Overview/Coverage/Quality/Teams/Trends
+    DASHBOARD("Dashboard"),   // native overview: KPIs + cumulative trend
+    COVERAGE("Coverage"),     // native LGA → ward coverage drill-down
     MAP("Map"),               // Geographic View — full-screen Leaflet zoom map
-    FIELD_GUIDE("Field Guide"), // native GPS: where am I + where to cover next
+    FIELD_GUIDE("Guide"),     // native GPS: where am I + where to cover next
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,15 +111,14 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var bannerDismissed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    // Set when the Coverage section's "View on map" is tapped — switches to the
-    // Map tab focused on that LGA (the dashboard WebView calls a JS bridge).
+    // Set when an LGA's map pin is tapped on the Coverage tab — switches to the
+    // Map tab focused on that LGA.
     var mapFocusLga by remember { mutableStateOf<String?>(null) }
 
-    // Campaign switching is allowed ONLY on the Dashboard — switching mid-screen
-    // (esp. on the WebView map) was unreliable. On every other tab the title is
-    // static. Changing the project on Dashboard updates `projectId`, which every
-    // tab reads, so they all reload with the new campaign when next shown.
-    val canSwitch = selectedTab == Tab.DASHBOARD
+    // Campaign switching is allowed on the native, project-driven tabs
+    // (Dashboard, Coverage). Changing the project updates `projectId`, which
+    // every tab reads, so they all reload with the new campaign when next shown.
+    val canSwitch = selectedTab == Tab.DASHBOARD || selectedTab == Tab.COVERAGE
 
     Scaffold(
         topBar = {
@@ -165,6 +168,12 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                     label = { Text(Tab.DASHBOARD.label) },
                 )
                 NavigationBarItem(
+                    selected = selectedTab == Tab.COVERAGE,
+                    onClick = { selectedTab = Tab.COVERAGE },
+                    icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
+                    label = { Text(Tab.COVERAGE.label) },
+                )
+                NavigationBarItem(
                     selected = selectedTab == Tab.MAP,
                     onClick = { selectedTab = Tab.MAP },
                     icon = { Icon(Icons.Filled.Map, contentDescription = null) },
@@ -184,10 +193,15 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 UpdateBanner(optionalUpdate) { bannerDismissed = true }
             }
             when (selectedTab) {
-                // Dashboard = the REAL web platform dashboard (/mda) wrapped in
-                // app-mode, so Overview/Coverage/Quality/Teams/Trends are an
-                // exact clone of the web and reflect web updates instantly.
-                Tab.DASHBOARD -> AppWebScreen("/mda", projectId, appMode = true)
+                // Native dashboard — KPIs + cumulative trend (real Material 3
+                // layout, not the desktop /mda squeezed into a WebView).
+                Tab.DASHBOARD -> DashboardScreen(projectId)
+                // Native LGA → ward coverage drill-down. The map pin on a row
+                // jumps to the Map tab focused on that LGA.
+                Tab.COVERAGE -> LgaCoverageScreen(
+                    projectId = projectId,
+                    onOpenMap = { lga -> mapFocusLga = lga; selectedTab = Tab.MAP },
+                )
                 // Map = Geographic View, full screen (Leaflet — the web's map is
                 // WebGL and blank in a WebView). Honour a pending LGA focus.
                 Tab.MAP -> AppWebScreen("/app/map", projectId, focusLga = mapFocusLga)
