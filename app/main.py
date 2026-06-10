@@ -411,7 +411,7 @@ async def add_security_headers(request, call_next):
     # so allow same-origin framing for those two paths (the global default is
     # DENY / frame-ancestors 'none'). The blob: web-worker allowance MapLibre
     # /Leaflet need already lives in the global _CSP_DEFAULT.
-    if request.url.path in ("/app/map", "/app-preview"):
+    if request.url.path in ("/app/map", "/app/dashboard", "/app-preview"):
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Content-Security-Policy"] = _CSP_DEFAULT.replace(
             "frame-ancestors 'none'", "frame-ancestors 'self'"
@@ -693,6 +693,15 @@ async def app_map_page():
     the /app-preview mirror iframes). Zoom-driven: LGA → ward → settlement →
     GPS points. Reads ?project_id and the token from the URL fragment."""
     return FileResponse(os.path.join(static_dir, "app-map.html"))
+
+
+@app.get("/app/dashboard")
+async def app_dashboard_page():
+    """Mobile clone of the web platform's campaign dashboard — Overview,
+    Coverage, Quality, Teams, Trends sections via a top section switcher. The
+    Android app loads it in a WebView and /app-preview iframes it. Pulls the
+    same /api/app/* + /api/mda/* data as the web, so web data updates reflect."""
+    return FileResponse(os.path.join(static_dir, "app-dashboard.html"))
 
 
 @app.get("/app-preview")

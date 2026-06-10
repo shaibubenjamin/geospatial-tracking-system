@@ -7,42 +7,29 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     *{box-sizing:border-box}
-    html,body{margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111827}
-    /* Sticky header + map stay pinned; the drill list scrolls beneath. Map has an
-       explicit px height (WebView % height is unreliable). */
-    #top{position:sticky;top:0;z-index:1200;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.1)}
-    #head{padding:9px 12px;display:flex;align-items:center;gap:10px}
-    #back{display:none;border:0;background:#eef2ff;color:#3730a3;border-radius:8px;padding:7px 11px;font-size:14px;font-weight:600;cursor:pointer}
-    #back.show{display:inline-block}
-    #crumb{font-size:14px;font-weight:700;line-height:1.2;flex:1;min-width:0}
-    #crumb small{display:block;font-weight:500;color:#6b7280;font-size:11px}
-    #sub{padding:4px 12px;font-size:11px;color:#374151;border-top:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:8px}
-    #legend{white-space:nowrap;color:#6b7280}
-    #legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 2px 0 7px;vertical-align:-1px}
-    #map{height:250px;width:100%;background:#E8EAED}
-    #list{padding:8px 10px 26px}
-    .row{background:#fff;border:1px solid #eceef1;border-radius:12px;padding:11px 12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer}
-    .row:active{background:#f3f4f6}
-    .rname{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .rname small{display:block;font-weight:500;color:#6b7280;font-size:11px}
-    .rright{flex:0 0 92px;text-align:right}
-    .rpct{font-size:14px;font-weight:800}
-    .barb{height:6px;border-radius:4px;background:#eceef1;margin-top:5px;overflow:hidden}
-    .barb>i{display:block;height:100%}
-    .chev{flex:0 0 auto;color:#9ca3af;font-size:18px}
-    #msg{padding:18px 16px;text-align:center;color:#6b7280;font-size:13px}
-    #msg.err{color:#b91c1c}
-    .leaflet-popup-content{font-size:12px;margin:7px 9px;line-height:1.4}
+    html,body{margin:0;padding:0;background:#E8EAED;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111827}
+    /* Full-screen map. Height is set in JS to window.innerHeight (the WebView's
+       CSS % height is unreliable), so the map always fills the tab. */
+    #map{width:100%;height:100vh}
+    .pill{position:absolute;z-index:1000;background:rgba(255,255,255,.95);border-radius:10px;
+          padding:7px 11px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+    #hud{top:8px;left:8px;right:8px;font-size:12px}
+    #hud b{font-size:13px}
+    #hud small{color:#6b7280}
+    #legend{bottom:10px;left:8px;font-size:10px;color:#374151;display:flex;align-items:center;flex-wrap:wrap;gap:2px}
+    #legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin:0 3px 0 8px;vertical-align:-1px}
+    #legend .dot{width:9px;height:9px;border-radius:50%;border:1px solid #fff}
+    #err{top:50%;left:8px;right:8px;transform:translateY(-50%);text-align:center;color:#b91c1c;display:none}
   </style>
 </head>
 <body>
-  <div id="top">
-    <div id="head"><button id="back">‹ Back</button><div id="crumb">Loading…</div></div>
-    <div id="sub"><span id="subtext"></span>
-      <span id="legend"><i style="background:#dc2626"></i>&lt;40<i style="background:#f59e0b"></i>40–70<i style="background:#16a34a"></i>≥70%</span></div>
-    <div id="map"></div>
+  <div id="map"></div>
+  <div id="hud" class="pill"><b id="hud-title">Loading…</b><br><small id="hud-hint"></small></div>
+  <div id="legend" class="pill">
+    <span id="lg-area"><i style="background:#dc2626"></i>&lt;40<i style="background:#f59e0b"></i>40–70<i style="background:#16a34a"></i>≥70% visited</span>
+    <span id="lg-pts" style="display:none"><i class="dot" style="background:#16a34a"></i>in&nbsp;<i class="dot" style="background:#dc2626"></i>out</span>
   </div>
-  <div id="list"><div id="msg">Loading…</div></div>
+  <div id="err" class="pill"></div>
   <script>
     function qp(n){ return new URLSearchParams(location.search).get(n); }
     var token=(location.hash.match(/token=([^&]+)/)||[])[1]||'';
@@ -51,117 +38,106 @@
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
     function visColor(p){ p=+p||0; return p>=70?'#16a34a':p>=40?'#f59e0b':'#dc2626'; }
     function fpct(n){ return (n==null?'—':(+n).toFixed(0)+'%'); }
-    function fc_feats(d){ return (d&&d.features?d.features:[]); }
-    function fc_props(d){ return fc_feats(d).map(function(f){return f.properties||{};}); }
-    function avg(rows,k){ if(!rows.length)return 0; var s=0,n=0; rows.forEach(function(r){ if(r[k]!=null){s+=+r[k];n++;} }); return n?s/n:0; }
-    function boundsOf(f){ var a=90,o=180,A=-90,O=-180;
-      (function w(c){ if(typeof c[0]==='number'){ if(c[1]<a)a=c[1]; if(c[1]>A)A=c[1]; if(c[0]<o)o=c[0]; if(c[0]>O)O=c[0]; } else c.forEach(w); })(f.geometry.coordinates);
-      return L.latLngBounds([[a,o],[A,O]]); }
+    function feats(d){ return (d&&d.features?d.features:[]); }
+    function err(m){ var e=document.getElementById('err'); e.textContent=m; e.style.display='block'; }
 
+    // Zoom thresholds: wards appear @9, settlements @12, GPS points @14.
     var WARD_Z=9, SETT_Z=12, PT_Z=14;
-    var listEl=document.getElementById('list'), crumbEl=document.getElementById('crumb'),
-        subEl=document.getElementById('subtext'), backEl=document.getElementById('back');
-    var lgasFC=null, wardsFC=null, settCache={}, loadedSett={}, loadedPts={};
-    var level='lga', curLga=null, curWard=null;
-    var lgaLayer=null, wardLayer=null, settLayer=null, pointsLayer=null, lgaItems=[];
 
-    var map=L.map('map',{preferCanvas:true,zoomControl:true,attributionControl:false,minZoom:6,maxZoom:18}).setView([13.02,5.24],7);
+    // Size the map to the viewport (explicit px — WebView % height is unreliable).
+    function sizeMap(){ var h=window.innerHeight||document.documentElement.clientHeight||600;
+      document.getElementById('map').style.height=h+'px'; if(window._map) _map.invalidateSize(); }
+    sizeMap(); window.addEventListener('resize',sizeMap);
+
+    var map=L.map('map',{preferCanvas:true,zoomControl:true,attributionControl:false,
+      minZoom:6,maxZoom:18}).setView([13.02,5.24],7);
+    window._map=map;
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',{subdomains:'abcd',maxZoom:19}).addTo(map);
-    function fixMap(){ try{ map.invalidateSize(true); }catch(e){} }
-    window.addEventListener('load',function(){ setTimeout(fixMap,200); }); setTimeout(fixMap,500); setTimeout(fixMap,1300);
+    setTimeout(sizeMap,300); setTimeout(sizeMap,1000);
 
-    function lgaStyle(f){ return {color:'#1f2937',weight:1.5,opacity:0.85,fillColor:visColor((f.properties||{}).visitation_pct),fillOpacity:0.55}; }
-    function wardStyle(f){ return {color:'#374151',weight:0.8,opacity:0.7,fillColor:visColor((f.properties||{}).visitation_pct),fillOpacity:0.45}; }
-    function settStyle(f){ var v=(f.properties||{}).is_visited; return {color:'#fff',weight:0.4,opacity:0.5,fillColor:v?'#16a34a':'#dc2626',fillOpacity:0.6}; }
-    function areaPopup(f,layer){ var p=f.properties||{}; var nm=p.ward_name||p.lga_name||'—';
-      layer.bindPopup('<b>'+nm+'</b><br><b style="color:'+visColor(p.visitation_pct)+'">'+fpct(p.visitation_pct)+' visited</b>'); }
+    var lgaLayer=null, wardLayer=null, settLayer=null, pointsLayer=null;
+    var lgaItems=[];                 // {lgacode, bounds}
+    var loadedSett={}, loadedPts={}; // lgacode → true (lazy-load guards)
 
-    // ── MAP: progressive reveal by zoom (lazy-loads settlements/points in view) ──
+    function boundsOf(feature){
+      var minLat=90,minLon=180,maxLat=-90,maxLon=-180;
+      (function walk(c){ if(typeof c[0]==='number'){ var lon=c[0],lat=c[1];
+        if(lat<minLat)minLat=lat; if(lat>maxLat)maxLat=lat; if(lon<minLon)minLon=lon; if(lon>maxLon)maxLon=lon;
+      } else c.forEach(walk); })(feature.geometry.coordinates);
+      return L.latLngBounds([[minLat,minLon],[maxLat,maxLon]]);
+    }
+
+    function lgaStyle(f){ return {color:'#1f2937',weight:1.5,opacity:0.85,
+      fillColor:visColor((f.properties||{}).visitation_pct),fillOpacity:0.55}; }
+    function wardStyle(f){ return {color:'#374151',weight:0.8,opacity:0.7,
+      fillColor:visColor((f.properties||{}).visitation_pct),fillOpacity:0.45}; }
+    function settStyle(f){ var v=(f.properties||{}).is_visited;
+      return {color:'#ffffff',weight:0.4,opacity:0.5,fillColor:v?'#16a34a':'#dc2626',fillOpacity:0.6}; }
+
+    function popupArea(kind){ return function(f,layer){ var p=f.properties||{};
+      var nm=p.ward_name||p.lga_name||'—';
+      layer.bindPopup('<b>'+nm+'</b><br>'+kind+': <b style="color:'+visColor(p.visitation_pct)+'">'+fpct(p.visitation_pct)+' visited</b>'); }; }
+
+    // ── progressive reveal by zoom ───────────────────────────────────────────
     function update(){
-      if(!lgaLayer) return; var z=map.getZoom(), b=map.getBounds();
+      if(!lgaLayer) return;
+      var z=map.getZoom(), b=map.getBounds();
+
+      // LGA fill fades as we zoom in; borders stay.
       lgaLayer.setStyle({fillOpacity: z<WARD_Z?0.55 : z<SETT_Z?0.12 : 0.0, opacity: z<SETT_Z?0.85:0.5});
-      if(z>=WARD_Z){ if(!map.hasLayer(wardLayer)) wardLayer.addTo(map); wardLayer.setStyle({fillOpacity: z<SETT_Z?0.45:0.1, opacity:0.7}); }
+
+      // Wards appear at WARD_Z.
+      if(z>=WARD_Z){ if(!map.hasLayer(wardLayer)) wardLayer.addTo(map);
+        wardLayer.setStyle({fillOpacity: z<SETT_Z?0.45 : 0.1, opacity:0.7}); }
       else if(map.hasLayer(wardLayer)) map.removeLayer(wardLayer);
+
+      // Settlements appear at SETT_Z — lazy-load for each LGA in view.
       if(z>=SETT_Z){ if(!map.hasLayer(settLayer)) settLayer.addTo(map);
-        lgaItems.forEach(function(it){ if(!loadedSett[it.lgacode] && it.bounds.intersects(b)){ loadedSett[it.lgacode]=true;
-          get('/api/app/geo/settlements?lgacode='+encodeURIComponent(it.lgacode)+(pid?'&project_id='+pid:'')).then(function(d){ settLayer.addData(d); }).catch(function(){}); } }); }
-      else if(map.hasLayer(settLayer)) map.removeLayer(settLayer);
+        lgaItems.forEach(function(it){
+          if(!loadedSett[it.lgacode] && it.bounds.intersects(b)){
+            loadedSett[it.lgacode]=true;
+            get('/api/app/geo/settlements?lgacode='+encodeURIComponent(it.lgacode)+(pid?'&project_id='+pid:''))
+              .then(function(d){ settLayer.addData(d); }).catch(function(){});
+          }
+        });
+      } else if(map.hasLayer(settLayer)) map.removeLayer(settLayer);
+
+      // GPS points appear at PT_Z — lazy-load per LGA in view.
       if(z>=PT_Z){ if(!map.hasLayer(pointsLayer)) pointsLayer.addTo(map); pointsLayer.bringToFront();
-        lgaItems.forEach(function(it){ if(!loadedPts[it.lgacode] && it.bounds.intersects(b)){ loadedPts[it.lgacode]=true;
-          get('/api/app/geo/points?lgacode='+encodeURIComponent(it.lgacode)+(pid?'&project_id='+pid:'')+'&limit=4000').then(function(d){ pointsLayer.addData(d); }).catch(function(){}); } }); }
-      else if(map.hasLayer(pointsLayer)) map.removeLayer(pointsLayer);
-    }
-    function flyTo(feature){ try{ map.flyToBounds(boundsOf(feature),{padding:[18,18],maxZoom:14,duration:0.6}); }catch(e){} }
+        lgaItems.forEach(function(it){
+          if(!loadedPts[it.lgacode] && it.bounds.intersects(b)){
+            loadedPts[it.lgacode]=true;
+            get('/api/app/geo/points?lgacode='+encodeURIComponent(it.lgacode)+(pid?'&project_id='+pid:'')+'&limit=4000')
+              .then(function(d){ pointsLayer.addData(d); }).catch(function(){});
+          }
+        });
+      } else if(map.hasLayer(pointsLayer)) map.removeLayer(pointsLayer);
 
-    // ── LIST: LGA → Ward → Settlement drill (taps fly the map) ──────────────────
-    function setHead(t,s,canBack){ crumbEl.innerHTML=t+(s?'<small>'+s+'</small>':''); backEl.className=canBack?'show':''; }
-    function rowEl(title,subtitle,vis,onTap,valueText){
-      var r=document.createElement('div'); r.className='row'; var c=visColor(vis);
-      r.innerHTML='<div class="rname">'+title+(subtitle?'<small>'+subtitle+'</small>':'')+'</div>'+
-        '<div class="rright"><div class="rpct" style="color:'+c+'">'+(valueText||fpct(vis))+'</div>'+
-        '<div class="barb"><i style="width:'+Math.max(0,Math.min(100,+vis||0))+'%;background:'+c+'"></i></div></div>'+
-        (onTap?'<div class="chev">›</div>':'');
-      if(onTap) r.addEventListener('click',onTap);
-      return r;
+      // HUD + legend
+      var t=document.getElementById('hud-title'), h=document.getElementById('hud-hint');
+      if(z<WARD_Z){ t.textContent='Statewide — LGA coverage'; h.textContent='% settlements visited · pinch to zoom into wards'; }
+      else if(z<SETT_Z){ t.textContent='Wards'; h.textContent='% settlements visited · zoom in for settlements'; }
+      else if(z<PT_Z){ t.textContent='Settlements'; h.textContent='green = visited · red = not · zoom in for GPS points'; }
+      else { t.textContent='Settlements + GPS points'; h.textContent='dots = household GPS submissions'; }
+      document.getElementById('lg-pts').style.display = z>=SETT_Z?'inline':'none';
     }
-    function lgaFeature(code){ return fc_feats(lgasFC).filter(function(f){return f.properties.lgacode===code;})[0]; }
-    function wardFeature(code){ return fc_feats(wardsFC).filter(function(f){return f.properties.wardcode===code;})[0]; }
-
-    function renderLgas(){
-      level='lga'; curLga=null; curWard=null;
-      var rows=fc_props(lgasFC).slice().sort(function(a,b){return (b.visitation_pct||0)-(a.visitation_pct||0);});
-      setHead('Statewide','% settlements visited · tap or zoom in',false);
-      subEl.textContent=rows.length+' LGAs · avg '+avg(rows,'visitation_pct').toFixed(0)+'% visited';
-      listEl.innerHTML='';
-      rows.forEach(function(p){ listEl.appendChild(rowEl(p.lga_name||p.lgacode||'—',null,p.visitation_pct,function(){ openLga(p); })); });
-    }
-    function openLga(p){
-      curLga=p; level='ward';
-      var f=lgaFeature(p.lgacode); if(f) flyTo(f);
-      var rows=fc_props({features:fc_feats(wardsFC).filter(function(w){return (w.properties.lga_name||'')===(p.lga_name||'');})})
-        .sort(function(a,b){return (b.visitation_pct||0)-(a.visitation_pct||0);});
-      setHead(p.lga_name||'LGA','Wards · '+fpct(p.visitation_pct)+' visited',true);
-      subEl.textContent=rows.length+' wards · avg '+avg(rows,'visitation_pct').toFixed(0)+'% visited';
-      listEl.innerHTML='';
-      if(!rows.length){ listEl.innerHTML='<div id="msg">No wards found.</div>'; return; }
-      rows.forEach(function(w){ listEl.appendChild(rowEl(w.ward_name||w.wardcode||'—',
-        (w.settlements_visited||0)+' / '+(w.settlements||0)+' settlements visited',w.visitation_pct,function(){ openWard(w); })); });
-    }
-    function openWard(w){
-      curWard=w; level='settlement';
-      var f=wardFeature(w.wardcode); if(f) flyTo(f);
-      setHead(w.ward_name||'Ward',(curLga&&curLga.lga_name?curLga.lga_name+' · ':'')+'Settlements',true);
-      var code=curLga&&curLga.lgacode;
-      listEl.innerHTML='<div id="msg">Loading settlements…</div>';
-      var done=function(all){
-        var rows=fc_feats(all).filter(function(f){return (f.properties.ward_name||'')===(w.ward_name||'');})
-          .map(function(f){return f.properties||{};}).sort(function(a,b){return (b.is_visited?1:0)-(a.is_visited?1:0);});
-        var nv=rows.filter(function(r){return r.is_visited;}).length;
-        subEl.textContent=rows.length+' settlements · '+nv+' visited ('+(rows.length?Math.round(100*nv/rows.length):0)+'%)';
-        listEl.innerHTML='';
-        if(!rows.length){ listEl.innerHTML='<div id="msg">No settlements found.</div>'; return; }
-        rows.forEach(function(s){ listEl.appendChild(rowEl(s.settlement_name||'—',null,(s.is_visited?100:0),null,(s.is_visited?'Visited':'Not visited'))); });
-      };
-      if(settCache[code]){ done(settCache[code]); return; }
-      get('/api/app/geo/settlements?lgacode='+encodeURIComponent(code)+(pid?'&project_id='+pid:''))
-        .then(function(d){ settCache[code]=d; done(d); }).catch(function(e){ listEl.innerHTML='<div id="msg" class="err">Could not load settlements: '+e.message+'</div>'; });
-    }
-    backEl.addEventListener('click',function(){
-      if(level==='settlement'){ var f=curLga&&lgaFeature(curLga.lgacode); openLga(curLga); if(f) flyTo(f); }
-      else if(level==='ward'){ renderLgas(); try{ map.flyToBounds(lgaLayer.getBounds(),{maxZoom:8,duration:0.6}); }catch(e){} }
-    });
 
     Promise.all([ get('/api/app/geo/lgas'+q), get('/api/app/geo/wards'+q) ]).then(function(res){
-      lgasFC=res[0]; wardsFC=res[1];
-      lgaLayer=L.geoJSON(lgasFC,{style:lgaStyle,onEachFeature:areaPopup}).addTo(map);
-      wardLayer=L.geoJSON(wardsFC,{style:wardStyle,onEachFeature:areaPopup});
-      settLayer=L.geoJSON(null,{style:settStyle,onEachFeature:function(f,l){ var p=f.properties||{}; l.bindPopup('<b>'+(p.settlement_name||'—')+'</b><br>'+(p.is_visited?'Visited':'Not visited')); }});
-      pointsLayer=L.geoJSON(null,{pointToLayer:function(f,ll){ var ib=(f.properties||{}).in_bounds; return L.circleMarker(ll,{radius:3,fillColor:ib?'#16a34a':'#dc2626',color:'#fff',weight:0.6,fillOpacity:0.9}); }});
-      fc_feats(lgasFC).forEach(function(f){ if(f.geometry) lgaItems.push({lgacode:f.properties.lgacode,bounds:boundsOf(f)}); });
-      try{ map.fitBounds(lgaLayer.getBounds(),{padding:[14,14],maxZoom:8}); }catch(e){}
-      fixMap(); update(); renderLgas();
+      var lgasFC=res[0], wardsFC=res[1];
+      lgaLayer=L.geoJSON(lgasFC,{style:lgaStyle,onEachFeature:popupArea('Visitation')}).addTo(map);
+      wardLayer=L.geoJSON(wardsFC,{style:wardStyle,onEachFeature:popupArea('Visitation')});
+      settLayer=L.geoJSON(null,{style:settStyle,onEachFeature:function(f,l){ var p=f.properties||{};
+        l.bindPopup('<b>'+(p.settlement_name||'—')+'</b><br>'+(p.is_visited?'Visited':'Not visited')); }});
+      pointsLayer=L.geoJSON(null,{pointToLayer:function(f,ll){ var ib=(f.properties||{}).in_bounds;
+        return L.circleMarker(ll,{radius:3,fillColor:ib?'#16a34a':'#dc2626',color:'#fff',weight:0.6,fillOpacity:0.9}); }});
+      feats(lgasFC).forEach(function(f){ if(f.geometry) lgaItems.push({lgacode:f.properties.lgacode,bounds:boundsOf(f)}); });
+      // ?focus=<lgacode> (from the dashboard's "View on map") → zoom to that LGA
+      // so its wards reveal; otherwise fit the whole state.
+      var focus=qp('focus'), fit=focus&&lgaItems.filter(function(x){return x.lgacode===focus;})[0];
+      try{ if(fit){ map.fitBounds(fit.bounds,{padding:[24,24],maxZoom:11}); } else { map.fitBounds(lgaLayer.getBounds(),{padding:[16,16],maxZoom:8}); } }catch(e){}
+      sizeMap(); update();
       map.on('zoomend moveend', update);
-    }).catch(function(e){ listEl.innerHTML='<div id="msg" class="err">Could not load coverage: '+e.message+'. Re-open the tab to retry.</div>'; setHead('Coverage','',false); });
+    }).catch(function(e){ err('Could not load coverage: '+e.message+'. Re-open the tab to retry.'); });
   </script>
 </body>
 </html>

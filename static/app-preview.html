@@ -48,9 +48,8 @@
     <div class="body" id="body"></div>
     <div class="nav" id="nav" style="display:none">
       <button data-t="dash" class="active"><span class="ic">▦</span>Dashboard</button>
-      <button data-t="cov"><span class="ic">▥</span>Coverage</button>
       <button data-t="map"><span class="ic">◔</span>Map</button>
-      <button data-t="area"><span class="ic">◎</span>My Area</button>
+      <button data-t="area"><span class="ic">◎</span>Field Guide</button>
     </div>
   </div>
   <script>
@@ -101,10 +100,16 @@
 
     async function render(){
       const q = pid?('?project_id='+pid):'';
-      if(tab==='dash'){ renderDash(q); }
-      else if(tab==='cov'){ renderLgas(); }
-      else if(tab==='map'){ renderMap(); }
+      // Mirror the app exactly: Dashboard and Map are the same /app/* pages the
+      // app loads, embedded in iframes. Field Guide uses the browser's location.
+      if(tab==='dash'){ embed('/app/dashboard'); }
+      else if(tab==='map'){ embed('/app/map'); }
       else if(tab==='area'){ renderArea(); }
+    }
+    function embed(path){
+      const body=document.getElementById('body');
+      const src=path+(pid?('?project_id='+pid):'')+'#token='+encodeURIComponent(token||'');
+      body.innerHTML='<iframe src="'+src+'" style="width:100%;height:100%;border:0"></iframe>';
     }
     async function renderDash(q){
       const body=document.getElementById('body'); body.innerHTML='<div class="muted">Loading…</div>';
