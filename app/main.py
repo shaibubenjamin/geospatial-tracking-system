@@ -407,11 +407,15 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Content-Security-Policy", _CSP_DEFAULT)
-    # NOTE: the blob: web-worker allowance MapLibre needs now lives in the
-    # global _CSP_DEFAULT (so /mda and every map page get it). /app/map is
-    # loaded by the Android WebView via loadUrl (not framed), so it no longer
-    # needs a per-page frame-ancestors carve-out. The browser preview that used
-    # to embed it has been removed.
+    # The /app-preview browser mirror embeds /app/map in a same-origin iframe,
+    # so allow same-origin framing for those two paths (the global default is
+    # DENY / frame-ancestors 'none'). The blob: web-worker allowance MapLibre
+    # /Leaflet need already lives in the global _CSP_DEFAULT.
+    if request.url.path in ("/app/map", "/app-preview"):
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Content-Security-Policy"] = _CSP_DEFAULT.replace(
+            "frame-ancestors 'none'", "frame-ancestors 'self'"
+        )
     # HTML pages (login, home, dashboard, admin) are session-sensitive and must
     # never be cached by browsers or intermediaries — otherwise a logged-out
     # user could see a previous user's authenticated render from the bfcache.
@@ -685,10 +689,18 @@ async def mda_dashboard():
 
 @app.get("/app/map")
 async def app_map_page():
-    """Standalone MapLibre GL JS map page the Android app loads in a WebView
-    (via loadUrl, so it runs in a normal browsing context — WebGL + CDN work).
-    Public: uses the aggregate /api/mda/geo/wards-coverage. Reads ?project_id."""
+    """Standalone Leaflet coverage map the Android app loads in a WebView (and
+    the /app-preview mirror iframes). Zoom-driven: LGA → ward → settlement →
+    GPS points. Reads ?project_id and the token from the URL fragment."""
     return FileResponse(os.path.join(static_dir, "app-map.html"))
+
+
+@app.get("/app-preview")
+async def app_preview_page():
+    """Browser mirror of the Android app — logs in and renders the same
+    /api/app/* data (and iframes the real /app/map), so app UI/data changes can
+    be previewed without building an APK. Not the APK itself."""
+    return FileResponse(os.path.join(static_dir, "app-preview.html"))
 
 
 @app.get("/mda-admin")
