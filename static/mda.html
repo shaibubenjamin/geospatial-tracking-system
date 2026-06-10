@@ -303,6 +303,33 @@ tbody tr:hover{background:var(--pale)}
 .geo-map-card.geo-fullscreen-mode #geo-map{min-height:0;height:calc(100vh - 110px)!important}
 /* Coverage pct KPI accent */
 #geo-coverage-pct{color:var(--blue)}
+
+/* ════════ APP MODE (mobile, when wrapped by the Android app / preview) ════════
+   Turns the desktop dashboard into a phone layout: sidebar → horizontal pill
+   bar on top, full-width content, non-campaign + Geographic items hidden (the
+   app has its own native top bar + Leaflet Geographic View tab). Scoped to
+   body.app-mode so the normal web dashboard is completely unaffected. */
+body.app-mode .app{flex-direction:column;height:auto;min-height:100vh}
+body.app-mode .topbar{display:none}                 /* app supplies its own top bar */
+body.app-mode .sidebar{width:100%;height:auto;flex-direction:row;align-items:center;
+  overflow-x:auto;overflow-y:hidden;flex-shrink:0;padding:7px 6px;gap:4px;box-shadow:0 1px 8px rgba(0,0,0,.25)}
+body.app-mode .sidebar .brand,
+body.app-mode .sidebar .nav-section,
+body.app-mode .sidebar-toggle{display:none!important}
+body.app-mode .sidebar .nav-item{flex:0 0 auto;margin:0;padding:8px 13px;border-radius:999px;
+  font-size:12.5px;white-space:nowrap;transform:none!important;border-left:0!important}
+body.app-mode .sidebar .nav-item.active{border-radius:999px;border-left:0}
+/* Hide what the app handles elsewhere or doesn't need on a phone. */
+body.app-mode .nav-item[data-view="geo"],
+body.app-mode .nav-item[data-view="lga"],
+body.app-mode .nav-item[data-view="supervisor"],
+body.app-mode .nav-item[data-view="reports"],
+body.app-mode #admin-nav-link{display:none!important}
+body.app-mode .page{padding:12px}
+body.app-mode .kpi-grid,
+body.app-mode .kpi-grid.cols-6,body.app-mode .kpi-grid.cols-5,body.app-mode .kpi-grid.cols-4,
+body.app-mode .kpi-grid.cols-3{grid-template-columns:1fr 1fr!important}
+body.app-mode .grid-2,body.app-mode .grid-3,body.app-mode .grid-22,body.app-mode .qc-grid{grid-template-columns:1fr!important}
 </style>
 </head>
 <body>
@@ -1573,6 +1600,24 @@ tbody tr:hover{background:var(--pale)}
 <script>
 (function(){
   'use strict';
+
+  /* ── App wrap: the Android app (and /app-preview) load this page with the
+     auth token in the URL fragment (#token=…) and ?app=1. Pull the token into
+     localStorage so we skip the login screen, and flag app-mode for the mobile
+     layout. Guarded — plain web users (no fragment, no ?app=1) are unaffected. */
+  try {
+    var _qs = new URLSearchParams(location.search);
+    var _tm = location.hash.match(/token=([^&]+)/);
+    if (_tm) localStorage.setItem('token', decodeURIComponent(_tm[1]));
+    // The app's project switcher drives every tab via ?project_id — set the
+    // dashboard's SELECTED_PID from it so switching R4/R5 re-fetches all
+    // sections with THAT project's data (boundaries are shared, coverage isn't).
+    var _pid = _qs.get('project_id');
+    if (_pid) localStorage.setItem('selected_project_id', _pid);
+    if (_qs.get('app') === '1' && document.body) {
+      document.body.classList.add('app-mode');
+    }
+  } catch (_e) {}
 
   /* ── AUTH ── */
   const token        = localStorage.getItem('token');
