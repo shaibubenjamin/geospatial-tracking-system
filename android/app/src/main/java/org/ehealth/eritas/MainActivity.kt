@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
@@ -39,11 +38,9 @@ import androidx.compose.runtime.LaunchedEffect
 import org.ehealth.eritas.core.auth.SessionManager
 import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.net.ServiceLocator
-import org.ehealth.eritas.feature.coverage.LgaCoverageScreen
-import org.ehealth.eritas.feature.dashboard.DashboardScreen
 import org.ehealth.eritas.feature.locate.MyAreaScreen
 import org.ehealth.eritas.feature.login.LoginScreen
-import org.ehealth.eritas.feature.map.CoverageMapScreen
+import org.ehealth.eritas.feature.web.AppWebScreen
 import org.ehealth.eritas.feature.project.ProjectPickerDialog
 import org.ehealth.eritas.feature.update.UpdateBanner
 import org.ehealth.eritas.feature.update.UpdateGate
@@ -92,10 +89,9 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Tab(val label: String) {
-    DASHBOARD("Dashboard"),
-    COVERAGE("Coverage"),
-    MAP("Map"),
-    MY_AREA("My Area"),
+    DASHBOARD("Dashboard"),   // web clone: Overview/Coverage/Quality/Teams/Trends
+    MAP("Map"),               // Geographic View — full-screen Leaflet zoom map
+    FIELD_GUIDE("Field Guide"), // native GPS: where am I + where to cover next
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,6 +103,9 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var bannerDismissed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    // Set when the Coverage section's "View on map" is tapped — switches to the
+    // Map tab focused on that LGA (the dashboard WebView calls a JS bridge).
+    var mapFocusLga by remember { mutableStateOf<String?>(null) }
 
     // Campaign switching is allowed ONLY on the Dashboard — switching mid-screen
     // (esp. on the WebView map) was unreliable. On every other tab the title is
@@ -162,22 +161,16 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                     label = { Text(Tab.DASHBOARD.label) },
                 )
                 NavigationBarItem(
-                    selected = selectedTab == Tab.COVERAGE,
-                    onClick = { selectedTab = Tab.COVERAGE },
-                    icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
-                    label = { Text(Tab.COVERAGE.label) },
-                )
-                NavigationBarItem(
                     selected = selectedTab == Tab.MAP,
                     onClick = { selectedTab = Tab.MAP },
                     icon = { Icon(Icons.Filled.Map, contentDescription = null) },
                     label = { Text(Tab.MAP.label) },
                 )
                 NavigationBarItem(
-                    selected = selectedTab == Tab.MY_AREA,
-                    onClick = { selectedTab = Tab.MY_AREA },
+                    selected = selectedTab == Tab.FIELD_GUIDE,
+                    onClick = { selectedTab = Tab.FIELD_GUIDE },
                     icon = { Icon(Icons.Filled.MyLocation, contentDescription = null) },
-                    label = { Text(Tab.MY_AREA.label) },
+                    label = { Text(Tab.FIELD_GUIDE.label) },
                 )
             }
         },
@@ -187,10 +180,15 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 UpdateBanner(optionalUpdate) { bannerDismissed = true }
             }
             when (selectedTab) {
-                Tab.DASHBOARD -> DashboardScreen(projectId)
-                Tab.COVERAGE -> LgaCoverageScreen(projectId)
-                Tab.MAP -> CoverageMapScreen(projectId)
-                Tab.MY_AREA -> MyAreaScreen(projectId)
+                // Dashboard = web clone (Overview/Coverage/Quality/Teams/Trends).
+                // Its Coverage section can jump to the Map tab via onOpenMap.
+                Tab.DASHBOARD -> AppWebScreen(
+                    "/app/dashboard", projectId,
+                    onOpenMap = { lga -> mapFocusLga = lga; selectedTab = Tab.MAP },
+                )
+                // Map = Geographic View, full screen. Honour a pending LGA focus.
+                Tab.MAP -> AppWebScreen("/app/map", projectId, focusLga = mapFocusLga)
+                Tab.FIELD_GUIDE -> MyAreaScreen(projectId)
             }
         }
     }
