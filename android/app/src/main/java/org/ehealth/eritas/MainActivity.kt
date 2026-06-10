@@ -3,11 +3,14 @@ package org.ehealth.eritas
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
@@ -30,12 +33,18 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import org.ehealth.eritas.core.auth.SessionManager
 import org.ehealth.eritas.core.model.VersionInfo
@@ -49,6 +58,7 @@ import org.ehealth.eritas.feature.quality.QualityScreen
 import org.ehealth.eritas.feature.project.ProjectPickerDialog
 import org.ehealth.eritas.feature.update.UpdateBanner
 import org.ehealth.eritas.feature.update.UpdateGate
+import org.ehealth.eritas.ui.EritasGreen
 import org.ehealth.eritas.ui.EritasTheme
 
 class MainActivity : ComponentActivity() {
@@ -98,11 +108,11 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Tab(val label: String) {
-    DASHBOARD("Dashboard"),   // native overview: KPIs + cumulative trend
-    COVERAGE("Coverage"),     // native LGA → ward coverage drill-down
-    QUALITY("Quality"),       // native QC + team + daily-trend metrics
-    GEO("Geo"),               // geo coverage cards + the Leaflet map
-    FIELD_GUIDE("Guide"),     // native GPS: where am I + where to cover next
+    DASHBOARD("Dashboard"),       // native overview: KPIs + cumulative trend
+    QUALITY("Quality"),           // native QC + team + daily-trend metrics
+    COVERAGE("LGA Coverage"),     // native LGA → ward → settlement drill-down
+    GEO("Geo"),                   // geo coverage cards + the Leaflet map
+    FIELD_GUIDE("Guide"),         // native GPS: where am I + where to cover next
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,32 +128,53 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     // Map tab focused on that LGA.
     var mapFocusLga by remember { mutableStateOf<String?>(null) }
 
-    // Campaign switching is allowed on the native, project-driven data tabs.
-    // Changing the project updates `projectId`, which every tab reads, so they
-    // all reload with the new campaign when next shown.
-    val canSwitch = selectedTab == Tab.DASHBOARD ||
-        selectedTab == Tab.COVERAGE ||
-        selectedTab == Tab.QUALITY
+    // Campaign switching is allowed ONLY on the Dashboard. Changing the project
+    // updates `projectId`, which every tab reads, so they all reload with the
+    // new campaign when next shown.
+    val canSwitch = selectedTab == Tab.DASHBOARD
 
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = EritasGreen,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White,
+                ),
+                navigationIcon = {
+                    Image(
+                        painter = painterResource(R.drawable.ic_launcher),
+                        contentDescription = "ERITAS",
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(9.dp)),
+                    )
+                },
                 title = {
-                    if (canSwitch) {
-                        // On Dashboard the title IS the switcher (tap to pick a
-                        // state/round); the caret makes that obvious.
+                    // Two-line title: the current section (small) over the active
+                    // campaign (bold). On Dashboard the campaign line is the
+                    // switcher — tap it (or the swap icon) to change state/round.
+                    Column {
+                        Text(
+                            selectedTab.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.8f),
+                        )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { showPicker = true },
+                            modifier = if (canSwitch) Modifier.clickable { showPicker = true } else Modifier,
                         ) {
-                            Text(projectLabel ?: "Active campaign")
-                            Icon(
-                                Icons.Filled.ArrowDropDown,
-                                contentDescription = "Switch campaign",
+                            Text(
+                                projectLabel ?: "Active campaign",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
                             )
+                            if (canSwitch) {
+                                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch campaign")
+                            }
                         }
-                    } else {
-                        Text(projectLabel ?: "Active campaign")
                     }
                 },
                 actions = {
@@ -173,16 +204,16 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                     label = { Text(Tab.DASHBOARD.label) },
                 )
                 NavigationBarItem(
-                    selected = selectedTab == Tab.COVERAGE,
-                    onClick = { selectedTab = Tab.COVERAGE },
-                    icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
-                    label = { Text(Tab.COVERAGE.label) },
-                )
-                NavigationBarItem(
                     selected = selectedTab == Tab.QUALITY,
                     onClick = { selectedTab = Tab.QUALITY },
                     icon = { Icon(Icons.Filled.Flag, contentDescription = null) },
                     label = { Text(Tab.QUALITY.label) },
+                )
+                NavigationBarItem(
+                    selected = selectedTab == Tab.COVERAGE,
+                    onClick = { selectedTab = Tab.COVERAGE },
+                    icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
+                    label = { Text(Tab.COVERAGE.label, maxLines = 1) },
                 )
                 NavigationBarItem(
                     selected = selectedTab == Tab.GEO,

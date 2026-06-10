@@ -137,6 +137,55 @@ async def app_coverage_ward(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/app/coverage/settlement — per-settlement coverage within a ward.
+# Drives the ward → settlement drill (the third level under LGA → ward).
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/coverage/settlement")
+async def app_coverage_settlement(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Settlements within a ward, each with visited flag + completeness %.
+
+    Lightweight JSON (no geometry, unlike /geo/settlements) straight from
+    ``settlement_analytics``. Filtered by LGA and ward NAME — the app drills down
+    by the names it already has from /coverage/{lga,ward}.
+    """
+    clauses = ["sa.project_id = :pid"]
+    params: dict = {"pid": pid}
+    if lga:
+        clauses.append("sa.lga_name = :lga")
+        params["lga"] = lga
+    if ward:
+        clauses.append("sa.ward_name = :ward")
+        params["ward"] = ward
+    where = " AND ".join(clauses)
+    res = await db.execute(text(f"""
+        SELECT sa.settlement_name, sa.ward_name, sa.lga_name,
+               COALESCE(sa.is_visited, FALSE) AS is_visited,
+               COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
+               COALESCE(sa.point_count, 0) AS point_count
+        FROM settlement_analytics sa
+        WHERE {where}
+        ORDER BY sa.completeness_pct DESC, sa.settlement_name
+    """), params)
+    return [
+        {
+            "settlement_name": r.settlement_name,
+            "ward_name": r.ward_name,
+            "lga_name": r.lga_name,
+            "is_visited": bool(r.is_visited),
+            "completeness_pct": round(float(r.completeness_pct or 0), 1),
+            "point_count": int(r.point_count or 0),
+        }
+        for r in res.fetchall()
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/app/geo/wards — ward polygons + coverage in one call (map layer).
 # ─────────────────────────────────────────────────────────────────────────────
 async def _boundary_pid(pid: int, db: AsyncSession) -> int:

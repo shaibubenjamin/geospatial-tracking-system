@@ -19,11 +19,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.GpsOff
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -91,20 +96,43 @@ fun QualityScreen(projectId: Int?) {
             val o = ov!!
 
             SectionTitle("Data quality")
+            Text(
+                "Automated checks on submitted forms. Lower is better — each flag " +
+                    "is a record worth a second look.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             val qc = listOf(
-                Metric("QC flags", formatCount(o.totalQcFlags), Icons.Filled.Flag, flagColor(o.totalQcFlags > 0)),
-                Metric("Error rate", "${o.errorRatePct.roundToInt()}%", Icons.Filled.ErrorOutline, rateColor(o.errorRatePct)),
-                Metric("Refusals", formatCount(o.refusals), Icons.Filled.Block, EritasGreen),
-                Metric("Fast forms", formatCount(o.fastForms), Icons.Filled.Bolt, EritasGreen),
-                Metric("GPS outside LGA", formatCount(o.gpsOutsideLga), Icons.Filled.Place, flagColor(o.gpsOutsideLga > 0)),
+                Metric("QC flags", formatCount(o.totalQcFlags), Icons.Filled.Flag, flagColor(o.totalQcFlags > 0),
+                    "Total quality issues found"),
+                Metric("Flagged forms", formatCount(o.formsWithError), Icons.Filled.Warning, flagColor(o.formsWithError > 0),
+                    "Forms with ≥1 issue"),
+                Metric("Error rate", "${o.errorRatePct.roundToInt()}%", Icons.Filled.ErrorOutline, rateColor(o.errorRatePct),
+                    "Share of forms flagged"),
+                Metric("Refusals", formatCount(o.refusals), Icons.Filled.Block, EritasGreen,
+                    "Households that declined"),
+                Metric("Fast forms", formatCount(o.fastForms), Icons.Filled.Bolt, flagColor(o.fastForms > 0),
+                    "Filled implausibly fast"),
+                Metric("Slow forms", formatCount(o.slowForms), Icons.Filled.Schedule, flagColor(o.slowForms > 0),
+                    "Took unusually long"),
+                Metric("After hours", formatCount(o.afterHours), Icons.Filled.DarkMode, flagColor(o.afterHours > 0),
+                    "Submitted outside work hours"),
+                Metric("GPS outside LGA", formatCount(o.gpsOutsideLga), Icons.Filled.Place, flagColor(o.gpsOutsideLga > 0),
+                    "Location outside the LGA"),
+                Metric("GPS poor accuracy", formatCount(o.gpsPoorAccuracy), Icons.Filled.GpsOff, flagColor(o.gpsPoorAccuracy > 0),
+                    "Low GPS precision"),
+                Metric("Duplicate GPS", formatCount(o.duplicateGps), Icons.Filled.ContentCopy, flagColor(o.duplicateGps > 0),
+                    "Same point as another form"),
             )
             MetricGrid(qc)
 
             SectionTitle("Teams")
             val avgPerTeam = if (o.teamsActive > 0) o.totalForms / o.teamsActive else 0
             val teams = listOf(
-                Metric("Active teams", formatCount(o.teamsActive), Icons.Filled.Groups, EritasGreen),
-                Metric("Avg forms / team", formatCount(avgPerTeam), Icons.Filled.Description, EritasGreen),
+                Metric("Active teams", formatCount(o.teamsActive), Icons.Filled.Groups, EritasGreen,
+                    "Submitted ≥1 form"),
+                Metric("Avg forms / team", formatCount(avgPerTeam), Icons.Filled.Description, EritasGreen,
+                    "Forms ÷ active teams"),
             )
             MetricGrid(teams)
             if (lgas.isNotEmpty()) TeamsByLgaCard(lgas)
@@ -118,7 +146,13 @@ fun QualityScreen(projectId: Int?) {
     }
 }
 
-private data class Metric(val label: String, val value: String, val icon: ImageVector, val accent: Color)
+private data class Metric(
+    val label: String,
+    val value: String,
+    val icon: ImageVector,
+    val accent: Color,
+    val sub: String = "",
+)
 
 @Composable
 private fun SectionTitle(text: String) {
@@ -154,15 +188,25 @@ private fun MetricCard(m: Metric, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f),
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 m.value,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            if (m.sub.isNotEmpty()) {
+                Text(
+                    m.sub,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
     }
 }

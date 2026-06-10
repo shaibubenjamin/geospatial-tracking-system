@@ -44,9 +44,14 @@ data class OverviewDto(
     @Json(name = "planned_duration_days") val plannedDurationDays: Int? = null,
     @Json(name = "error_rate_pct") val errorRatePct: Double = 0.0,
     @Json(name = "total_qc_flags") val totalQcFlags: Int = 0,
+    @Json(name = "forms_with_error") val formsWithError: Int = 0,
     @Json(name = "refusals") val refusals: Int = 0,
     @Json(name = "fast_forms") val fastForms: Int = 0,
+    @Json(name = "slow_forms") val slowForms: Int = 0,
+    @Json(name = "after_hours") val afterHours: Int = 0,
     @Json(name = "gps_outside_lga") val gpsOutsideLga: Int = 0,
+    @Json(name = "gps_poor_accuracy") val gpsPoorAccuracy: Int = 0,
+    @Json(name = "duplicate_gps") val duplicateGps: Int = 0,
     @Json(name = "baseline_total") val baselineTotal: Int = 0,
 )
 
@@ -78,6 +83,16 @@ data class WardCoverage(
     @Json(name = "baseline_total") val baselineTotal: Int = 0,
     @Json(name = "coverage_pct") val coveragePct: Double = 0.0,
     val teams: Int = 0,
+)
+
+/** One row of GET /api/app/coverage/settlement — a settlement within a ward. */
+data class SettlementCoverage(
+    @Json(name = "settlement_name") val settlementName: String?,
+    @Json(name = "ward_name") val wardName: String?,
+    @Json(name = "lga_name") val lgaName: String?,
+    @Json(name = "is_visited") val isVisited: Boolean = false,
+    @Json(name = "completeness_pct") val completenessPct: Double = 0.0,
+    @Json(name = "point_count") val pointCount: Int = 0,
 )
 
 /** GET /api/app/geo/summary — headline numbers from the web Geographic View. */
