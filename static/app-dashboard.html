@@ -37,6 +37,9 @@
     th{color:var(--muted);font-weight:600;font-size:10.5px}
     .pillbadge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;color:#fff}
     #msg{padding:22px 12px;text-align:center;color:var(--muted)}#msg.err{color:#b91c1c}
+    /* Charts MUST have a bounded-height parent — with maintainAspectRatio:false
+       and no container height, Chart.js grows the canvas to ~1000px (the "lag").*/
+    .chartbox{position:relative;height:185px;margin-top:6px}
     canvas{max-width:100%}
   </style>
 </head>
@@ -49,7 +52,8 @@
     var pid=qp('project_id'), q=pid?('?project_id='+encodeURIComponent(pid)):'', qa=pid?('&project_id='+encodeURIComponent(pid)):'';
     function get(u){ return fetch(u,{headers:{'Authorization':'Bearer '+token,'X-App-Version-Code':'999999'}})
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
-    function fmt(n){ n=+n||0; return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(Math.round(n)); }
+    // Full actual numbers with thousands separators (no k/M abbreviation).
+    function fmt(n){ return (Math.round(+n||0)).toLocaleString(); }
     function pc(n){ return (Math.round((+n||0)*10)/10); }
     function covColor(p){ p=+p||0; return p>=80?'#006B2E':p>=60?'#16A34A':p>=40?'#f59e0b':'#dc2626'; }
     var W=document.getElementById('wrap'); function msg(t,e){ W.innerHTML='<div id="msg"'+(e?' class="err"':'')+'>'+t+'</div>'; }
@@ -79,7 +83,7 @@
         W.innerHTML='<div class="hero" style="background:'+covColor(cov)+'"><div class="lbl">Administrative coverage</div><div class="pct">'+cov.toFixed(0)+'%</div>'+
           '<div class="sub">Children treated ÷ baseline target · 80% is the protective threshold</div></div>'+
           '<div class="grid">'+ks.map(function(k){return kpi(k[0],k[1]);}).join('')+'</div>'+
-          '<div class="card"><h3>Cumulative coverage over campaign days</h3><div class="csub" id="ts"></div><canvas id="c" height="150"></canvas></div>';
+          '<div class="card"><h3>Cumulative coverage over campaign days</h3><div class="csub" id="ts"></div><div class="chartbox"><canvas id="c"></canvas></div></div>';
         lineTrend(daily,d.baseline_total||0);
       }).catch(function(e){ msg('Could not load overview: '+e.message,true); }); };
 
@@ -87,7 +91,7 @@
       var acc=0,labels=[],data=[]; daily.forEach(function(p){acc+=(p.treated||0);labels.push((p.date||'').slice(5));data.push(baseline>0?+(100*acc/baseline).toFixed(1):acc);});
       document.getElementById('ts').textContent=daily.length+' day(s) · '+(baseline>0?'% of target':'cumulative treated');
       chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:labels,datasets:[{data:data,borderColor:'#006B2E',backgroundColor:'rgba(0,107,46,.15)',fill:true,tension:.3,borderWidth:2.5,pointRadius:3,pointBackgroundColor:'#006B2E'}]},
-        options:{plugins:{legend:{display:false}},maintainAspectRatio:false,scales:{y:{ticks:{callback:function(v){return baseline>0?v+'%':v;},font:{size:10}},grid:{color:'#f1f3f5'}},x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{display:false}}}}}); }
+        options:{animation:false,plugins:{legend:{display:false}},maintainAspectRatio:false,scales:{y:{ticks:{callback:function(v){return baseline>0?v+'%':v;},font:{size:10}},grid:{color:'#f1f3f5'}},x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{display:false}}}}}); }
 
     // ── COVERAGE ANALYSIS ─────────────────────────────────────────────────────
     RENDER.coverage=function(){ Promise.all([cget('/api/app/overview'+q), cget('/api/app/coverage/lga'+q)])
@@ -130,12 +134,12 @@
     // ── CAMPAIGN TRENDS ───────────────────────────────────────────────────────
     RENDER.trends=function(){ Promise.all([cget('/api/app/trends/daily'+q), cget('/api/mda/rounds/summary'+q).catch(function(){return[];})])
       .then(function(r){ var daily=r[0]||[], rounds=r[1]||[];
-        W.innerHTML='<div class="card"><h3>Daily forms submitted</h3><div class="csub" id="ds"></div><canvas id="c" height="150"></canvas></div>'+
+        W.innerHTML='<div class="card"><h3>Daily forms submitted</h3><div class="csub" id="ds"></div><div class="chartbox"><canvas id="c"></canvas></div></div>'+
           '<div class="card"><h3>Round-over-round comparison</h3><table><thead><tr><th>Round</th><th>Targeted</th><th>Treated</th><th>Cov%</th><th>Forms</th></tr></thead><tbody id="rb"></tbody></table></div>';
         document.getElementById('ds').textContent=daily.length+' day(s)';
         if(daily.length&&window.Chart){ chart=new Chart(document.getElementById('c'),{type:'bar',
           data:{labels:daily.map(function(p){return (p.date||'').slice(5);}),datasets:[{data:daily.map(function(p){return p.forms||0;}),backgroundColor:'#16A34A',borderRadius:4}]},
-          options:{plugins:{legend:{display:false}},maintainAspectRatio:false,scales:{y:{ticks:{font:{size:10}},grid:{color:'#f1f3f5'}},x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}}}}); }
+          options:{animation:false,plugins:{legend:{display:false}},maintainAspectRatio:false,scales:{y:{ticks:{font:{size:10}},grid:{color:'#f1f3f5'}},x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}}}}); }
         document.getElementById('rb').innerHTML=rounds.map(function(rd){return '<tr><td>'+(rd.round_label||'—')+'</td><td>'+fmt(rd.targeted)+'</td><td>'+fmt(rd.administered)+'</td><td>'+pc(rd.coverage_pct)+'%</td><td>'+fmt(rd.total_forms)+'</td></tr>';}).join('');
       }).catch(function(e){ msg('Could not load trends: '+e.message,true); }); };
 
@@ -145,6 +149,7 @@
     function lavg(rows,k){ if(!rows.length)return 0; var s=0,n=0; rows.forEach(function(r){if(r[k]!=null){s+=+r[k];n++;}}); return n?s/n:0; }
     function lbar(pct){ var c=covColor(pct); return '<div class="bar"><i style="width:'+Math.max(0,Math.min(100,+pct||0))+'%;background:'+c+'"></i></div>'; }
     function lback(t){ return '<button onclick="lgaBack()" style="border:0;background:#eef2ff;color:#3730a3;border-radius:8px;padding:6px 11px;font-weight:700;font-size:12px;margin-bottom:8px">‹ '+t+'</button>'; }
+    function mapBtn(code){ return '<button onclick="viewMap(\''+code+'\',event)" style="border:0;background:var(--green);color:#fff;border-radius:8px;padding:6px 11px;font-weight:700;font-size:12px;margin:0 0 8px 6px">📍 View on map</button>'; }
     window.lgaBack=function(){ if(lgaState.level==='settlement'){lgaState.level='ward';} else {lgaState.level='lga';lgaState.lga=null;} drawLga(); };
     window.lgaOpen=function(code){ lgaState.lga=lprops(window._lgasFC).filter(function(x){return x.lgacode===code;})[0]; lgaState.level='ward'; drawLga(); };
     window.wardOpen=function(name){ lgaState.ward=lprops(window._wardsFC).filter(function(x){return x.lga_name===lgaState.lga.lga_name && x.ward_name===name;})[0]; lgaState.level='settlement'; drawLga(); };
@@ -165,18 +170,18 @@
       } else if(lgaState.level==='ward'){
         var lga=lgaState.lga;
         var rows=lprops(window._wardsFC).filter(function(w){return w.lga_name===lga.lga_name;}).sort(function(a,b){return b.visitation_pct-a.visitation_pct;});
-        W.innerHTML='<div class="card">'+lback('LGAs')+'<h3>'+lga.lga_name+' — wards</h3><div class="csub">'+rows.length+' wards · avg '+lavg(rows,'visitation_pct').toFixed(0)+'% visited · LGA '+pc(lga.visitation_pct)+'%</div><div id="ll"></div></div>';
+        W.innerHTML='<div class="card">'+lback('LGAs')+mapBtn(lga.lgacode)+'<h3>'+lga.lga_name+' — wards</h3><div class="csub">'+rows.length+' wards · avg '+lavg(rows,'visitation_pct').toFixed(0)+'% visited · LGA '+pc(lga.visitation_pct)+'%</div><div id="ll"></div></div>';
         document.getElementById('ll').innerHTML=rows.length?rows.map(function(w){ var c=covColor(w.visitation_pct), nm=(w.ward_name||'').replace(/'/g,"\\'");
           return '<div class="row" onclick="wardOpen(\''+nm+'\')" style="cursor:pointer"><div class="nm">'+(w.ward_name||w.wardcode)+'<small>'+(w.settlements_visited||0)+' / '+(w.settlements||0)+' settlements visited</small>'+lbar(w.visitation_pct)+'</div><div class="rt" style="color:'+c+'">'+pc(w.visitation_pct)+'%</div></div>'; }).join(''):'<div id="msg">No wards.</div>';
       } else {
         var w=lgaState.ward, code=lgaState.lga.lgacode;
-        W.innerHTML='<div class="card">'+lback('Wards')+'<h3>'+w.ward_name+' — settlements</h3><div class="csub" id="ss">Loading…</div><div id="ll"></div></div>';
+        W.innerHTML='<div class="card">'+lback('Wards')+mapBtn(lgaState.lga.lgacode)+'<h3>'+w.ward_name+' — settlements</h3><div class="csub" id="ss">Loading…</div><div id="ll"></div></div>';
         cget('/api/app/geo/settlements?lgacode='+encodeURIComponent(code)+qa).then(function(d){
           var rows=(d.features||[]).map(function(f){return f.properties;}).filter(function(s){return s.ward_name===w.ward_name;});
           var nv=rows.filter(function(s){return s.is_visited;}).length;
           document.getElementById('ss').textContent=rows.length+' settlements · '+nv+' visited';
-          document.getElementById('ll').innerHTML=rows.length?rows.map(function(s){ var c=s.is_visited?'#16a34a':'#dc2626';
-            return '<div class="row"><div class="nm">'+(s.settlement_name||'—')+'</div><div class="rt" style="color:'+c+'">'+(s.is_visited?'Visited':'Not')+'</div></div>'; }).join(''):'<div id="msg">No settlements.</div>';
+          document.getElementById('ll').innerHTML=rows.length?rows.map(function(s){ var cp=(s.completeness_pct!=null?s.completeness_pct:(s.is_visited?100:0)); var c=covColor(cp);
+            return '<div class="row"><div class="nm">'+(s.settlement_name||'—')+lbar(cp)+'</div><div class="rt" style="color:'+c+'">'+pc(cp)+'%</div></div>'; }).join(''):'<div id="msg">No settlements.</div>';
         }).catch(function(e){ document.getElementById('ss').textContent='Error: '+e.message; });
       }
     }
