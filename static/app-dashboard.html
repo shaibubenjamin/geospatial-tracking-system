@@ -186,7 +186,8 @@
       }
     }
 
-    go('overview');
+    // Allow deep-linking a section (?section=trends) for previews; default Overview.
+    var _start=qp('section'); go(SECTIONS.some(function(s){return s[0]===_start;})?_start:'overview');
   </script>
 </body>
 </html>
