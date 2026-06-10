@@ -309,9 +309,17 @@ tbody tr:hover{background:var(--pale)}
    bar on top, full-width content, non-campaign + Geographic items hidden (the
    app has its own native top bar + Leaflet Geographic View tab). Scoped to
    body.app-mode so the normal web dashboard is completely unaffected. */
-body.app-mode .app{flex-direction:column;height:auto;min-height:100vh}
+/* CRITICAL: the desktop dashboard scrolls an INNER container (.page) inside a
+   body that is height:100vh;overflow:hidden. That inner scroll breaks in the
+   Android WebView (content clipped, can't scroll). In app-mode, switch to
+   NATURAL document scroll: the body scrolls and inner overflow is released. */
+body.app-mode{height:auto!important;overflow:visible!important}
+body.app-mode .app{flex-direction:column;height:auto;min-height:0}
+body.app-mode .main{display:block;min-height:0}
+body.app-mode .page{flex:none;overflow:visible!important;height:auto;padding:12px}
 body.app-mode .topbar{display:none}                 /* app supplies its own top bar */
-body.app-mode .sidebar{width:100%;height:auto;flex-direction:row;align-items:center;
+/* Pill bar stays pinned while the page scrolls. */
+body.app-mode .sidebar{position:sticky;top:0;z-index:100;width:100%;height:auto;flex-direction:row;align-items:center;
   overflow-x:auto;overflow-y:hidden;flex-shrink:0;padding:7px 6px;gap:4px;box-shadow:0 1px 8px rgba(0,0,0,.25)}
 body.app-mode .sidebar .brand,
 body.app-mode .sidebar .nav-section,
