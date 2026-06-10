@@ -153,6 +153,10 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
   .sidebar .nav-item.active{border-radius:999px;border-left:0;transform:none!important}
   .kpi-grid,.kpi-grid.cols-6,.kpi-grid.cols-5,.kpi-grid.cols-4,.kpi-grid.cols-3,.kpi-grid.cols-2{grid-template-columns:1fr 1fr!important}
   .grid-2,.grid-3,.grid-22,.qc-grid,.geo-wrap{grid-template-columns:1fr!important}
+  /* Catch-all: stack EVERY multi-column grid on mobile, including inline-styled
+     ones (e.g. the refusals chart+table row) that were overflowing → no more
+     clipped columns / horizontal scroll. KPI grids keep their own 2-col rule. */
+  .page :not(.kpi-grid)[style*="grid-template-columns"]{grid-template-columns:1fr!important}
   .page{padding:12px 12px 48px}
   /* Charts: full-width, bounded height so they resize cleanly (no giant canvas). */
   .chart-wrap{height:240px;padding:10px 6px 12px}
