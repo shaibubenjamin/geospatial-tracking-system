@@ -320,11 +320,15 @@ body.app-mode .sidebar .nav-item{flex:0 0 auto;margin:0;padding:8px 13px;border-
   font-size:12.5px;white-space:nowrap;transform:none!important;border-left:0!important}
 body.app-mode .sidebar .nav-item.active{border-radius:999px;border-left:0}
 /* Hide what the app handles elsewhere or doesn't need on a phone. */
-body.app-mode .nav-item[data-view="geo"],
-body.app-mode .nav-item[data-view="lga"],
-body.app-mode .nav-item[data-view="supervisor"],
-body.app-mode .nav-item[data-view="reports"],
-body.app-mode #admin-nav-link{display:none!important}
+/* Show ONLY the 5 campaign sections; hide everything else (Reports, Operations,
+   Sync, LGA Drug Tracker, Supervisor, Admin, and the web's WebGL Geographic
+   View — the app has its own Map tab). Hide-all-then-show is future-proof. */
+body.app-mode .sidebar .nav-item{display:none!important}
+body.app-mode .sidebar .nav-item[data-view="overview"],
+body.app-mode .sidebar .nav-item[data-view="coverage"],
+body.app-mode .sidebar .nav-item[data-view="quality"],
+body.app-mode .sidebar .nav-item[data-view="teams"],
+body.app-mode .sidebar .nav-item[data-view="trends"]{display:inline-flex!important}
 body.app-mode .page{padding:12px}
 body.app-mode .kpi-grid,
 body.app-mode .kpi-grid.cols-6,body.app-mode .kpi-grid.cols-5,body.app-mode .kpi-grid.cols-4,
