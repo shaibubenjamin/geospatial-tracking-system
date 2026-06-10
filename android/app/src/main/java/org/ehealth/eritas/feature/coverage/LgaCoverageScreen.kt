@@ -283,8 +283,15 @@ private fun WardCard(w: WardCoverage, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().height(7.dp).padding(top = 6.dp),
                 color = color,
             )
+            // Wards with treatment data show treated/target; wards derived from
+            // settlement visitation (LGAs whose households lack ward_name) show
+            // the visitation read-out instead of a misleading "0 / 0".
+            val hasTreatment = w.baselineTotal > 0 || w.actualTreated > 0
             Text(
-                "${formatCount(w.actualTreated)} treated / ${formatCount(w.baselineTotal)} target  ·  ${w.teams} team(s)",
+                if (hasTreatment)
+                    "${formatCount(w.actualTreated)} treated / ${formatCount(w.baselineTotal)} target  ·  ${w.teams} team(s)"
+                else
+                    "${pct.roundToInt()}% of settlements visited · tap to view",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),

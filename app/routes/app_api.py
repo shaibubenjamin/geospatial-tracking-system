@@ -132,8 +132,43 @@ async def app_coverage_ward(
     user: User = Depends(get_current_user),
 ):
     """Per-ward coverage for the selected project, filtered to one LGA when
-    ``lga`` is given. Reuses the web dashboard's ``mda_coverage_ward``."""
-    return await mda_coverage_ward(lga=lga, pid=pid, db=db, _u=user)
+    ``lga`` is given. Reuses the web dashboard's ``mda_coverage_ward``.
+
+    Fallback: some LGAs have treatment data but their households' ``ward_name``
+    was never populated by the GPS→ward spatial join, so the household-based
+    query returns no wards — and the user can't drill to settlements. When that
+    happens (and an LGA is specified), derive the ward list from
+    ``settlement_analytics`` (which DOES carry ward_name), reporting visitation
+    coverage (% of settlements visited) so the drill still works.
+    """
+    rows = await mda_coverage_ward(lga=lga, pid=pid, db=db, _u=user)
+    if rows or not lga:
+        return rows
+    res = await db.execute(text("""
+        SELECT sa.ward_name,
+               COUNT(*) AS total,
+               SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END) AS visited
+        FROM settlement_analytics sa
+        WHERE sa.project_id = :pid AND sa.lga_name = :lga AND sa.ward_name IS NOT NULL
+        GROUP BY sa.ward_name
+        ORDER BY sa.ward_name
+    """), {"pid": pid, "lga": lga})
+    out = []
+    for r in res.fetchall():
+        total = int(r.total or 0)
+        visited = int(r.visited or 0)
+        out.append({
+            "ward_name": r.ward_name,
+            "lga": lga,
+            "forms": 0,
+            "actual_treated": 0,
+            "baseline_total": 0,
+            # Visitation coverage (settlements visited ÷ total) — NOT treatment
+            # coverage, since these wards have no household-linked treatment data.
+            "coverage_pct": round(100.0 * visited / total, 1) if total else 0.0,
+            "teams": 0,
+        })
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
