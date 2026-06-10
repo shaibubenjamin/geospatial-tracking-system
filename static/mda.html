@@ -163,9 +163,24 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
   .kpi-metric{flex-direction:row;align-items:baseline;min-width:0;max-width:none;width:100%}
   .kpi .val{font-size:22px;line-height:1.1}
   .kpi-spark-wrap{display:none}
-  /* Tables: never overflow the screen — scroll horizontally inside their card. */
-  .card{overflow-x:auto}
-  table{font-size:12px;min-width:520px}
+  /* Tables → stacked, labelled cards (NO horizontal scroll). A small script
+     (labelizeTables) stamps each <td> with data-label from its column header,
+     so every row reads as "LABEL  value" pairs. Beats the old squished scroll. */
+  .card{overflow-x:visible}
+  .page table{min-width:0!important;width:100%;border-collapse:collapse}
+  .page table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .page table tr{display:block;background:#fff;border:1px solid var(--line);border-radius:11px;
+    margin:0 0 10px;padding:3px 13px;box-shadow:0 1px 4px rgba(0,107,46,.06)}
+  .page table td{display:flex;justify-content:space-between;align-items:center;gap:14px;
+    padding:9px 0!important;text-align:right!important;border:0!important;
+    border-bottom:1px solid var(--mist)!important;font-size:13px;white-space:normal!important}
+  .page table tr td:last-child{border-bottom:0!important}
+  .page table td::before{content:attr(data-label);flex:0 0 40%;text-align:left;
+    font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+  .page table td[data-label=""]::before,.page table td:not([data-label])::before{content:none}
+  .page table td:empty{display:none}
+  /* let cell contents (bars, chips) size to the value side, not full width */
+  .page table td>*{margin-left:auto}
   .card-title{font-size:14px}.card-sub{font-size:11px}
 }
 @media(max-width:560px){
@@ -5665,6 +5680,39 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if(Chart&&Chart.instances) Object.values(Chart.instances).forEach(c=>{try{c.resize();}catch(e){}});
     if(geoMap) geoMap.resize();
   });
+})();
+</script>
+<script>
+/* ── Mobile tables → labelled cards ──────────────────────────────────────────
+   On phones (and the wrapped app) the @media(max-width:860px) CSS renders each
+   table row as a stacked card. For that to read as "LABEL  value", every <td>
+   needs the column header as data-label. Tables render/re-render dynamically as
+   sections load and filters apply, so stamp labels now and again (debounced) on
+   any DOM change. Cheap: only sets the attribute when it actually changed, and
+   the observer watches childList (not attributes), so no feedback loop. */
+(function () {
+  function labelize() {
+    document.querySelectorAll('.page table').forEach(function (tbl) {
+      var ths = tbl.querySelectorAll('thead th');
+      if (!ths.length) return;
+      var labels = Array.prototype.map.call(ths, function (th) {
+        return (th.textContent || '').trim();
+      });
+      tbl.querySelectorAll('tbody tr').forEach(function (tr) {
+        Array.prototype.forEach.call(tr.children, function (td, i) {
+          if (labels[i] != null && td.getAttribute('data-label') !== labels[i]) {
+            td.setAttribute('data-label', labels[i]);
+          }
+        });
+      });
+    });
+  }
+  var t;
+  function run() { clearTimeout(t); t = setTimeout(labelize, 120); }
+  if (document.readyState !== 'loading') run();
+  else document.addEventListener('DOMContentLoaded', run);
+  try { new MutationObserver(run).observe(document.body, { childList: true, subtree: true }); }
+  catch (e) {}
 })();
 </script>
 </body>
