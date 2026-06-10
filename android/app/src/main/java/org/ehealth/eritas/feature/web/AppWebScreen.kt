@@ -30,10 +30,14 @@ fun AppWebScreen(
     onOpenMap: ((String) -> Unit)? = null,
     // When set, appended as ?focus=<lgacode> so the map page zooms to that LGA.
     focusLga: String? = null,
+    // When true, append ?app=1 (the wrapped /mda reads this to switch to its
+    // guarded mobile layout).
+    appMode: Boolean = false,
 ) {
-    val url = remember(path, projectId, focusLga) {
+    val url = remember(path, projectId, focusLga, appMode) {
         val token = ServiceLocator.tokenStore.token.orEmpty()
         val params = buildList {
+            if (appMode) add("app=1")
             projectId?.let { add("project_id=$it") }
             focusLga?.let { add("focus=$it") }
         }.joinToString("&")

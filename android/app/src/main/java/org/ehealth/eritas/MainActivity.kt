@@ -180,13 +180,12 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 UpdateBanner(optionalUpdate) { bannerDismissed = true }
             }
             when (selectedTab) {
-                // Dashboard = web clone (Overview/Coverage/Quality/Teams/Trends).
-                // Its Coverage section can jump to the Map tab via onOpenMap.
-                Tab.DASHBOARD -> AppWebScreen(
-                    "/app/dashboard", projectId,
-                    onOpenMap = { lga -> mapFocusLga = lga; selectedTab = Tab.MAP },
-                )
-                // Map = Geographic View, full screen. Honour a pending LGA focus.
+                // Dashboard = the REAL web platform dashboard (/mda) wrapped in
+                // app-mode, so Overview/Coverage/Quality/Teams/Trends are an
+                // exact clone of the web and reflect web updates instantly.
+                Tab.DASHBOARD -> AppWebScreen("/mda", projectId, appMode = true)
+                // Map = Geographic View, full screen (Leaflet — the web's map is
+                // WebGL and blank in a WebView). Honour a pending LGA focus.
                 Tab.MAP -> AppWebScreen("/app/map", projectId, focusLga = mapFocusLga)
                 Tab.FIELD_GUIDE -> MyAreaScreen(projectId)
             }

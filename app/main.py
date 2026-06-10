@@ -411,7 +411,7 @@ async def add_security_headers(request, call_next):
     # so allow same-origin framing for those two paths (the global default is
     # DENY / frame-ancestors 'none'). The blob: web-worker allowance MapLibre
     # /Leaflet need already lives in the global _CSP_DEFAULT.
-    if request.url.path in ("/app/map", "/app/dashboard", "/app-preview"):
+    if request.url.path in ("/app/map", "/app/dashboard", "/mda", "/app-preview"):
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Content-Security-Policy"] = _CSP_DEFAULT.replace(
             "frame-ancestors 'none'", "frame-ancestors 'self'"
