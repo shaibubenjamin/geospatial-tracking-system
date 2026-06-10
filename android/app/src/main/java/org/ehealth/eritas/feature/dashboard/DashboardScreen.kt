@@ -263,8 +263,5 @@ private fun StatCard(stat: Stat, modifier: Modifier = Modifier) {
     }
 }
 
-private fun formatCount(n: Int): String = when {
-    n >= 1_000_000 -> "${(n / 100_000) / 10.0}M"
-    n >= 1_000 -> "${(n / 100) / 10.0}k"
-    else -> n.toString()
-}
+/** Full numbers with thousands separators (e.g. 296,237) — no k/M abbreviation. */
+private fun formatCount(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n.toLong())

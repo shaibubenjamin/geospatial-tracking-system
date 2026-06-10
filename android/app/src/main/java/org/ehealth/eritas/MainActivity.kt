@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
@@ -41,9 +42,10 @@ import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.feature.coverage.LgaCoverageScreen
 import org.ehealth.eritas.feature.dashboard.DashboardScreen
+import org.ehealth.eritas.feature.geo.GeographicScreen
 import org.ehealth.eritas.feature.locate.MyAreaScreen
 import org.ehealth.eritas.feature.login.LoginScreen
-import org.ehealth.eritas.feature.web.AppWebScreen
+import org.ehealth.eritas.feature.quality.QualityScreen
 import org.ehealth.eritas.feature.project.ProjectPickerDialog
 import org.ehealth.eritas.feature.update.UpdateBanner
 import org.ehealth.eritas.feature.update.UpdateGate
@@ -98,7 +100,8 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(val label: String) {
     DASHBOARD("Dashboard"),   // native overview: KPIs + cumulative trend
     COVERAGE("Coverage"),     // native LGA → ward coverage drill-down
-    MAP("Map"),               // Geographic View — full-screen Leaflet zoom map
+    QUALITY("Quality"),       // native QC + team + daily-trend metrics
+    GEO("Geo"),               // geo coverage cards + the Leaflet map
     FIELD_GUIDE("Guide"),     // native GPS: where am I + where to cover next
 }
 
@@ -115,10 +118,12 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     // Map tab focused on that LGA.
     var mapFocusLga by remember { mutableStateOf<String?>(null) }
 
-    // Campaign switching is allowed on the native, project-driven tabs
-    // (Dashboard, Coverage). Changing the project updates `projectId`, which
-    // every tab reads, so they all reload with the new campaign when next shown.
-    val canSwitch = selectedTab == Tab.DASHBOARD || selectedTab == Tab.COVERAGE
+    // Campaign switching is allowed on the native, project-driven data tabs.
+    // Changing the project updates `projectId`, which every tab reads, so they
+    // all reload with the new campaign when next shown.
+    val canSwitch = selectedTab == Tab.DASHBOARD ||
+        selectedTab == Tab.COVERAGE ||
+        selectedTab == Tab.QUALITY
 
     Scaffold(
         topBar = {
@@ -174,10 +179,16 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                     label = { Text(Tab.COVERAGE.label) },
                 )
                 NavigationBarItem(
-                    selected = selectedTab == Tab.MAP,
-                    onClick = { selectedTab = Tab.MAP },
+                    selected = selectedTab == Tab.QUALITY,
+                    onClick = { selectedTab = Tab.QUALITY },
+                    icon = { Icon(Icons.Filled.Flag, contentDescription = null) },
+                    label = { Text(Tab.QUALITY.label) },
+                )
+                NavigationBarItem(
+                    selected = selectedTab == Tab.GEO,
+                    onClick = { selectedTab = Tab.GEO },
                     icon = { Icon(Icons.Filled.Map, contentDescription = null) },
-                    label = { Text(Tab.MAP.label) },
+                    label = { Text(Tab.GEO.label) },
                 )
                 NavigationBarItem(
                     selected = selectedTab == Tab.FIELD_GUIDE,
@@ -196,15 +207,17 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 // Native dashboard — KPIs + cumulative trend (real Material 3
                 // layout, not the desktop /mda squeezed into a WebView).
                 Tab.DASHBOARD -> DashboardScreen(projectId)
-                // Native LGA → ward coverage drill-down. The map pin on a row
-                // jumps to the Map tab focused on that LGA.
+                // Native LGA → ward coverage drill-down. A row's map pin jumps to
+                // the Geo tab focused on that LGA.
                 Tab.COVERAGE -> LgaCoverageScreen(
                     projectId = projectId,
-                    onOpenMap = { lga -> mapFocusLga = lga; selectedTab = Tab.MAP },
+                    onOpenMap = { lga -> mapFocusLga = lga; selectedTab = Tab.GEO },
                 )
-                // Map = Geographic View, full screen (Leaflet — the web's map is
-                // WebGL and blank in a WebView). Honour a pending LGA focus.
-                Tab.MAP -> AppWebScreen("/app/map", projectId, focusLga = mapFocusLga)
+                // Native QC + team + daily-trend metrics.
+                Tab.QUALITY -> QualityScreen(projectId)
+                // Geographic — coverage % cards over the Leaflet map. Honour a
+                // pending LGA focus from a Coverage row's map pin.
+                Tab.GEO -> GeographicScreen(projectId, focusLga = mapFocusLga)
                 Tab.FIELD_GUIDE -> MyAreaScreen(projectId)
             }
         }
