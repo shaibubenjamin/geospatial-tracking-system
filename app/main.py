@@ -562,23 +562,40 @@ async def require_auth_on_protected_apis(request, call_next):
 # gets a 426 before the auth gate can return a 401, so the user is told to
 # update rather than to log in.
 #
-# Rules (only enforced when MIN_VERSION_CODE > 0; 0 disables the gate):
-#   • header present and version < MIN_VERSION_CODE  → 426 on ANY path
+# The floor is _effective_min() = the latest published APK's versionCode, so
+# every release force-updates all older installs (MIN_VERSION_CODE=0 still
+# disables the gate; see _effective_min).
+# Rules (only enforced when the floor > 0):
+#   • header present and version < floor             → 426 on ANY path
 #     (a stale install is locked out everywhere it calls, not just app paths)
 #   • header absent on an /api/app/* path            → 426 (only the app
 #     should ever call these; a missing header means a tampered/old client)
 #   • header absent on a non-app path (web browser)  → pass through untouched
 # GET /version is always exempt so the client launch-check can run.
+def _effective_min() -> int:
+    """Force-update floor. POLICY: every published release force-updates all
+    older installs, so the floor TRACKS the latest published APK's versionCode
+    (parsed from APK_DIR by _apk_status). Guards:
+      • MIN_VERSION_CODE <= 0 hard-disables the gate entirely (ops kill-switch).
+      • Never drops below the static MIN_VERSION_CODE floor.
+      • Falls back to MIN_VERSION_CODE when no APK is published yet, so a
+        missing/unreadable APK_DIR can't lock everyone out.
+    """
+    if MIN_VERSION_CODE <= 0:
+        return 0
+    published = _apk_status()["version_code"] or 0
+    return max(published, MIN_VERSION_CODE)
+
+
 def _version_payload(detail: str) -> dict:
     s = _apk_status()
     return {
         "detail": detail,
-        # min = a DELIBERATE static floor (only force-updates genuinely-too-old
-        # builds). It does NOT auto-track the latest build — a routine release
-        # must be an "update available" prompt (driven by `latest` below), not a
-        # 426 lockout for everyone. Raise MIN_VERSION_CODE only for a build that
-        # is truly incompatible.
-        "min": MIN_VERSION_CODE,
+        # min = the force-update floor. POLICY: every published release forces
+        # all older installs to update, so this TRACKS the latest published APK
+        # (see _effective_min). MIN_VERSION_CODE is the static fallback floor,
+        # and MIN_VERSION_CODE=0 still hard-disables the gate.
+        "min": _effective_min(),
         # latest auto-tracks the published APK → drives the optional-update prompt.
         "latest": s["version_code"] or LATEST_VERSION_CODE,
         "latest_name": s["version_name"] or LATEST_VERSION_NAME,
@@ -591,7 +608,7 @@ async def enforce_app_version(request, call_next):
     path = request.url.path
     if request.method == "OPTIONS" or path == "/version":
         return await call_next(request)
-    min_code = MIN_VERSION_CODE
+    min_code = _effective_min()
     if min_code and min_code > 0:
         raw = request.headers.get("X-App-Version-Code")
         is_app_path = path.startswith(APP_API_PREFIX)
@@ -728,16 +745,18 @@ async def health():
 # and the APK download is a dumb public file host.
 @app.get("/version")
 async def app_version():
-    """Drives the client launch check (update wall / optional-update banner).
+    """Drives the client launch check (force-update wall / optional banner).
 
-    ``latest`` is derived from the actual APK published on the server (parsed
-    from the eritas-<name>-<code>.apk files), so the optional-update banner
-    fires automatically for older installs without manually bumping env on
-    every release. ``min`` (force-update floor) stays env-driven.
+    Both numbers track the actual APK published on the server (parsed from the
+    eritas-<name>-<code>.apk files). ``latest`` drives the optional prompt;
+    ``min`` is the force-update floor that TRACKS the latest published build
+    (see _effective_min), so every release force-updates all older installs
+    without manually bumping env. No APK published yet → falls back to the
+    static MIN_VERSION_CODE floor.
     """
     s = _apk_status()
     return {
-        "min": MIN_VERSION_CODE,
+        "min": _effective_min(),
         "latest": s["version_code"] or LATEST_VERSION_CODE,
         "latest_name": s["version_name"] or LATEST_VERSION_NAME,
         "update_url": UPDATE_URL,
