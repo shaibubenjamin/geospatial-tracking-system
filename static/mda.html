@@ -127,6 +127,32 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
 @media(max-width:1100px){.kpi-grid.cols-5,.kpi-grid.cols-4{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.kpi-grid{grid-template-columns:1fr!important}}
 
+/* ════════ RESPONSIVE / MOBILE (web on a phone AND the wrapped app) ════════
+   The dashboard was desktop-only; this is the real mobile layout. Stacks the
+   chart/table grids to one column (charts were squished side-by-side), bounds
+   chart heights, stacks KPI card internals, lets tables scroll, shrinks type. */
+@media(max-width:860px){
+  .kpi-grid,.kpi-grid.cols-6,.kpi-grid.cols-5,.kpi-grid.cols-4,.kpi-grid.cols-3,.kpi-grid.cols-2{grid-template-columns:1fr 1fr!important}
+  .grid-2,.grid-3,.grid-22,.qc-grid,.geo-wrap{grid-template-columns:1fr!important}
+  .page{padding:12px 12px 48px}
+  /* Charts: full-width, bounded height so they resize cleanly (no giant canvas). */
+  .chart-wrap{height:240px;padding:10px 6px 12px}
+  .chart-wrap.tall{height:300px}.chart-wrap.short{height:200px}
+  /* KPI cards: stack internals so big numbers don't clip; drop the sparkline. */
+  .kpi{padding:11px 13px}
+  .kpi-body{flex-direction:column;align-items:flex-start;gap:3px}
+  .kpi-metric{flex-direction:row;align-items:baseline;min-width:0;max-width:none;width:100%}
+  .kpi .val{font-size:22px;line-height:1.1}
+  .kpi-spark-wrap{display:none}
+  /* Tables: never overflow the screen — scroll horizontally inside their card. */
+  .card{overflow-x:auto}
+  table{font-size:12px;min-width:520px}
+  .card-title{font-size:14px}.card-sub{font-size:11px}
+}
+@media(max-width:560px){
+  .kpi-grid,.kpi-grid.cols-6,.kpi-grid.cols-5,.kpi-grid.cols-4,.kpi-grid.cols-3,.kpi-grid.cols-2{grid-template-columns:1fr 1fr!important}
+}
+
 /* Card base */
 .kpi{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(0,107,46,.07);transition:box-shadow .18s,border-color .18s,transform .15s;cursor:pointer}
 .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--blue);border-radius:12px 0 0 12px}
