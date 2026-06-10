@@ -8,6 +8,7 @@ import org.ehealth.eritas.core.model.LoginResponse
 import org.ehealth.eritas.core.model.NearResponse
 import org.ehealth.eritas.core.model.OverviewDto
 import org.ehealth.eritas.core.model.ProjectDto
+import org.ehealth.eritas.core.model.SettlementCoverage
 import org.ehealth.eritas.core.model.TrendPoint
 import org.ehealth.eritas.core.model.VersionInfo
 import org.ehealth.eritas.core.model.WardCoverage
@@ -45,6 +46,13 @@ interface Api {
         @Query("lga") lga: String?,
         @Query("project_id") projectId: Int?,
     ): List<WardCoverage>
+
+    @GET("/api/app/coverage/settlement")
+    suspend fun coverageSettlement(
+        @Query("lga") lga: String?,
+        @Query("ward") ward: String?,
+        @Query("project_id") projectId: Int?,
+    ): List<SettlementCoverage>
 
     /** Ward polygons + coverage as raw GeoJSON, fed straight to MapLibre. */
     @GET("/api/app/geo/wards")

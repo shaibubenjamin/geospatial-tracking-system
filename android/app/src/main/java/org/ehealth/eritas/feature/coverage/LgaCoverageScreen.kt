@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.ehealth.eritas.core.model.LgaCoverage
+import org.ehealth.eritas.core.model.SettlementCoverage
 import org.ehealth.eritas.core.model.WardCoverage
 import org.ehealth.eritas.core.net.ServiceLocator
 import org.ehealth.eritas.ui.CoverageGood
@@ -51,17 +52,32 @@ private fun coverageColor(pct: Double) = when {
 @Composable
 fun LgaCoverageScreen(projectId: Int?, onOpenMap: (String) -> Unit = {}) {
     var selectedLga by remember { mutableStateOf<String?>(null) }
+    var selectedWard by remember { mutableStateOf<String?>(null) }
 
-    if (selectedLga != null) {
-        BackHandler { selectedLga = null }
-        WardCoveragePage(
-            lga = selectedLga!!,
-            projectId = projectId,
-            onBack = { selectedLga = null },
-            onOpenMap = onOpenMap,
-        )
-    } else {
-        LgaListPage(
+    when {
+        // Level 3: settlements within the selected ward.
+        selectedLga != null && selectedWard != null -> {
+            BackHandler { selectedWard = null }
+            SettlementCoveragePage(
+                lga = selectedLga!!,
+                ward = selectedWard!!,
+                projectId = projectId,
+                onBack = { selectedWard = null },
+            )
+        }
+        // Level 2: wards within the selected LGA (tap a ward → its settlements).
+        selectedLga != null -> {
+            BackHandler { selectedLga = null }
+            WardCoveragePage(
+                lga = selectedLga!!,
+                projectId = projectId,
+                onBack = { selectedLga = null },
+                onOpenMap = onOpenMap,
+                onOpenWard = { selectedWard = it },
+            )
+        }
+        // Level 1: LGAs.
+        else -> LgaListPage(
             projectId = projectId,
             onOpenLga = { selectedLga = it },
             onOpenMap = onOpenMap,
@@ -122,6 +138,7 @@ private fun WardCoveragePage(
     projectId: Int?,
     onBack: () -> Unit,
     onOpenMap: (String) -> Unit,
+    onOpenWard: (String) -> Unit,
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -170,7 +187,7 @@ private fun WardCoveragePage(
                 Modifier.fillMaxSize().padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(wards) { WardCard(it) }
+                items(wards) { w -> WardCard(w) { w.wardName?.let(onOpenWard) } }
             }
         }
     }
@@ -233,25 +250,32 @@ private fun LgaRow(row: LgaCoverage, onOpenMap: (String) -> Unit, onClick: () ->
 }
 
 @Composable
-private fun WardCard(w: WardCoverage) {
+private fun WardCard(w: WardCoverage, onClick: () -> Unit) {
     val pct = w.coveragePct
     val color = coverageColor(pct)
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(14.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     w.wardName ?: "Unknown",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
                 )
                 Text(
                     "${pct.roundToInt()}%",
                     style = MaterialTheme.typography.titleMedium,
                     color = color,
                     fontWeight = FontWeight.Bold,
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "View settlements",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             LinearProgressIndicator(
@@ -264,6 +288,105 @@ private fun WardCard(w: WardCoverage) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettlementCoveragePage(lga: String, ward: String, projectId: Int?, onBack: () -> Unit) {
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var setts by remember { mutableStateOf<List<SettlementCoverage>>(emptyList()) }
+
+    LaunchedEffect(lga, ward) {
+        loading = true
+        error = null
+        try {
+            setts = ServiceLocator.api.coverageSettlement(lga, ward, projectId)
+        } catch (e: Exception) {
+            error = "Could not load settlements: ${e.message ?: "network error"}"
+        }
+        loading = false
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to wards")
+            }
+            Text(
+                "$ward · settlements",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        when {
+            loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+            error != null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+                Text(error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+            }
+            setts.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+                Text("No settlement data for this ward yet.", textAlign = TextAlign.Center)
+            }
+            else -> {
+                val visited = setts.count { it.isVisited }
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item {
+                        Text(
+                            "$visited of ${setts.size} settlements visited",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 2.dp),
+                        )
+                    }
+                    items(setts) { SettlementCard(it) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettlementCard(s: SettlementCoverage) {
+    val pct = s.completenessPct
+    val color = coverageColor(pct)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    s.settlementName ?: "Unknown",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (s.isVisited) "Visited" else "Not visited",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (s.isVisited) CoverageGood else CoverageLow,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { (pct / 100.0).coerceIn(0.0, 1.0).toFloat() },
+                modifier = Modifier.fillMaxWidth().height(6.dp).padding(top = 6.dp),
+                color = color,
+            )
+            Text(
+                "${pct.roundToInt()}% complete  ·  ${formatCount(s.pointCount)} GPS point(s)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 5.dp),
             )
         }
     }

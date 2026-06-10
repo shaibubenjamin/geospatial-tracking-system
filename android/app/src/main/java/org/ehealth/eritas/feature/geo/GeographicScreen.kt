@@ -91,8 +91,8 @@ private fun GeoSummaryHeader(summary: GeoSummary?) {
             )
             if (comp != null) {
                 Text(
-                    "${comp.visitedSettlements} of ${comp.totalSettlements} settlements · " +
-                        "${comp.completed70} ≥70% complete",
+                    "${fmt(comp.visitedSettlements)} of ${fmt(comp.totalSettlements)} settlements have " +
+                        "at least one GPS submission.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 3.dp),
@@ -100,7 +100,22 @@ private fun GeoSummaryHeader(summary: GeoSummary?) {
             }
             val cs = summary?.coverageSummary
             if (cs != null) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "% AT TARGET",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    // The distinction that confused: visited ≠ at target.
+                    "Share of areas that MEET the coverage threshold — not the same " +
+                        "as 'visited' above (a settlement can be visited but still " +
+                        "below target).",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 1.dp, bottom = 8.dp),
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BucketChip("LGAs", cs.lga, Modifier.weight(1f))
                     BucketChip("Wards", cs.ward, Modifier.weight(1f))
@@ -110,6 +125,8 @@ private fun GeoSummaryHeader(summary: GeoSummary?) {
         }
     }
 }
+
+private fun fmt(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n.toLong())
 
 @Composable
 private fun BucketChip(label: String, bucket: GeoBucket?, modifier: Modifier = Modifier) {
@@ -133,7 +150,7 @@ private fun BucketChip(label: String, bucket: GeoBucket?, modifier: Modifier = M
                 color = covColor(pct),
             )
             Text(
-                if (bucket == null) "—" else "${bucket.atTarget}/${bucket.total} at target",
+                if (bucket == null) "—" else "${fmt(bucket.atTarget)} of ${fmt(bucket.total)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
