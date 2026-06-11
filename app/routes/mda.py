@@ -1123,7 +1123,7 @@ async def qc_summary(
     date_to:   Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
-    _user: Optional[User] = Depends(get_current_user_optional),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     params: dict = {}
     filters: list = []
@@ -1218,12 +1218,12 @@ async def qc_summary(
 async def qc_ra_performance(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
-    _user: Optional[User] = Depends(get_current_user_optional),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     # date_trt (treatment date as entered by RA) replaced with received_on
     # so every "by date" surface in the dashboard uses the same column.
     params: dict = {"pid": pid}
-    lga_sql = _lga_and(allowed_lgas_of(_user), "lga", params)
+    lga_sql = _lga_and(allowed_lgas_of(_u), "lga", params)
     result = await db.execute(text(f"""
         SELECT
           data_entry_persons,
@@ -1267,7 +1267,7 @@ async def qc_refusals_by_lga(
     ward: Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
-    _user: Optional[User] = Depends(get_current_user_optional),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     params: dict = {}
     filters: list = []
@@ -1309,7 +1309,7 @@ async def qc_duration_by_lga(
     ward: Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
-    _user: Optional[User] = Depends(get_current_user_optional),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     params: dict = {}
     filters: list = ["form_duration_min IS NOT NULL"]
