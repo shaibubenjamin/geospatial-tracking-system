@@ -14,11 +14,22 @@ object SessionManager {
     var sessionExpired by mutableStateOf(false)
         private set
 
+    /**
+     * Tripped by [MainActivity]'s inactivity timer after 10 minutes with no
+     * user interaction (mirrors the web app's idle auto-logout). The root
+     * composable observes it, clears the session, and returns to login.
+     */
+    var idleExpired by mutableStateOf(false)
+        private set
+
     /** Called from the OkHttp interceptor when a 401 comes back. */
     fun onUnauthorized() { sessionExpired = true }
 
+    /** Called by MainActivity when the 10-minute idle timer fires. */
+    fun onIdleTimeout() { idleExpired = true }
+
     /** Called after a successful (re)login. */
-    fun reset() { sessionExpired = false }
+    fun reset() { sessionExpired = false; idleExpired = false }
 }
 
 /**

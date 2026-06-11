@@ -1,6 +1,10 @@
 package org.ehealth.eritas
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -62,6 +66,45 @@ import org.ehealth.eritas.ui.EritasGreen
 import org.ehealth.eritas.ui.EritasTheme
 
 class MainActivity : ComponentActivity() {
+
+    // ── Idle auto-logout ────────────────────────────────────────────────────
+    // Sign the user out after IDLE_TIMEOUT_MS with no interaction (parity with
+    // the web app). onUserInteraction() fires on every touch/key event, so we
+    // simply (re)schedule a logout that far in the future on each interaction.
+    // The runnable double-checks we're still logged in before tripping, and
+    // onPause/onResume use elapsed wall-clock so backgrounding counts as idle.
+    private val idleHandler = Handler(Looper.getMainLooper())
+    private val idleRunnable = Runnable {
+        if (ServiceLocator.tokenStore.isLoggedIn) {
+            Toast.makeText(this, "Signed out after 10 minutes of inactivity.", Toast.LENGTH_LONG).show()
+            SessionManager.onIdleTimeout()
+        }
+    }
+    private var lastInteractionAt = SystemClock.elapsedRealtime()
+
+    private fun rescheduleIdleLogout() {
+        idleHandler.removeCallbacks(idleRunnable)
+        val remaining = IDLE_TIMEOUT_MS - (SystemClock.elapsedRealtime() - lastInteractionAt)
+        idleHandler.postDelayed(idleRunnable, remaining.coerceAtLeast(0L))
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastInteractionAt = SystemClock.elapsedRealtime()
+        rescheduleIdleLogout()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // If we were backgrounded past the limit, this fires (near-)immediately.
+        rescheduleIdleLogout()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        idleHandler.removeCallbacks(idleRunnable)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -80,6 +123,18 @@ class MainActivity : ComponentActivity() {
                     val sessionExpired = SessionManager.sessionExpired
                     LaunchedEffect(sessionExpired) {
                         if (sessionExpired) loggedIn = false
+                    }
+                    // Idle auto-logout: the Activity's inactivity timer trips
+                    // this after 10 minutes. Clear the session fully (token +
+                    // project) and return to login.
+                    val idleExpired = SessionManager.idleExpired
+                    LaunchedEffect(idleExpired) {
+                        if (idleExpired && loggedIn) {
+                            ServiceLocator.tokenStore.clear()
+                            ServiceLocator.projectStore.clear()
+                            SessionManager.reset()
+                            loggedIn = false
+                        }
                     }
                     if (!loggedIn) {
                         // Surface the non-blocking "update available" banner on the
@@ -105,6 +160,10 @@ class MainActivity : ComponentActivity() {
               }
             }
         }
+    }
+
+    companion object {
+        private const val IDLE_TIMEOUT_MS = 10 * 60 * 1000L // 10 minutes
     }
 }
 
