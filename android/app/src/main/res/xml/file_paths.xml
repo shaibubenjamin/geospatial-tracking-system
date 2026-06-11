@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Lets the package installer read the downloaded APK from our app-private
-     external files dir (where DownloadManager drops it) via a content:// URI. -->
-<paths>
-    <external-files-path name="apk_downloads" path="Download/" />
-</paths>
