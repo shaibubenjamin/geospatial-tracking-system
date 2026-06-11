@@ -1,24 +1,30 @@
 """
 scripts/reload_boundaries_and_compute.py
 =========================================
-Loads Sokoto MDA boundary shapefiles directly from local paths into PostGIS,
-then runs the full spatial analytics pipeline using mda_households GPS points.
+Load MDA boundary shapefiles for ANY state/round into PostGIS, run the spatial
+analytics pipeline (grid visitation → settlement → ward → LGA), and print a
+validation report. Project-parameterised — nothing is pinned to one state.
 
-Usage:
-    python scripts/reload_boundaries_and_compute.py
+Examples:
+    # New state/round (created if missing); all shapefiles in one folder:
+    python scripts/reload_boundaries_and_compute.py --state Kano --round 1 \\
+        --shapefiles "/data/kano-mda" --activate
 
-Steps:
-    1. Clear existing boundary data for the Sokoto project (project_id=1)
-    2. Load LGA / Ward / Settlement / Grid shapefiles (EPSG:3857 → EPSG:4326)
-    3. Ensure mda_households.geom is populated from lat/lon
-    4. Compute settlement analytics:
-       - Visited grids = grids that contain ≥1 mda_household GPS point (ST_Within)
-       - Completeness % = visited_grids / total_grids × 100
-       - is_visited = completeness_pct >= 70 (but map still shows all grid statuses)
-    5. Aggregate: Settlement → Ward → LGA for the dashboard queries
+    # Reload an existing project by id, with a different source CRS:
+    python scripts/reload_boundaries_and_compute.py --project-id 3 \\
+        --shapefiles "/data/kano-mda" --source-crs EPSG:32632
+
+    # Re-run only the validation report (no loading):
+    python scripts/reload_boundaries_and_compute.py --project-id 3 --validate-only
+
+Shapefile names default to lga.shp / ward.shp / Settlement.shp / Gridded_Ta.shp
+inside --shapefiles; override any of them with --lga/--ward/--settlement/--grid.
+
+Steps: clear boundaries for the project → load LGA/Ward/Settlement/Grid →
+populate mda_households.geom → compute settlement analytics → summary + validate.
 """
 
-import os, sys, time
+import os, sys, time, argparse, re
 import shapefile as pyshp
 from pyproj import Transformer
 from shapely.geometry import shape, mapping, MultiPolygon, Polygon
@@ -27,22 +33,14 @@ import functools, json
 import psycopg2
 import psycopg2.extras
 
-# ── DB connection ────────────────────────────────────────────────────────────
-DB_URL = os.environ.get(
+# ── DB connection (override with --db-url) ───────────────────────────────────
+DB_URL_DEFAULT = os.environ.get(
     "DATABASE_URL_SYNC",
     "postgresql://geotracker:geotracker@localhost:5433/geotracker",
 )
-PROJECT_ID = 1          # Sokoto project
-VISIT_THRESHOLD = 70    # % grid completeness → settlement is "visited"
 
-# ── Shapefile paths ──────────────────────────────────────────────────────────
-BASE = r"C:\Users\Benjamin.shaibu\Downloads\SOKOTO MDA RESOURCE\SOKOTO MDA RESOURCE"
-SHP = {
-    "lga":        os.path.join(BASE, "lga.shp"),
-    "ward":       os.path.join(BASE, "ward.shp"),
-    "settlement": os.path.join(BASE, "Settlement.shp"),
-    "grid":       os.path.join(BASE, "Gridded_Ta.shp"),
-}
+# Reprojection transformer — rebuilt in main() from --source-crs (default 3857).
+_tfm = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
 
 # ── Reproject EPSG:3857 → EPSG:4326 ─────────────────────────────────────────
 _tfm = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
@@ -80,11 +78,142 @@ def s(val, default="") -> str:
     return str(val).strip() or default
 
 
+# ── CLI / project resolution / validation ────────────────────────────────────
+def build_args():
+    p = argparse.ArgumentParser(description="Load MDA boundaries + compute analytics for any state/round.")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--project-id", type=int, help="Existing geo_projects.id to (re)load")
+    g.add_argument("--state", help="State name, e.g. 'Kano' (use with --round; created if missing)")
+    p.add_argument("--round", type=int, help="Round number, e.g. 1 (required with --state)")
+    p.add_argument("--shapefiles", help="Folder holding the LGA/Ward/Settlement/Grid shapefiles")
+    p.add_argument("--lga"); p.add_argument("--ward")
+    p.add_argument("--settlement"); p.add_argument("--grid")
+    p.add_argument("--source-crs", default="EPSG:3857", help="Shapefile CRS (default EPSG:3857)")
+    p.add_argument("--visit-threshold", type=int, default=70)
+    p.add_argument("--db-url", default=DB_URL_DEFAULT)
+    p.add_argument("--activate", action="store_true",
+                   help="Set this project active (deactivates the state's other rounds)")
+    p.add_argument("--validate-only", action="store_true", help="Skip loading; print the validation report only")
+    a = p.parse_args()
+    if a.state and a.round is None:
+        p.error("--round is required with --state")
+    if not a.validate_only and not (a.shapefiles or all([a.lga, a.ward, a.settlement, a.grid])):
+        p.error("provide --shapefiles DIR (or all of --lga/--ward/--settlement/--grid), unless --validate-only")
+    return a
+
+
+def resolve_project(cur, conn, args) -> int:
+    """Return the geo_projects.id to load — by explicit id, or by (state, round),
+    creating the project row if it doesn't exist yet."""
+    if args.project_id is not None:
+        cur.execute("SELECT id, name FROM geo_projects WHERE id = %s", (args.project_id,))
+        row = cur.fetchone()
+        if not row:
+            sys.exit(f"  No geo_projects row with id={args.project_id}")
+        print(f"  Project #{row[0]}: {row[1]}")
+        pid = row[0]
+    else:
+        cur.execute(
+            "SELECT id, name FROM geo_projects WHERE lower(state_name)=lower(%s) AND round_number=%s",
+            (args.state, args.round),
+        )
+        row = cur.fetchone()
+        if row:
+            pid = row[0]
+            print(f"  Found project #{pid}: {row[1]}")
+        else:
+            name = f"{args.state} Round {args.round}"
+            slug = re.sub(r"[^a-z0-9]+", "-", f"{args.state}-r{args.round}".lower()).strip("-")
+            cur.execute(
+                """INSERT INTO geo_projects (name, slug, description, state_name, round_number, is_active)
+                   VALUES (%s, %s, %s, %s, %s, FALSE) RETURNING id""",
+                (name, slug, f"{args.state} State — Round {args.round}", args.state, args.round),
+            )
+            pid = cur.fetchone()[0]
+            conn.commit()
+            print(f"  Created project #{pid}: {name}")
+    if args.activate:
+        cur.execute(
+            "UPDATE geo_projects SET is_active = (id = %s) "
+            "WHERE lower(state_name) = (SELECT lower(state_name) FROM geo_projects WHERE id = %s)",
+            (pid, pid),
+        )
+        conn.commit()
+        print(f"  Set project #{pid} active for its state")
+    return pid
+
+
+def validate(cur, pid: int):
+    """Counts + name/code consistency so mismatches are caught at load time, not
+    discovered later as a blank LGA/ward in the app."""
+    print("\n── Validation report ──────────────────────────────────────────────")
+    def one(q, *a):
+        cur.execute(q, a or (pid,)); return cur.fetchone()[0]
+    lgas = one("SELECT COUNT(*) FROM lgas WHERE project_id=%s")
+    wards = one("SELECT COUNT(*) FROM wards WHERE project_id=%s")
+    setts = one("SELECT COUNT(*) FROM settlements WHERE project_id=%s")
+    grids = one("SELECT COUNT(*) FROM grids WHERE project_id=%s")
+    hh = one("SELECT COUNT(*) FROM mda_households WHERE project_id=%s")
+    hh_geom = one("SELECT COUNT(*) FROM mda_households WHERE project_id=%s AND geom IS NOT NULL")
+    hh_ward = one("SELECT COUNT(*) FROM mda_households WHERE project_id=%s AND ward_name IS NOT NULL AND ward_name<>''")
+    sa = one("SELECT COUNT(*) FROM settlement_analytics WHERE project_id=%s")
+    print(f"  Boundaries : {lgas} LGAs · {wards} wards · {setts} settlements · {grids} grids")
+    print(f"  Households  : {hh} total · {hh_geom} with GPS · {hh_ward} with ward_name")
+    print(f"  Analytics   : {sa} settlement_analytics rows")
+
+    def flag(label, q, hint=""):
+        cur.execute(q, (pid,))
+        rows = [str(r[0]) for r in cur.fetchall() if r[0] is not None]
+        if rows:
+            print(f"  ⚠ {label}: {len(rows)} — e.g. {rows[:6]}" + (f"  · {hint}" if hint else ""))
+        else:
+            print(f"  ✓ {label}: none")
+
+    flag("wards whose lgacode isn't in lgas",
+         "SELECT DISTINCT w.lgacode FROM wards w LEFT JOIN lgas l "
+         "ON l.project_id=w.project_id AND l.lgacode=w.lgacode "
+         "WHERE w.project_id=%s AND l.lgacode IS NULL")
+    flag("settlements whose wardcode isn't in wards",
+         "SELECT DISTINCT s.wardcode FROM settlements s LEFT JOIN wards w "
+         "ON w.project_id=s.project_id AND w.wardcode=s.wardcode "
+         "WHERE s.project_id=%s AND w.wardcode IS NULL")
+    flag("household LGA names not matching any boundary LGA",
+         "SELECT DISTINCT mh.lga FROM mda_households mh WHERE mh.project_id=%s AND mh.lga IS NOT NULL "
+         "AND NOT EXISTS (SELECT 1 FROM lgas l WHERE l.project_id=mh.project_id "
+         "AND lower(trim(l.lga_name))=lower(trim(mh.lga)))",
+         "these LGAs' treatment data won't match a boundary")
+    nw = one("SELECT COUNT(*) FROM mda_households WHERE project_id=%s AND (ward_name IS NULL OR ward_name='')")
+    print((f"  ⚠ households with no ward_name: {nw}  · won't roll up to a ward "
+           "(app falls back to settlement_analytics)") if nw else "  ✓ households with no ward_name: none")
+    flag("boundary LGAs with NO settlement_analytics (out of campaign / no plan)",
+         "SELECT l.lga_name FROM lgas l WHERE l.project_id=%s AND NOT EXISTS "
+         "(SELECT 1 FROM settlement_analytics sa WHERE sa.project_id=l.project_id AND sa.lgacode=l.lgacode)",
+         "these render blank on the map by design (in_campaign=false)")
+    print("────────────────────────────────────────────────────────────────────")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
-    print(f"Connecting to {DB_URL} …")
-    conn = psycopg2.connect(DB_URL)
+    global _tfm
+    args = build_args()
+    print(f"Connecting to {args.db_url} …")
+    conn = psycopg2.connect(args.db_url)
     cur  = conn.cursor()
+
+    PROJECT_ID = resolve_project(cur, conn, args)
+    if args.validate_only:
+        validate(cur, PROJECT_ID)
+        cur.close(); conn.close(); return
+
+    _tfm = Transformer.from_crs(args.source_crs, "EPSG:4326", always_xy=True)
+    VISIT_THRESHOLD = args.visit_threshold
+    base = args.shapefiles
+    SHP = {
+        "lga":        args.lga or os.path.join(base, "lga.shp"),
+        "ward":       args.ward or os.path.join(base, "ward.shp"),
+        "settlement": args.settlement or os.path.join(base, "Settlement.shp"),
+        "grid":       args.grid or os.path.join(base, "Gridded_Ta.shp"),
+    }
 
     # ── 1. Clear existing boundary data ─────────────────────────────────────
     print("\n[1/5] Clearing existing boundaries for project", PROJECT_ID)
@@ -397,6 +526,8 @@ def main():
     row = cur.fetchone()
     print(f"  Analytics:    {row[0]} settlements — {row[1]} visited "
           f"({round(100*row[1]/row[0])}%) — avg completeness {row[2]}%")
+
+    validate(cur, PROJECT_ID)
 
     cur.close()
     conn.close()
