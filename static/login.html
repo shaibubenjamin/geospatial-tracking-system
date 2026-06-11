@@ -286,6 +286,20 @@
     }
     .error-box.visible { display: flex; }
 
+    .notice-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #1e40af;
+      margin-bottom: 16px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .notice-box.visible { display: flex; }
+
     .sign-in-btn {
       width: 100%;
       padding: 13px;
@@ -391,6 +405,11 @@
       <h2>Welcome back</h2>
       <p class="subtitle">Sign in to the ERITAS MDA monitoring platform</p>
 
+      <div class="notice-box" id="idle-notice">
+        <i class="fa-solid fa-clock"></i>
+        <span>You were signed out after 10 minutes of inactivity. Please sign in again.</span>
+      </div>
+
       <div class="error-box" id="error-box">
         <i class="fa-solid fa-circle-exclamation"></i>
         <span id="error-msg">Invalid credentials</span>
@@ -437,6 +456,12 @@
     // chrome — the dashboard is the home page, the admin panel is a tool.
     if (localStorage.getItem('token')) {
       window.location.href = '/dashboard';
+    }
+
+    // Heads-up when the user landed here from a 10-minute idle auto-logout.
+    if (new URLSearchParams(location.search).get('reason') === 'idle') {
+      const n = document.getElementById('idle-notice');
+      if (n) n.classList.add('visible');
     }
 
     // ── Live landing-page stats ────────────────────────────────────────────
