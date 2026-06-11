@@ -153,14 +153,16 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                     )
                 },
                 title = {
-                    // Two-line title: the current section (small) over the active
-                    // campaign (bold). On Dashboard the campaign line is the
-                    // switcher — tap it (or the swap icon) to change state/round.
+                    // Two-line title: the current SECTION/tab name is the bold,
+                    // prominent line; the active campaign sits beneath it. On the
+                    // Dashboard the campaign line is the switcher — tap it (or the
+                    // swap icon) to change state/round.
                     Column {
                         Text(
                             selectedTab.label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.8f),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -168,8 +170,8 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                         ) {
                             Text(
                                 projectLabel ?: "Active campaign",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White.copy(alpha = 0.85f),
                             )
                             if (canSwitch) {
                                 Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch campaign")

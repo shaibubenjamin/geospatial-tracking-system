@@ -16,10 +16,28 @@
     #hud{top:8px;left:8px;right:8px;font-size:12px}
     #hud b{font-size:13px}
     #hud small{color:#6b7280}
-    #legend{bottom:10px;left:8px;font-size:10px;color:#374151;display:flex;align-items:center;flex-wrap:wrap;gap:2px}
+    #legend{top:44px;right:8px;font-size:10px;color:#374151;display:flex;align-items:center;flex-wrap:wrap;gap:2px;max-width:80%;justify-content:flex-end}
     #legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin:0 3px 0 8px;vertical-align:-1px}
     #legend .dot{width:9px;height:9px;border-radius:50%;border:1px solid #fff}
     #err{top:50%;left:8px;right:8px;transform:translateY(-50%);text-align:center;color:#b91c1c;display:none}
+    /* ── Collapsible LGA → ward → settlement explorer (bottom sheet) ── */
+    #drill{position:absolute;left:0;right:0;bottom:0;z-index:1200;background:#fff;
+      border-radius:16px 16px 0 0;box-shadow:0 -3px 16px rgba(0,0,0,.22);
+      max-height:46vh;display:flex;flex-direction:column;transition:transform .25s ease}
+    #drill.collapsed{transform:translateY(calc(100% - 46px))}
+    #drill-head{display:flex;align-items:center;gap:8px;padding:13px 14px;cursor:pointer;
+      border-bottom:1px solid #eef0f3;flex-shrink:0;user-select:none}
+    #drill-crumb{flex:1;font-size:12.5px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #drill-chev{font-size:15px;color:#6b7280;transition:transform .2s}
+    #drill.collapsed #drill-chev{transform:rotate(180deg)}
+    #drill-list{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 0 8px}
+    .drill-row{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid #f4f5f7}
+    .drill-row:active{background:#eef2f7}
+    .drill-row .nm{flex:1;font-size:13px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .drill-row .pc{font-size:12px;font-weight:700;min-width:36px;text-align:right}
+    .drill-row .ch{color:#9ca3af;font-size:15px}
+    .drill-back{display:flex;align-items:center;padding:9px 14px;color:#2563eb;font-size:12.5px;font-weight:700;cursor:pointer}
+    .drill-back:active{background:#eef2f7}
   </style>
 </head>
 <body>
@@ -30,6 +48,10 @@
     <span id="lg-pts" style="display:none"><i class="dot" style="background:#16a34a"></i>in&nbsp;<i class="dot" style="background:#dc2626"></i>out</span>
   </div>
   <div id="err" class="pill"></div>
+  <div id="drill">
+    <div id="drill-head"><span id="drill-crumb">Explore coverage</span><span id="drill-chev">&#9662;</span></div>
+    <div id="drill-list"></div>
+  </div>
   <script>
     function qp(n){ return new URLSearchParams(location.search).get(n); }
     var token=(location.hash.match(/token=([^&]+)/)||[])[1]||'';
@@ -128,6 +150,65 @@
       document.getElementById('lg-pts').style.display = z>=SETT_Z?'inline':'none';
     }
 
+    // ── Collapsible LGA → ward → settlement explorer ────────────────────────
+    // Tapping a row flies the map to that area (and reveals the next level via
+    // the zoom thresholds above). Tapping a settlement (leaf) collapses the
+    // sheet so the map is fully visible. The header toggles collapse.
+    var _lgasFC=null, _wardsFC=null, _settCache={};
+    var drill={level:0, lga:null, ward:null};
+    function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+    function byProp(k){ return function(a,b){ return String((a.properties||{})[k]||'').localeCompare(String((b.properties||{})[k]||'')); }; }
+    function fitFeat(f){ try{ map.fitBounds(boundsOf(f),{padding:[22,22],maxZoom: drill.level>=2?15:(drill.level===1?13:11)}); }catch(e){} }
+    function drillRow(name,pct,drillable,onclick){
+      var row=document.createElement('div'); row.className='drill-row';
+      row.innerHTML='<span class="nm">'+esc(name||'—')+'</span>'+
+        '<span class="pc" style="color:'+(pct==null?'#9ca3af':visColor(pct))+'">'+fpct(pct)+'</span>'+
+        (drillable?'<span class="ch">&#8250;</span>':'');
+      row.onclick=onclick; return row;
+    }
+    function drillBack(onclick){ var d=document.createElement('div'); d.className='drill-back'; d.innerHTML='&#8249;&nbsp;Back'; d.onclick=onclick; return d; }
+    function drillMsg(t){ var d=document.createElement('div'); d.className='drill-row'; d.innerHTML='<span class="nm" style="color:#9ca3af">'+esc(t)+'</span>'; return d; }
+    function renderDrill(){
+      var crumb=document.getElementById('drill-crumb'), list=document.getElementById('drill-list');
+      if(!crumb||!list) return; list.innerHTML='';
+      if(drill.level===0){
+        crumb.textContent='All LGAs · tap to drill in';
+        feats(_lgasFC).slice().sort(byProp('lga_name')).forEach(function(f){ var p=f.properties||{};
+          list.appendChild(drillRow(p.lga_name, p.in_campaign===false?null:p.visitation_pct, true, function(){
+            drill.lga=f; drill.ward=null; drill.level=1; fitFeat(f); renderDrill(); })); });
+      } else if(drill.level===1){
+        var lp=drill.lga.properties||{};
+        crumb.textContent=(lp.lga_name||'LGA')+' › wards';
+        list.appendChild(drillBack(function(){ drill.level=0; drill.lga=null; renderDrill(); }));
+        var ln=String(lp.lga_name||'').toLowerCase();
+        var wards=feats(_wardsFC).filter(function(w){return String((w.properties||{}).lga_name||'').toLowerCase()===ln;}).sort(byProp('ward_name'));
+        if(!wards.length) list.appendChild(drillMsg('No ward boundaries for this LGA'));
+        wards.forEach(function(f){ var p=f.properties||{};
+          list.appendChild(drillRow(p.ward_name, p.visitation_pct, true, function(){
+            drill.ward=f; drill.level=2; fitFeat(f); loadSettlements(); renderDrill(); })); });
+      } else {
+        var wp=drill.ward.properties||{};
+        crumb.textContent=(wp.ward_name||'Ward')+' › settlements';
+        list.appendChild(drillBack(function(){ drill.level=1; drill.ward=null; renderDrill(); }));
+        var code=(drill.lga.properties||{}).lgacode, data=_settCache[code];
+        if(!data){ list.appendChild(drillMsg('Loading settlements…')); return; }
+        var wn=String(wp.ward_name||'').toLowerCase();
+        var setts=data.filter(function(s){return String((s.properties||{}).ward_name||'').toLowerCase()===wn;})
+          .sort(function(a,b){return ((b.properties||{}).completeness_pct||0)-((a.properties||{}).completeness_pct||0);});
+        if(!setts.length) list.appendChild(drillMsg('No settlements for this ward'));
+        setts.forEach(function(f){ var p=f.properties||{};
+          list.appendChild(drillRow(p.settlement_name, p.completeness_pct, false, function(){
+            fitFeat(f); document.getElementById('drill').classList.add('collapsed'); })); });
+      }
+    }
+    function loadSettlements(){
+      var code=(drill.lga.properties||{}).lgacode;
+      if(_settCache[code]){ renderDrill(); return; }
+      get('/api/app/geo/settlements?lgacode='+encodeURIComponent(code)+(pid?'&project_id='+pid:''))
+        .then(function(d){ _settCache[code]=feats(d); if(drill.level===2) renderDrill(); })
+        .catch(function(){ _settCache[code]=[]; if(drill.level===2) renderDrill(); });
+    }
+
     Promise.all([ get('/api/app/geo/lgas'+q), get('/api/app/geo/wards'+q) ]).then(function(res){
       var lgasFC=res[0], wardsFC=res[1];
       lgaLayer=L.geoJSON(lgasFC,{style:lgaStyle,onEachFeature:popupArea('Visitation')}).addTo(map);
@@ -145,6 +226,18 @@
       try{ if(fit){ map.fitBounds(fit.bounds,{padding:[24,24],maxZoom:11}); } else { map.fitBounds(lgaLayer.getBounds(),{padding:[16,16],maxZoom:8}); } }catch(e){}
       sizeMap(); update();
       map.on('zoomend moveend', update);
+
+      // Wire the drill explorer now that the data is in.
+      _lgasFC=lgasFC; _wardsFC=wardsFC;
+      var dh=document.getElementById('drill-head');
+      if(dh) dh.onclick=function(){ document.getElementById('drill').classList.toggle('collapsed'); };
+      // Arrived with a focused LGA? open the explorer at that LGA's wards.
+      if(fit){
+        var match=feats(lgasFC).filter(function(f){var p=f.properties||{};
+          return p.lgacode===fit.lgacode || String(p.lga_name||'').trim().toLowerCase()===(fit.name||'').trim().toLowerCase();})[0];
+        if(match){ drill.lga=match; drill.level=1; }
+      }
+      renderDrill();
     }).catch(function(e){ err('Could not load coverage: '+e.message+'. Re-open the tab to retry.'); });
   </script>
 </body>
