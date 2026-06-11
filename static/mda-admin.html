@@ -244,6 +244,96 @@
     .inline-feedback.ok  { background: var(--good-bg); color: var(--good); display: block; }
     .inline-feedback.err { background: var(--bad-bg);  color: var(--bad);  display: block; }
     .inline-feedback.info{ background: var(--mist); color: var(--blue); display: block; }
+
+    /* ── Multi-select dropdown ── */
+    .ms-root { position: relative; font-family: inherit; }
+    .ms-control {
+      min-height: 40px; width: 100%;
+      border: 1.5px solid var(--line); border-radius: 8px;
+      background: var(--pale); padding: 5px 32px 5px 7px;
+      display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+      cursor: pointer; position: relative; transition: border-color .15s, background .15s;
+    }
+    .ms-control:focus, .ms-control.open { border-color: var(--blue); background: #fff; outline: none; }
+    .ms-caret { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 11px; pointer-events: none; transition: transform .18s; }
+    .ms-control.open .ms-caret { transform: translateY(-50%) rotate(180deg); }
+    .ms-tags { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; flex: 1; min-width: 0; }
+    .ms-ph { color: var(--muted); font-size: 12.5px; padding: 3px; }
+    .ms-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--mist); color: var(--deep);
+      border: 1px solid var(--line); border-radius: 6px;
+      padding: 3px 7px 3px 9px; font-size: 11.5px; font-weight: 600; line-height: 1.4; max-width: 100%;
+    }
+    .ms-chip i { cursor: pointer; font-size: 10px; opacity: .6; }
+    .ms-chip i:hover { opacity: 1; color: var(--bad); }
+    .ms-panel {
+      position: absolute; z-index: 1200; top: calc(100% + 5px); left: 0; right: 0;
+      background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      box-shadow: 0 18px 44px rgba(0,0,0,.18); overflow: hidden;
+      display: flex; flex-direction: column; max-height: 300px;
+    }
+    .ms-panel[hidden] { display: none; }
+    .ms-search { border: none; border-bottom: 1px solid var(--line); padding: 10px 13px; font-size: 13px; outline: none; font-family: inherit; color: var(--ink); }
+    .ms-bulk { display: flex; gap: 14px; padding: 7px 13px; border-bottom: 1px solid var(--line); background: var(--pale); }
+    .ms-bulk a { color: var(--blue); cursor: pointer; font-size: 11.5px; font-weight: 600; }
+    .ms-bulk a:hover { color: var(--deep); text-decoration: underline; }
+    .ms-list { overflow-y: auto; padding: 5px; }
+    .ms-opt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--ink); }
+    .ms-opt:hover { background: var(--mist); }
+    .ms-opt.on { background: var(--pale); }
+    .ms-opt input { accent-color: var(--blue); width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+    .ms-opt-lbl { flex: 1; }
+    .ms-grp { font-size: 10.5px; color: var(--muted); background: var(--pale); border: 1px solid var(--line); padding: 1px 8px; border-radius: 99px; }
+    .ms-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 12.5px; }
+
+    /* ── Field-level validation ── */
+    .field-hint { color: var(--muted); font-size: 11.5px; margin-top: 5px; line-height: 1.45; }
+    .field-error { display: none; color: var(--bad); font-size: 11.5px; margin-top: 5px; align-items: center; gap: 5px; }
+    .field-error.show { display: flex; }
+    .field-warn { display: none; color: var(--warn); font-size: 11.5px; margin-top: 5px; align-items: center; gap: 5px; }
+    .field-warn.show { display: flex; }
+    .field-ok { display: none; color: var(--good); font-size: 11.5px; margin-top: 5px; align-items: center; gap: 5px; }
+    .field-ok.show { display: flex; }
+    .form-group.invalid input, .form-group.invalid .ms-control { border-color: var(--bad) !important; background: #fff; }
+    .form-group.invalid label { color: var(--bad); }
+
+    /* ── Users page redesign ── */
+    .users-grid { display: grid; grid-template-columns: 340px 1fr; gap: 18px; align-items: start; }
+    @media (max-width: 1080px) { .users-grid { grid-template-columns: 1fr; } }
+
+    .role-options { display: grid; gap: 8px; margin-bottom: 4px; }
+    .role-opt { display: flex; gap: 11px; align-items: flex-start; border: 1.5px solid var(--line); border-radius: 9px; padding: 10px 12px; cursor: pointer; transition: border-color .15s, background .15s; }
+    .role-opt:hover { border-color: rgba(0,107,46,.4); background: var(--pale); }
+    .role-opt.sel { border-color: var(--blue); background: var(--mist); }
+    .role-opt input { margin-top: 2px; accent-color: var(--blue); flex-shrink: 0; }
+    .role-opt .ro-title { font-weight: 700; font-size: 12.5px; color: var(--ink); }
+    .role-opt .ro-desc { font-size: 11px; color: var(--muted); margin-top: 1px; line-height: 1.4; }
+
+    .user-search { position: relative; flex: 1; max-width: 300px; }
+    .user-search input { width: 100%; border: 1.5px solid var(--line); border-radius: 8px; padding: 7px 12px 7px 32px; font-size: 12.5px; background: #fff; outline: none; font-family: inherit; color: var(--ink); }
+    .user-search input:focus { border-color: var(--blue); }
+    .user-search i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; }
+    .count-badge { background: var(--mist); color: var(--deep); border: 1px solid var(--line); border-radius: 99px; padding: 2px 11px; font-size: 12px; font-weight: 700; }
+
+    .u-cell { display: flex; align-items: center; gap: 10px; }
+    .u-avatar { width: 34px; height: 34px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+    .u-name { font-weight: 700; color: var(--ink); }
+    .u-scope { display: flex; flex-wrap: wrap; gap: 4px; }
+    .scope-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .scope-state { background: var(--mist); color: var(--deep); }
+    .scope-lga { background: #ede9fe; color: #5b21b6; }
+    .scope-all { background: var(--pale); color: var(--muted); border: 1px solid var(--line); }
+    .scope-none { background: var(--bad-bg); color: var(--bad); }
+    .row-actions { display: flex; gap: 5px; justify-content: flex-end; opacity: .6; transition: opacity .15s; }
+    tbody tr:hover .row-actions { opacity: 1; }
+    .act-btn { width: 30px; height: 30px; padding: 0; border-radius: 7px; display: grid; place-items: center; border: 1px solid var(--line); background: #fff; color: var(--deep); cursor: pointer; font-size: 12px; transition: all .15s; }
+    .act-btn:hover { background: var(--mist); border-color: rgba(0,107,46,.35); }
+    .act-btn.danger { color: var(--bad); } .act-btn.danger:hover { background: var(--bad-bg); border-color: #fecaca; }
+    .status-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+    .status-dot::before { content: ''; width: 7px; height: 7px; border-radius: 50%; }
+    .status-dot.on { color: var(--good); } .status-dot.on::before { background: var(--good); }
+    .status-dot.off { color: var(--muted); } .status-dot.off::before { background: var(--muted); }
   </style>
 </head>
 <body>
@@ -860,47 +950,60 @@
           </div>
         </div>
 
-        <div id="users-page-grid" style="display:grid;grid-template-columns:320px 1fr;gap:18px">
+        <div id="users-page-grid" class="users-grid">
           <!-- Create user: superadmin-only. Regular admins can list/delete
                users but not create new accounts. The parent grid above
                collapses to a single column for admin (see init JS) so the
-               table doesn't end up squeezed into the hidden 320px slot. -->
-          <div class="card super-only" style="display:none;height:fit-content">
+               table doesn't end up squeezed into the hidden 340px slot. -->
+          <div class="card super-only add-user-card" style="display:none;height:fit-content">
             <div class="card-head">
               <div class="card-title"><i class="fa-solid fa-user-plus"></i> Add User</div>
             </div>
             <div class="card-body">
-              <div class="form-group">
+              <div class="form-group" id="fg-username">
                 <label>Username</label>
                 <input type="text" id="new-username" placeholder="e.g. jibril.musa" autocomplete="off">
+                <div class="field-error" id="err-username"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
               </div>
-              <div class="form-group">
-                <label>Email</label>
+              <div class="form-group" id="fg-email">
+                <label>Email <span style="color:var(--muted);font-weight:400">(optional)</span></label>
                 <input type="email" id="new-email" placeholder="user@example.com" autocomplete="off">
+                <div class="field-error" id="err-email"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
               </div>
-              <div class="form-group">
+              <div class="form-group" id="fg-password">
                 <label>Password</label>
-                <input type="password" id="new-password" placeholder="Minimum 8 characters" autocomplete="new-password">
+                <input type="password" id="new-password" placeholder="At least 6 characters" autocomplete="new-password">
+                <div class="field-error" id="err-password"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
               </div>
               <div class="form-group">
-                <label>Access Level</label>
-                <select id="new-role" onchange="onRoleChange()">
-                  <option value="state">State user — scoped to assigned state(s)</option>
-                  <option value="admin">Administrator (all states)</option>
-                  <option value="superadmin">Superadmin (all states + user control)</option>
-                </select>
+                <label>Access level</label>
+                <div class="role-options" id="role-options">
+                  <label class="role-opt sel">
+                    <input type="radio" name="new-role" value="state" checked>
+                    <div><div class="ro-title">State user</div><div class="ro-desc">Scoped to assigned state(s) and, optionally, LGAs — web + app.</div></div>
+                  </label>
+                  <label class="role-opt">
+                    <input type="radio" name="new-role" value="admin">
+                    <div><div class="ro-title">Administrator</div><div class="ro-desc">Sees every state. Cannot manage users.</div></div>
+                  </label>
+                  <label class="role-opt">
+                    <input type="radio" name="new-role" value="superadmin">
+                    <div><div class="ro-title">Superadmin</div><div class="ro-desc">All states + full user &amp; pipeline control.</div></div>
+                  </label>
+                </div>
               </div>
               <div class="form-group" id="new-states-group">
                 <label>Allowed states</label>
-                <input type="text" id="new-states" placeholder="e.g. Sokoto  or  Sokoto, Kano" autocomplete="off">
-                <small style="color:var(--muted);font-size:11.5px">Comma-separated. The user only sees these state's projects (web + app). Leave blank for no access.</small>
+                <div id="new-states-ms"></div>
+                <div class="field-error" id="err-states"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+                <div class="field-hint">The user only sees these states' projects, on the web and in the app.</div>
               </div>
               <div class="form-group" id="new-lgas-group">
                 <label>Allowed LGAs <span style="color:var(--muted);font-weight:400">(optional)</span></label>
-                <input type="text" id="new-lgas" placeholder="e.g. Binji  or  Binji, Wamako" autocomplete="off">
-                <small style="color:var(--muted);font-size:11.5px">Comma-separated. Leave blank for the whole state. When set, the account only ever sees these LGAs' data — on the web and the app (mainly the app).</small>
+                <div id="new-lgas-ms"></div>
+                <div class="field-hint">Leave empty for the whole state. When set, the account only ever sees these LGAs' data — mainly in the app.</div>
               </div>
-              <button class="btn btn-primary" style="width:100%" onclick="createUser()">
+              <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="createUser()">
                 <i class="fa-solid fa-user-plus"></i> Create User
               </button>
               <div class="inline-feedback" id="user-feedback"></div>
@@ -910,9 +1013,13 @@
           <!-- Users list -->
           <div class="card">
             <div class="card-head">
-              <div class="card-title"><i class="fa-solid fa-users"></i> All Users</div>
+              <div class="card-title"><i class="fa-solid fa-users"></i> All Users <span class="count-badge" id="users-count" style="display:none"></span></div>
               <div class="card-head-right">
-                <button class="btn btn-ghost btn-sm" onclick="loadUsers()"><i class="fa-solid fa-rotate"></i></button>
+                <div class="user-search">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="users-search" placeholder="Search username, email, state…" autocomplete="off" oninput="renderUsers()">
+                </div>
+                <button class="btn btn-ghost btn-sm" onclick="loadUsers()" title="Refresh"><i class="fa-solid fa-rotate"></i></button>
               </div>
             </div>
             <div id="users-list">
@@ -1071,6 +1178,37 @@
   </div>
 </div>
 
+<!-- ─── Scope (states + LGAs) editor modal ──────────────────────────── -->
+<div id="scope-modal" style="display:none;position:fixed;inset:0;background:rgba(0,26,8,.55);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px);font-family:'Inter',system-ui,sans-serif">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.32);max-width:480px;width:92vw;overflow:visible">
+    <div style="padding:20px 24px 6px;display:flex;align-items:flex-start;gap:14px">
+      <div style="width:42px;height:42px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex-shrink:0;background:var(--mist);color:var(--blue)">
+        <i class="fa-solid fa-earth-africa"></i>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div id="scope-modal-title" style="font-size:16px;font-weight:700;color:var(--navy);letter-spacing:-.2px">Access scope</div>
+        <div style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:3px">Choose the state(s) this account may access and, optionally, restrict it to specific LGAs within them.</div>
+      </div>
+    </div>
+    <div class="scope-modal-body">
+      <div class="form-group" id="scope-fg-states">
+        <label>Allowed states</label>
+        <div id="scope-states-ms"></div>
+        <div class="field-error" id="scope-err-states"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+      </div>
+      <div class="form-group">
+        <label>Allowed LGAs <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <div id="scope-lgas-ms"></div>
+        <div class="field-hint">Leave empty for the whole state. When set, the account only ever sees these LGAs' data.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:16px 22px 20px;background:var(--pale);border-top:1px solid var(--line)">
+      <button id="scope-modal-cancel" type="button" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i> Cancel</button>
+      <button id="scope-modal-save" type="button" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save access</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   'use strict';
@@ -1204,6 +1342,199 @@
   // Returns the string the user typed, or null on cancel / backdrop click.
   window.promptDialog  = (opts) => _openModal({ prompt: true, alertOnly: false, ...opts });
 
+  /* ── HTML-escape helpers (used by the multi-select + table renderers) ── */
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function escAttr(s) { return escHtml(s); }
+
+  /* ── Multi-select dropdown component ──────────────────────────────────
+     A searchable checkbox dropdown that renders selections as removable
+     chips. Used for the "Allowed states" / "Allowed LGAs" pickers in the
+     Add-User form and the scope-editor modal. Stores a Set of string values;
+     getValues() returns them in option order so the CSV we POST is stable. */
+  const MS_REGISTRY = [];
+  function createMultiSelect(mountRef, opts = {}) {
+    const mount = typeof mountRef === 'string' ? document.getElementById(mountRef) : mountRef;
+    const inst = {
+      mount,
+      options: [],            // [{value, label, group}]
+      selected: new Set(),
+      open: false,
+      onChange: opts.onChange || null,
+      placeholder: opts.placeholder || 'Select…',
+      searchable: opts.searchable !== false,
+      emptyText: opts.emptyText || 'No options',
+      _filter: '',
+    };
+    mount.innerHTML = `
+      <div class="ms-root">
+        <div class="ms-control" tabindex="0"><div class="ms-tags"></div><i class="fa-solid fa-chevron-down ms-caret"></i></div>
+        <div class="ms-panel" hidden>
+          <input class="ms-search" type="text" placeholder="Search…" autocomplete="off">
+          <div class="ms-bulk"><a class="ms-all">Select all</a><a class="ms-none">Clear</a></div>
+          <div class="ms-list"></div>
+        </div>
+      </div>`;
+    const control = mount.querySelector('.ms-control');
+    const panel   = mount.querySelector('.ms-panel');
+    const search  = mount.querySelector('.ms-search');
+    const list    = mount.querySelector('.ms-list');
+    const tagsEl  = mount.querySelector('.ms-tags');
+    inst._search = search;
+
+    function orderedValues() {
+      const order = inst.options.map(o => o.value);
+      return [...inst.selected].sort((a, b) => {
+        const ia = order.indexOf(a), ib = order.indexOf(b);
+        return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib);
+      });
+    }
+    function renderTags() {
+      const vals = orderedValues();
+      if (!vals.length) { tagsEl.innerHTML = `<span class="ms-ph">${escHtml(inst.placeholder)}</span>`; return; }
+      tagsEl.innerHTML = vals.map(v => {
+        const o = inst.options.find(o => o.value === v);
+        return `<span class="ms-chip">${escHtml(o ? o.label : v)}<i class="fa-solid fa-xmark" data-x="${escAttr(v)}" title="Remove"></i></span>`;
+      }).join('');
+    }
+    function renderList() {
+      const f = inst._filter.trim().toLowerCase();
+      const opts = inst.options.filter(o => !f || o.label.toLowerCase().includes(f) || (o.group || '').toLowerCase().includes(f));
+      if (!opts.length) { list.innerHTML = `<div class="ms-empty">${escHtml(f ? 'No matches' : inst.emptyText)}</div>`; return; }
+      list.innerHTML = opts.map(o => {
+        const on = inst.selected.has(o.value);
+        const grp = o.group ? `<span class="ms-grp">${escHtml(o.group)}</span>` : '';
+        return `<label class="ms-opt${on ? ' on' : ''}" data-v="${escAttr(o.value)}"><input type="checkbox" ${on ? 'checked' : ''}><span class="ms-opt-lbl">${escHtml(o.label)}</span>${grp}</label>`;
+      }).join('');
+    }
+    function render() { renderTags(); renderList(); }
+    function fire() { if (inst.onChange) inst.onChange(inst.getValues()); }
+
+    function openPanel() {
+      MS_REGISTRY.forEach(i => { if (i !== inst) i._close(); });
+      inst.open = true; panel.hidden = false; control.classList.add('open');
+      search.style.display = inst.searchable ? '' : 'none';
+      renderList();
+      if (inst.searchable) setTimeout(() => search.focus(), 10);
+    }
+    inst._close = function () {
+      if (!inst.open) return;
+      inst.open = false; panel.hidden = true; control.classList.remove('open');
+      inst._filter = ''; search.value = '';
+    };
+
+    control.addEventListener('click', (e) => {
+      const x = e.target.closest('i[data-x]');
+      if (x) { inst.selected.delete(x.getAttribute('data-x')); render(); fire(); e.stopPropagation(); return; }
+      inst.open ? inst._close() : openPanel();
+    });
+    control.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inst.open ? inst._close() : openPanel(); }
+      else if (e.key === 'Escape') inst._close();
+    });
+    search.addEventListener('input', () => { inst._filter = search.value; renderList(); });
+    search.addEventListener('click', e => e.stopPropagation());
+    list.addEventListener('click', (e) => {
+      const opt = e.target.closest('.ms-opt'); if (!opt) return;
+      e.preventDefault();
+      const v = opt.getAttribute('data-v');
+      inst.selected.has(v) ? inst.selected.delete(v) : inst.selected.add(v);
+      render(); fire();
+    });
+    mount.querySelector('.ms-all').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const f = inst._filter.trim().toLowerCase();
+      inst.options.filter(o => !f || o.label.toLowerCase().includes(f) || (o.group || '').toLowerCase().includes(f))
+        .forEach(o => inst.selected.add(o.value));
+      render(); fire();
+    });
+    mount.querySelector('.ms-none').addEventListener('click', (e) => { e.stopPropagation(); inst.selected.clear(); render(); fire(); });
+
+    inst.setOptions = function (arr, { prune = false } = {}) {
+      inst.options = (arr || []).map(o => typeof o === 'string'
+        ? { value: o, label: o, group: '' }
+        : { value: o.value, label: o.label || o.value, group: o.group || '' });
+      const present = new Set(inst.options.map(o => o.value));
+      if (prune) {
+        [...inst.selected].forEach(v => { if (!present.has(v)) inst.selected.delete(v); });
+      } else {
+        // Never silently drop an assignment that isn't in the option list
+        // (e.g. a state with no boundaries loaded) — keep it as a chip.
+        [...inst.selected].forEach(v => { if (!present.has(v)) inst.options.push({ value: v, label: v, group: '' }); });
+      }
+      render();
+    };
+    inst.setValues = function (vals) {
+      inst.selected = new Set((vals || []).filter(v => v != null && String(v).length));
+      const present = new Set(inst.options.map(o => o.value));
+      [...inst.selected].forEach(v => { if (!present.has(v)) inst.options.push({ value: v, label: v, group: '' }); });
+      render();
+    };
+    inst.getValues = function () { return orderedValues(); };
+    inst.clear = function () { inst.selected.clear(); inst._filter = ''; search.value = ''; render(); };
+    inst.disable = function (off) { control.style.pointerEvents = off ? 'none' : ''; control.style.opacity = off ? '.55' : ''; };
+
+    render();
+    MS_REGISTRY.push(inst);
+    return inst;
+  }
+  // One global outside-click closer for every multi-select.
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.ms-root')) return;
+    MS_REGISTRY.forEach(i => i._close());
+  });
+
+  /* ── Scope options (states + LGAs) for the pickers ── */
+  let SCOPE_OPTS = { states: [], lgas: [] };
+  let _scopeLoaded = false;
+  async function loadScopeOptions(force) {
+    if (_scopeLoaded && !force) return SCOPE_OPTS;
+    try {
+      const res = await api('/api/auth/scope-options');
+      if (res && res.ok) { SCOPE_OPTS = await res.json(); _scopeLoaded = true; }
+    } catch (_) { /* leave whatever we have; pickers still accept custom typing via chips */ }
+    return SCOPE_OPTS;
+  }
+  // LGA options for the chosen state(s). Empty until a state is picked, so the
+  // user can't assign an LGA that contradicts the state scope.
+  function lgaOptionsForStates(stateVals) {
+    const sel = new Set((stateVals || []).map(s => s.toLowerCase()));
+    if (!sel.size) return [];
+    return (SCOPE_OPTS.lgas || [])
+      .filter(l => sel.has((l.state || '').toLowerCase()))
+      .map(l => ({ value: l.name, label: l.name, group: l.state }));
+  }
+  // Map stored CSV values onto their canonical option casing so a value saved
+  // as "sokoto" preselects the "Sokoto" option instead of a stray custom chip.
+  function canonicalizeValues(ms, raw) {
+    const byLower = new Map(ms.options.map(o => [o.value.toLowerCase(), o.value]));
+    return (raw || '').split(',').map(s => s.trim()).filter(Boolean)
+      .map(v => byLower.get(v.toLowerCase()) || v);
+  }
+
+  /* ── Field-level validation helpers (smart, inline errors) ── */
+  function setFieldError(groupId, errId, msg) {
+    const g = document.getElementById(groupId);
+    const e = document.getElementById(errId);
+    if (g) g.classList.add('invalid');
+    if (e) { e.classList.add('show'); const s = e.querySelector('span'); if (s) s.textContent = msg; }
+  }
+  function clearFieldError(groupId, errId) {
+    const g = document.getElementById(groupId);
+    const e = document.getElementById(errId);
+    if (g) g.classList.remove('invalid');
+    if (e) e.classList.remove('show');
+  }
+  function clearUserFormErrors() {
+    [['fg-username','err-username'],['fg-email','err-email'],['fg-password','err-password'],['new-states-group','err-states']]
+      .forEach(([g, e]) => clearFieldError(g, e));
+    const fb = document.getElementById('user-feedback');
+    if (fb) { fb.textContent = ''; fb.className = 'inline-feedback'; }
+  }
+
   /* ── API HELPER ── */
   async function api(path, opts = {}) {
     const defaults = {
@@ -1237,7 +1568,7 @@
   function onViewActivated(v) {
     if (v === 'uploads')  { loadUploadHistory(); loadUploadProjectSelector(); }
     if (v === 'projects') { loadProjects(); }
-    if (v === 'users')    { loadUsers(); }
+    if (v === 'users')    { initAddUserForm(); loadUsers(); }
     if (v === 'system')   { loadSystemStatus(); }
     if (v === 'sync')     { loadSyncProjects(); }
     if (v === 'account')  { resetPasswordForm(); }
@@ -2481,181 +2812,331 @@
   };
 
   /* ── USERS ── */
+  let ALL_USERS = [];
+  // Deterministic avatar gradient per username so the same person keeps the
+  // same colour across reloads.
+  const AVATAR_COLORS = [
+    ['#006B2E','#44B568'], ['#2563eb','#60a5fa'], ['#7c3aed','#a78bfa'],
+    ['#d97706','#fbbf24'], ['#db2777','#f472b6'], ['#0891b2','#22d3ee'],
+  ];
+  function avatarStyle(name) {
+    const s = String(name || '?'); let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    const [a, b] = AVATAR_COLORS[h % AVATAR_COLORS.length];
+    return `background:linear-gradient(135deg,${a},${b})`;
+  }
+
   async function loadUsers() {
     const container = document.getElementById('users-list');
     try {
-      // GET /api/auth/users (list endpoint)
-      const res = await api('/api/auth/users');
+      const res = await api('/api/auth/users');   // GET /api/auth/users
       if (!res || !res.ok) {
-        container.innerHTML = `
-          <div style="overflow-x:auto">
-            <table>
-              <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>States</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-              <tbody>
-                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">
-                  User listing endpoint not yet available. Use the form to create users.
-                </td></tr>
-              </tbody>
-            </table>
-          </div>`;
+        ALL_USERS = [];
+        container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Couldn't load users. Try refreshing.</div>`;
         return;
       }
-      const users = await res.json();
-      let rows = users.map(u => {
-        const roleChip = u.is_superadmin
-          ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Superadmin</span>'
-          : (u.is_admin
-              ? '<span class="chip warn">Administrator</span>'
-              : '<span class="chip info">User</span>');
-        const usernameEsc = String(u.username || '').replace(/'/g, "\\'");
-        // States cell: admins/superadmins implicitly see everything; scoped
-        // users show their assigned state(s) as chips (or a "none" warning).
-        let statesCell;
-        if (u.is_superadmin || u.is_admin) {
-          statesCell = '<span class="chip" style="background:var(--mist);color:var(--muted)">All states</span>';
-        } else if (u.allowed_states && u.allowed_states.trim()) {
-          statesCell = u.allowed_states.split(',').map(s => `<span class="chip info">${s.trim()}</span>`).join(' ');
-          // LGA-scoped accounts show their LGA chips beneath the state chips.
-          if (u.allowed_lgas && u.allowed_lgas.trim()) {
-            statesCell += '<br>' + u.allowed_lgas.split(',').map(s => `<span class="chip" style="background:#ede9fe;color:#5b21b6">LGA: ${s.trim()}</span>`).join(' ');
-          }
-        } else {
-          statesCell = '<span class="chip bad">none</span>';
-        }
-        const actions = [];
-        // Assign/replace the scoped state(s) + LGA(s) for a non-admin account.
-        if ((isAdmin || isSuperadmin) && !u.is_superadmin && !u.is_admin) {
-          const curStates = String(u.allowed_states || '').replace(/'/g, "\\'");
-          const curLgas   = String(u.allowed_lgas || '').replace(/'/g, "\\'");
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="setUserStates(${u.id},'${usernameEsc}','${curStates}','${curLgas}')" title="Set this user's allowed states / LGAs"><i class="fa-solid fa-earth-africa"></i></button>`);
-        }
-        if (isSuperadmin && !u.is_superadmin) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="promoteUser(${u.id})" title="Promote to Superadmin"><i class="fa-solid fa-arrow-up"></i> Promote</button>`);
-        }
-        if (isSuperadmin && u.is_superadmin && u.username !== username) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="demoteUser(${u.id})" title="Demote to Admin"><i class="fa-solid fa-arrow-down"></i> Demote</button>`);
-        }
-        // Superadmin-only override: reset another user's password. Hidden
-        // for the actor's own row — they use the self-service Account page.
-        if (isSuperadmin && u.username !== username) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="resetUserPassword(${u.id},'${usernameEsc}')" title="Reset this user's password"><i class="fa-solid fa-key"></i></button>`);
-        }
-        if (u.username !== 'admin' && u.username !== username && (isSuperadmin || !u.is_superadmin)) {
-          actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id},'${usernameEsc}')"><i class="fa-solid fa-trash"></i></button>`);
-        }
-        const actionsHtml = actions.length ? actions.join(' ') : '<span style="color:var(--muted);font-size:11px">—</span>';
-        return `
-        <tr>
-          <td>
-            <div style="display:flex;align-items:center;gap:9px">
-              <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700">${(u.username||'?').charAt(0).toUpperCase()}</div>
-              <b>${u.username}</b>
-            </div>
-          </td>
-          <td style="color:var(--muted);font-size:12.5px">${u.email || '—'}</td>
-          <td>${roleChip}</td>
-          <td style="line-height:1.9">${statesCell}</td>
-          <td>${u.is_active !== false ? '<span class="chip good">Active</span>' : '<span class="chip bad">Inactive</span>'}</td>
-          <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-          <td>${actionsHtml}</td>
-        </tr>`;
-      }).join('');
-      container.innerHTML = `
-        <div style="overflow-x:auto">
-          <table>
-            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>States</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>`;
+      ALL_USERS = await res.json();
+      renderUsers();
     } catch(e) {
+      ALL_USERS = [];
       container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i>Failed to load users</div>';
     }
   }
   window.loadUsers = loadUsers;
 
-  // Show the "Allowed states" field only for scoped (non-admin) accounts —
-  // admins/superadmins always see every state, so the field is irrelevant.
+  // Render the cached users, filtered by the search box. Kept separate from
+  // loadUsers() so typing in search re-renders instantly without a refetch.
+  function renderUsers() {
+    const container = document.getElementById('users-list');
+    const countEl   = document.getElementById('users-count');
+    if (!container) return;
+    if (countEl) { countEl.style.display = ''; countEl.textContent = String(ALL_USERS.length); }
+
+    const q = (document.getElementById('users-search')?.value || '').trim().toLowerCase();
+    let users = ALL_USERS.slice();
+    if (q) {
+      users = users.filter(u =>
+        (u.username || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.allowed_states || '').toLowerCase().includes(q) ||
+        (u.allowed_lgas || '').toLowerCase().includes(q));
+    }
+    if (!users.length) {
+      container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-user-slash"></i>${q ? 'No users match your search.' : 'No users yet.'}</div>`;
+      return;
+    }
+
+    const rows = users.map(u => {
+      const role = u.is_superadmin
+        ? '<span class="chip" style="background:#FEF3C7;color:#92400E">Superadmin</span>'
+        : (u.is_admin ? '<span class="chip warn">Administrator</span>' : '<span class="chip info">User</span>');
+      const unameEsc = String(u.username || '').replace(/'/g, "\\'");
+
+      let scope;
+      if (u.is_superadmin || u.is_admin) {
+        scope = '<span class="scope-chip scope-all">All states</span>';
+      } else if (u.allowed_states && u.allowed_states.trim()) {
+        const st = u.allowed_states.split(',').map(s => `<span class="scope-chip scope-state">${escHtml(s.trim())}</span>`).join('');
+        const lg = (u.allowed_lgas && u.allowed_lgas.trim())
+          ? u.allowed_lgas.split(',').map(s => `<span class="scope-chip scope-lga"><i class="fa-solid fa-location-dot" style="font-size:9px"></i>${escHtml(s.trim())}</span>`).join('')
+          : '';
+        scope = `<div class="u-scope">${st}${lg}</div>`;
+      } else {
+        scope = '<span class="scope-chip scope-none">No access</span>';
+      }
+
+      const acts = [];
+      // Edit the scoped state(s) + LGA(s) for a non-admin account.
+      if ((isAdmin || isSuperadmin) && !u.is_superadmin && !u.is_admin) {
+        const cs = String(u.allowed_states || '').replace(/'/g, "\\'");
+        const cl = String(u.allowed_lgas || '').replace(/'/g, "\\'");
+        acts.push(`<button class="act-btn" onclick="setUserStates(${u.id},'${unameEsc}','${cs}','${cl}')" title="Edit allowed states / LGAs"><i class="fa-solid fa-earth-africa"></i></button>`);
+      }
+      if (isSuperadmin && !u.is_superadmin) acts.push(`<button class="act-btn" onclick="promoteUser(${u.id})" title="Promote to Superadmin"><i class="fa-solid fa-arrow-up"></i></button>`);
+      if (isSuperadmin && u.is_superadmin && u.username !== username) acts.push(`<button class="act-btn" onclick="demoteUser(${u.id})" title="Demote to Admin"><i class="fa-solid fa-arrow-down"></i></button>`);
+      // Superadmin-only: reset another user's password (own row uses Account page).
+      if (isSuperadmin && u.username !== username) acts.push(`<button class="act-btn" onclick="resetUserPassword(${u.id},'${unameEsc}')" title="Reset password"><i class="fa-solid fa-key"></i></button>`);
+      if (u.username !== 'admin' && u.username !== username && (isSuperadmin || !u.is_superadmin)) acts.push(`<button class="act-btn danger" onclick="deleteUser(${u.id},'${unameEsc}')" title="Delete user"><i class="fa-solid fa-trash"></i></button>`);
+      const actsHtml = acts.length ? `<div class="row-actions">${acts.join('')}</div>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+
+      return `
+      <tr>
+        <td><div class="u-cell"><div class="u-avatar" style="${avatarStyle(u.username)}">${escHtml((u.username||'?').charAt(0).toUpperCase())}</div><span class="u-name">${escHtml(u.username)}</span></div></td>
+        <td style="color:var(--muted);font-size:12.5px">${escHtml(u.email || '—')}</td>
+        <td>${role}</td>
+        <td>${scope}</td>
+        <td><span class="status-dot ${u.is_active !== false ? 'on' : 'off'}">${u.is_active !== false ? 'Active' : 'Inactive'}</span></td>
+        <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+        <td>${actsHtml}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="users-table">
+          <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Scope</th><th>Status</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+  window.renderUsers = renderUsers;
+
+  /* ── Add-User form: multi-selects + smart inline validation ── */
+  let _statesMS = null, _lgasMS = null, _addUserInit = false;
+
+  async function initAddUserForm() {
+    // Form is superadmin-only; bail if it isn't in the DOM for this account.
+    if (!document.getElementById('new-states-ms')) return;
+    await loadScopeOptions();
+    if (!_addUserInit) {
+      _statesMS = createMultiSelect('new-states-ms', {
+        placeholder: 'Select state(s)…',
+        emptyText: 'No states available yet',
+        onChange: (vals) => {
+          // Cascade: LGA list is scoped to the chosen state(s); drop picks
+          // that no longer belong to a selected state.
+          _lgasMS.setOptions(lgaOptionsForStates(vals), { prune: true });
+          if (vals.length) clearFieldError('new-states-group', 'err-states');
+        },
+      });
+      _lgasMS = createMultiSelect('new-lgas-ms', {
+        placeholder: 'All LGAs in the selected state(s)',
+        emptyText: 'Pick a state first',
+      });
+      document.querySelectorAll('#role-options input[name="new-role"]').forEach(r => r.addEventListener('change', onRoleChange));
+      const un = document.getElementById('new-username');
+      const em = document.getElementById('new-email');
+      const pw = document.getElementById('new-password');
+      un.addEventListener('blur', validateUsernameField);
+      un.addEventListener('input', () => clearFieldError('fg-username', 'err-username'));
+      em.addEventListener('blur', validateEmailField);
+      em.addEventListener('input', () => clearFieldError('fg-email', 'err-email'));
+      pw.addEventListener('input', () => clearFieldError('fg-password', 'err-password'));
+      _addUserInit = true;
+    }
+    // Refresh state options each time the view opens (projects can change).
+    _statesMS.setOptions(SCOPE_OPTS.states);
+    _lgasMS.setOptions(lgaOptionsForStates(_statesMS.getValues()), { prune: true });
+    onRoleChange();
+  }
+  window.initAddUserForm = initAddUserForm;
+
+  function getNewRole() {
+    const r = document.querySelector('#role-options input[name="new-role"]:checked');
+    return r ? r.value : 'state';
+  }
+
+  // Instant, client-side duplicate detection against the loaded user list so
+  // the operator learns about a clash before submitting (server still has the
+  // final, race-safe say).
+  function validateUsernameField() {
+    const uname = document.getElementById('new-username').value.trim();
+    if (!uname) { clearFieldError('fg-username', 'err-username'); return true; }
+    if (ALL_USERS.some(u => (u.username || '').toLowerCase() === uname.toLowerCase())) {
+      setFieldError('fg-username', 'err-username', `"${uname}" is already taken.`); return false;
+    }
+    clearFieldError('fg-username', 'err-username'); return true;
+  }
+  function validateEmailField() {
+    const email = document.getElementById('new-email').value.trim();
+    if (!email) { clearFieldError('fg-email', 'err-email'); return true; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setFieldError('fg-email', 'err-email', 'Enter a valid email address.'); return false; }
+    if (ALL_USERS.some(u => (u.email || '').toLowerCase() === email.toLowerCase())) {
+      setFieldError('fg-email', 'err-email', 'This email is already in use by another account.'); return false;
+    }
+    clearFieldError('fg-email', 'err-email'); return true;
+  }
+
+  // Show the "Allowed states/LGAs" fields only for scoped (non-admin)
+  // accounts — admins/superadmins always see every state.
   window.onRoleChange = function() {
-    const role = document.getElementById('new-role').value;
+    document.querySelectorAll('#role-options .role-opt').forEach(l => {
+      const inp = l.querySelector('input'); l.classList.toggle('sel', !!(inp && inp.checked));
+    });
+    const role = getNewRole();
     const show = (role === 'state') ? '' : 'none';
     const sg = document.getElementById('new-states-group'); if (sg) sg.style.display = show;
     const lg = document.getElementById('new-lgas-group');   if (lg) lg.style.display = show;
+    if (role !== 'state') clearFieldError('new-states-group', 'err-states');
   };
 
   window.createUser = async function() {
+    clearUserFormErrors();
     const uname    = document.getElementById('new-username').value.trim();
     const email    = document.getElementById('new-email').value.trim();
     const password = document.getElementById('new-password').value;
-    const role     = document.getElementById('new-role').value;
+    const role     = getNewRole();
     const isAdm    = role === 'admin' || role === 'superadmin';
     const isSup    = role === 'superadmin';
-    const states   = (document.getElementById('new-states')?.value || '').trim();
-    const lgas     = (document.getElementById('new-lgas')?.value || '').trim();
-    if (!uname || !password) { setFeedback('user-feedback', 'Username and password are required.', 'err'); return; }
-    if (password.length < 6) { setFeedback('user-feedback', 'Password must be at least 6 characters.', 'err'); return; }
-    if (role === 'state' && !states) { setFeedback('user-feedback', 'A state user needs at least one allowed state.', 'err'); return; }
+    const states   = (role === 'state' && _statesMS) ? _statesMS.getValues() : [];
+    const lgas     = (role === 'state' && _lgasMS)   ? _lgasMS.getValues()   : [];
+
+    // Client-side validation → field-level errors, then focus the first issue.
+    let firstBad = null;
+    if (!uname) { setFieldError('fg-username', 'err-username', 'Username is required.'); firstBad = firstBad || 'new-username'; }
+    else if (!validateUsernameField()) firstBad = firstBad || 'new-username';
+    if (!validateEmailField()) firstBad = firstBad || 'new-email';
+    if (!password) { setFieldError('fg-password', 'err-password', 'Password is required.'); firstBad = firstBad || 'new-password'; }
+    else if (password.length < 6) { setFieldError('fg-password', 'err-password', 'Use at least 6 characters.'); firstBad = firstBad || 'new-password'; }
+    if (role === 'state' && !states.length) { setFieldError('new-states-group', 'err-states', 'Pick at least one state for a scoped user.'); firstBad = firstBad || 'new-username'; }
+    if (firstBad) { const el = document.getElementById(firstBad); if (el && el.focus) el.focus(); return; }
+
     try {
       const res = await api('/api/auth/users', {
         method: 'POST',
         body: JSON.stringify({
           username: uname, email: email || null, password,
           is_admin: isAdm, is_superadmin: isSup,
-          allowed_states: role === 'state' ? states : null,
-          allowed_lgas: (role === 'state' && lgas) ? lgas : null,
+          allowed_states: states.length ? states.join(',') : null,
+          allowed_lgas:   lgas.length   ? lgas.join(',')   : null,
         }),
       });
       if (!res) return;
-      const d = await res.json();
+      // Parse defensively: an error response may not be JSON (proxy 5xx page),
+      // and reading it blind is what turned a real server message into a
+      // misleading "Network error".
+      const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setFeedback('user-feedback', '✓ User "' + uname + '" created successfully.', 'ok');
         document.getElementById('new-username').value = '';
         document.getElementById('new-email').value    = '';
         document.getElementById('new-password').value = '';
-        document.getElementById('new-states').value   = '';
-        document.getElementById('new-lgas').value      = '';
-        document.getElementById('new-role').value     = 'state';
+        if (_statesMS) _statesMS.clear();
+        if (_lgasMS)   _lgasMS.clear();
+        const sr = document.querySelector('#role-options input[value="state"]'); if (sr) sr.checked = true;
         onRoleChange();
         loadUsers();
       } else {
-        setFeedback('user-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');
+        // Smart routing: pin the server's message to the field it's about.
+        const msg = d.detail || `Create failed (HTTP ${res.status})`;
+        const low = String(msg).toLowerCase();
+        if (res.status === 409 && low.includes('email')) setFieldError('fg-email', 'err-email', msg);
+        else if (res.status === 409 && (low.includes('username') || low.includes('taken'))) setFieldError('fg-username', 'err-username', msg);
+        else setFeedback('user-feedback', msg, 'err');
       }
     } catch(e) {
-      setFeedback('user-feedback', 'Network error', 'err');
+      setFeedback('user-feedback', 'Could not reach the server. Check your connection and try again.', 'err');
     }
   };
 
-  window.setUserStates = async function(id, uname, currentStates, currentLgas) {
-    // Assign the state(s) a scoped account may access, then (optionally) the
-    // LGA(s) within them. States: empty clears all access (superadmin-only on
-    // the server). LGAs: empty = whole state; any value restricts to those LGAs.
-    const states = await promptDialog({
-      title:             `Allowed states for "${uname}"`,
-      message:           "Comma-separated state names (e.g. Sokoto, Kano). The user only sees these state's projects on the web and in the app. Clearing the field removes all access.",
-      promptValue:       currentStates || '',
-      promptPlaceholder: 'e.g. Sokoto, Kano',
-      confirmLabel:      'Next: LGAs',
-    });
-    if (states === null) return;   // dialog cancelled
-    const lgas = await promptDialog({
-      title:             `Allowed LGAs for "${uname}"`,
-      message:           "Comma-separated LGA names to restrict this account to (e.g. Binji, Wamako). Leave blank for the whole state. Applies on the web and the app.",
-      promptValue:       currentLgas || '',
-      promptPlaceholder: 'e.g. Binji, Wamako  (blank = whole state)',
-      confirmLabel:      'Save access',
-    });
-    if (lgas === null) return;
-    try {
-      const res = await api('/api/auth/users/' + id + '/states', {
-        method: 'PUT',
-        body: JSON.stringify({ allowed_states: states.trim() || null, allowed_lgas: lgas.trim() || null }),
+  /* ── Scope editor modal (replaces the old two-step text prompts) ── */
+  let _scopeStatesMS = null, _scopeLgasMS = null, _scopeInit = false, _scopeCleanup = null;
+
+  async function openScopeEditor(id, uname, curStates, curLgas) {
+    await loadScopeOptions();
+    const modal     = document.getElementById('scope-modal');
+    const saveBtn   = document.getElementById('scope-modal-save');
+    const cancelBtn = document.getElementById('scope-modal-cancel');
+    if (!_scopeInit) {
+      _scopeStatesMS = createMultiSelect('scope-states-ms', {
+        placeholder: 'Select state(s)…',
+        onChange: (vals) => {
+          _scopeLgasMS.setOptions(lgaOptionsForStates(vals), { prune: true });
+          if (vals.length) clearFieldError('scope-fg-states', 'scope-err-states');
+        },
       });
-      if (res && res.ok) { loadUsers(); }
-      else {
-        const d = res ? await res.json().catch(() => ({})) : {};
-        await alertDialog({ title: 'Update failed', message: d.detail || 'Unknown error', danger: true });
+      _scopeLgasMS = createMultiSelect('scope-lgas-ms', {
+        placeholder: 'All LGAs in the selected state(s)',
+        emptyText: 'Pick a state first',
+      });
+      _scopeInit = true;
+    }
+
+    document.getElementById('scope-modal-title').textContent = `Access scope — ${uname}`;
+    clearFieldError('scope-fg-states', 'scope-err-states');
+    // Preload current scope, mapping stored CSV onto canonical option casing.
+    _scopeStatesMS.setOptions(SCOPE_OPTS.states);
+    _scopeStatesMS.setValues(canonicalizeValues(_scopeStatesMS, curStates || ''));
+    _scopeLgasMS.setOptions(lgaOptionsForStates(_scopeStatesMS.getValues()));
+    _scopeLgasMS.setValues(canonicalizeValues(_scopeLgasMS, curLgas || ''));
+
+    const close = () => {
+      modal.style.display = 'none';
+      saveBtn.removeEventListener('click', onSave);
+      cancelBtn.removeEventListener('click', close);
+      modal.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      _scopeCleanup = null;
+    };
+    const onBackdrop = (e) => { if (e.target === modal) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const onSave = async () => {
+      const states = _scopeStatesMS.getValues();
+      const lgas   = _scopeLgasMS.getValues();
+      // Only a superadmin may strip a user of all state access (server enforces
+      // this too — we just give a friendlier, inline heads-up first).
+      if (!states.length && !isSuperadmin) {
+        setFieldError('scope-fg-states', 'scope-err-states', 'Only a superadmin can remove all state access.');
+        return;
       }
-    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); }
-  };
+      saveBtn.disabled = true;
+      try {
+        const res = await api('/api/auth/users/' + id + '/states', {
+          method: 'PUT',
+          body: JSON.stringify({
+            allowed_states: states.length ? states.join(',') : null,
+            allowed_lgas:   lgas.length   ? lgas.join(',')   : null,
+          }),
+        });
+        if (res && res.ok) { close(); loadUsers(); }
+        else {
+          const d = res ? await res.json().catch(() => ({})) : {};
+          setFieldError('scope-fg-states', 'scope-err-states', d.detail || `Update failed (HTTP ${res ? res.status : '—'}).`);
+        }
+      } catch(e) {
+        setFieldError('scope-fg-states', 'scope-err-states', 'Could not reach the server.');
+      } finally { saveBtn.disabled = false; }
+    };
+
+    if (_scopeCleanup) _scopeCleanup();
+    _scopeCleanup = close;
+    saveBtn.addEventListener('click', onSave);
+    cancelBtn.addEventListener('click', close);
+    modal.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+    modal.style.display = 'flex';
+  }
+  window.setUserStates = function(id, uname, curStates, curLgas) { openScopeEditor(id, uname, curStates, curLgas); };
 
   window.promoteUser = async function(id) {
     const ok = await confirmDialog({
