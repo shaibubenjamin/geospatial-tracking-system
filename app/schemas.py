@@ -66,6 +66,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    is_public: Optional[bool] = None   # public-dashboard opt-in (per state/round)
     state_name: Optional[str] = None
     round_number: Optional[int] = None
     campaign_start_date: Optional[date] = None
@@ -78,6 +79,7 @@ class ProjectOut(BaseModel):
     slug: str
     description: str
     is_active: bool
+    is_public: bool = False
     state_name: Optional[str] = None
     round_number: Optional[int] = None
     campaign_start_date: Optional[date] = None

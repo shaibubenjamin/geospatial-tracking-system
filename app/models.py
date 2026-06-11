@@ -18,6 +18,9 @@ class GeoProject(Base):
     slug = Column(Text, unique=True, nullable=False)
     description = Column(Text, default="")
     is_active = Column(Boolean, default=False)
+    # Public-dashboard opt-in: when TRUE, this project (state+round) is viewable
+    # without login; anonymous access to any non-public project is refused.
+    is_public = Column(Boolean, default=False)
     state_name = Column(Text)
     round_number = Column(Integer)
     # Official campaign start date. When set, every received_on-based query

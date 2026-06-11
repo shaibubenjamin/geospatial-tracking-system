@@ -884,10 +884,16 @@
               </div>
               <div class="form-group">
                 <label>Access Level</label>
-                <select id="new-role">
-                  <option value="admin">Administrator</option>
-                  <option value="superadmin">Superadmin (full data + user control)</option>
+                <select id="new-role" onchange="onRoleChange()">
+                  <option value="state">State user — scoped to assigned state(s)</option>
+                  <option value="admin">Administrator (all states)</option>
+                  <option value="superadmin">Superadmin (all states + user control)</option>
                 </select>
+              </div>
+              <div class="form-group" id="new-states-group">
+                <label>Allowed states</label>
+                <input type="text" id="new-states" placeholder="e.g. Sokoto  or  Sokoto, Kano" autocomplete="off">
+                <small style="color:var(--muted);font-size:11.5px">Comma-separated. The user only sees these state's projects (web + app). Leave blank for no access.</small>
               </div>
               <button class="btn btn-primary" style="width:100%" onclick="createUser()">
                 <i class="fa-solid fa-user-plus"></i> Create User
@@ -2289,6 +2295,13 @@
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="markProjectEnded(${p.id},'${esc(p.name)}')" title="Close this round — stops auto-sync and stamps end date"><i class="fa-solid fa-flag-checkered"></i> Mark Ended</button>`);
         }
         actions.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
+        // Public-dashboard opt-in (superadmin only). Anonymous visitors to the
+        // public dashboard only see projects flagged public — toggle per round.
+        if (isSuperadmin) {
+          actions.push(p.is_public
+            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Currently public — click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Public</button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Make this round visible on the public dashboard"><i class="fa-solid fa-lock"></i> Private</button>`);
+        }
         if (!p.is_active) {
           actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project — irreversible"><i class="fa-solid fa-trash"></i></button>`);
         }
@@ -2298,6 +2311,7 @@
           <td style="font-size:12px;color:var(--muted)">${p.description || '—'}</td>
           <td>
             ${statusChip(p)}
+            ${p.is_public ? '<br><span class="chip good" style="margin-top:4px"><i class="fa-solid fa-globe" style="font-size:9px;margin-right:4px"></i>Public</span>' : ''}
             ${p.campaign_end_date && !p.is_active ? `<br><small style="color:var(--muted)">ended ${new Date(p.campaign_end_date).toLocaleDateString()}</small>` : ''}
           </td>
           <td style="color:var(--muted);font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
@@ -2354,6 +2368,31 @@
       });
       if (res && res.ok) loadProjects();
     } catch(e) {}
+  };
+
+  window.setProjectPublic = async function(id, makePublic, name) {
+    // Per-round public-dashboard opt-in. Making a project public exposes its
+    // (non-PII) coverage to anonymous visitors on the public dashboard; making
+    // it private hides it again. Multiple rounds/states can be public at once.
+    if (makePublic) {
+      const ok = await confirmDialog({
+        title:        'Publish to public dashboard?',
+        message:      `"${name}" will be visible to anyone on the public dashboard (no login). Only aggregate coverage is shown — no personal data. Continue?`,
+        confirmLabel: 'Make public',
+      });
+      if (!ok) return;
+    }
+    try {
+      const res = await api('/api/projects/' + id, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_public: makePublic }),
+      });
+      if (res && res.ok) { loadProjects(); }
+      else {
+        const d = res ? await res.json().catch(() => ({})) : {};
+        await alertDialog({ title: 'Update failed', message: d.detail || 'Unknown error', danger: true });
+      }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); }
   };
 
   window.markProjectEnded = async function(id, name) {
@@ -2446,9 +2485,9 @@
         container.innerHTML = `
           <div style="overflow-x:auto">
             <table>
-              <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>States</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
               <tbody>
-                <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">
+                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">
                   User listing endpoint not yet available. Use the form to create users.
                 </td></tr>
               </tbody>
@@ -2464,7 +2503,19 @@
               ? '<span class="chip warn">Administrator</span>'
               : '<span class="chip info">User</span>');
         const usernameEsc = String(u.username || '').replace(/'/g, "\\'");
+        // States cell: admins/superadmins implicitly see everything; scoped
+        // users show their assigned state(s) as chips (or a "none" warning).
+        const statesCell = (u.is_superadmin || u.is_admin)
+          ? '<span class="chip" style="background:var(--mist);color:var(--muted)">All states</span>'
+          : (u.allowed_states && u.allowed_states.trim()
+              ? u.allowed_states.split(',').map(s => `<span class="chip info">${s.trim()}</span>`).join(' ')
+              : '<span class="chip bad">none</span>');
         const actions = [];
+        // Assign/replace the scoped state(s) for a non-admin account.
+        if ((isAdmin || isSuperadmin) && !u.is_superadmin && !u.is_admin) {
+          const curStates = String(u.allowed_states || '').replace(/'/g, "\\'");
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="setUserStates(${u.id},'${usernameEsc}','${curStates}')" title="Set this user's allowed states"><i class="fa-solid fa-earth-africa"></i></button>`);
+        }
         if (isSuperadmin && !u.is_superadmin) {
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="promoteUser(${u.id})" title="Promote to Superadmin"><i class="fa-solid fa-arrow-up"></i> Promote</button>`);
         }
@@ -2490,6 +2541,7 @@
           </td>
           <td style="color:var(--muted);font-size:12.5px">${u.email || '—'}</td>
           <td>${roleChip}</td>
+          <td style="line-height:1.9">${statesCell}</td>
           <td>${u.is_active !== false ? '<span class="chip good">Active</span>' : '<span class="chip bad">Inactive</span>'}</td>
           <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
           <td>${actionsHtml}</td>
@@ -2498,7 +2550,7 @@
       container.innerHTML = `
         <div style="overflow-x:auto">
           <table>
-            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>States</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -2508,6 +2560,14 @@
   }
   window.loadUsers = loadUsers;
 
+  // Show the "Allowed states" field only for scoped (non-admin) accounts —
+  // admins/superadmins always see every state, so the field is irrelevant.
+  window.onRoleChange = function() {
+    const role = document.getElementById('new-role').value;
+    const grp  = document.getElementById('new-states-group');
+    if (grp) grp.style.display = (role === 'state') ? '' : 'none';
+  };
+
   window.createUser = async function() {
     const uname    = document.getElementById('new-username').value.trim();
     const email    = document.getElementById('new-email').value.trim();
@@ -2515,12 +2575,18 @@
     const role     = document.getElementById('new-role').value;
     const isAdm    = role === 'admin' || role === 'superadmin';
     const isSup    = role === 'superadmin';
+    const states   = (document.getElementById('new-states')?.value || '').trim();
     if (!uname || !password) { setFeedback('user-feedback', 'Username and password are required.', 'err'); return; }
     if (password.length < 6) { setFeedback('user-feedback', 'Password must be at least 6 characters.', 'err'); return; }
+    if (role === 'state' && !states) { setFeedback('user-feedback', 'A state user needs at least one allowed state.', 'err'); return; }
     try {
       const res = await api('/api/auth/users', {
         method: 'POST',
-        body: JSON.stringify({ username: uname, email: email || null, password, is_admin: isAdm, is_superadmin: isSup }),
+        body: JSON.stringify({
+          username: uname, email: email || null, password,
+          is_admin: isAdm, is_superadmin: isSup,
+          allowed_states: role === 'state' ? states : null,
+        }),
       });
       if (!res) return;
       const d = await res.json();
@@ -2529,7 +2595,9 @@
         document.getElementById('new-username').value = '';
         document.getElementById('new-email').value    = '';
         document.getElementById('new-password').value = '';
-        document.getElementById('new-role').value     = 'admin';
+        document.getElementById('new-states').value   = '';
+        document.getElementById('new-role').value     = 'state';
+        onRoleChange();
         loadUsers();
       } else {
         setFeedback('user-feedback', 'Error: ' + (d.detail || 'Create failed'), 'err');
@@ -2537,6 +2605,30 @@
     } catch(e) {
       setFeedback('user-feedback', 'Network error', 'err');
     }
+  };
+
+  window.setUserStates = async function(id, uname, current) {
+    // Assign the state(s) a scoped account may access. Comma-separated names;
+    // an empty value clears the restriction (superadmin-only on the server).
+    const val = await promptDialog({
+      title:             `Allowed states for "${uname}"`,
+      message:           "Comma-separated state names (e.g. Sokoto, Kano). The user only sees these state's projects on the web and in the app. Clearing the field removes all access.",
+      promptValue:       current || '',
+      promptPlaceholder: 'e.g. Sokoto, Kano',
+      confirmLabel:      'Save states',
+    });
+    if (val === null) return;   // dialog cancelled
+    try {
+      const res = await api('/api/auth/users/' + id + '/states', {
+        method: 'PUT',
+        body: JSON.stringify({ allowed_states: val.trim() || null }),
+      });
+      if (res && res.ok) { loadUsers(); }
+      else {
+        const d = res ? await res.json().catch(() => ({})) : {};
+        await alertDialog({ title: 'Update failed', message: d.detail || 'Unknown error', danger: true });
+      }
+    } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); }
   };
 
   window.promoteUser = async function(id) {

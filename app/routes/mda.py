@@ -175,6 +175,24 @@ async def resolve_pid(
     scoped = user is not None and not user.is_superadmin and not user.is_admin
     allowed = allowed_states_of(user) if scoped else None  # a set for scoped users
 
+    if user is None:
+        # Anonymous (public dashboard) → only projects opted in as public.
+        if project_id is not None:
+            is_pub = (await db.execute(
+                text("SELECT COALESCE(is_public, FALSE) FROM geo_projects WHERE id = :id"),
+                {"id": project_id},
+            )).scalar()
+            if not is_pub:
+                raise HTTPException(status_code=403, detail="This campaign isn't public.")
+            return project_id
+        row = (await db.execute(text(
+            "SELECT id FROM geo_projects WHERE COALESCE(is_public, FALSE) = TRUE "
+            "ORDER BY is_active DESC, round_number DESC NULLS LAST, id LIMIT 1"
+        ))).fetchone()
+        if row:
+            return row[0]
+        # No public project configured — fall through to the global default.
+
     if project_id is not None:
         if scoped:
             state = (await db.execute(
