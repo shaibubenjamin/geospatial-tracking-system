@@ -1,11 +1,18 @@
 package org.ehealth.eritas.feature.update
 
 import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import android.widget.Toast
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,32 +64,107 @@ fun openUpdateUrl(context: Context, info: VersionInfo) {
 }
 
 /**
- * Trigger an in-app download of the latest APK straight from the update button
- * (it lands in the notification shade — tap to install), instead of bouncing
- * the user to the download web page. Falls back to the web page if
- * DownloadManager isn't available.
+ * Trigger an in-app download of the latest APK and launch the installer the
+ * moment it finishes — no trip to the website. The previous version downloaded
+ * the file but never fired an install intent, so a finished download just sat
+ * in the shade with nothing to tap.
+ *
+ * Flow:
+ *  1. On API 26+, make sure the user has granted us "install unknown apps" —
+ *     without it the installer silently refuses. Send them to that setting and
+ *     bail; the APK is tiny, so re-tapping Update after granting is instant.
+ *  2. Download to our app-private external files dir (no storage permission).
+ *  3. A one-shot receiver fires the package installer via a FileProvider
+ *     content:// URI as soon as the download succeeds.
+ *  4. Any failure falls back to opening the .apk URL in the browser (which then
+ *     downloads it) — never the /apk landing page.
  */
 fun downloadUpdate(context: Context, info: VersionInfo) {
+    val appCtx = context.applicationContext
     val name = "eritas-" + (if (info.latest > 0) info.latest.toString() else "latest") + ".apk"
     val url = BuildConfig.BASE_URL.trimEnd('/') + "/apk/eritas-latest.apk"
-    try {
-        val req = DownloadManager.Request(Uri.parse(url))
-            .setTitle("ERITAS update")
-            .setDescription("Downloading the latest version…")
-            .setMimeType("application/vnd.android.package-archive")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, name)
-        (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+        !context.packageManager.canRequestPackageInstalls()
+    ) {
         Toast.makeText(
             context,
-            "Downloading update… open it from your notifications to install.",
+            "Allow ERITAS to install apps, then tap Update again.",
+            Toast.LENGTH_LONG,
+        ).show()
+        runCatching {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + context.packageName),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+        return
+    }
+
+    try {
+        val dm = appCtx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val dest = File(appCtx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), name)
+        runCatching { if (dest.exists()) dest.delete() }
+
+        val req = DownloadManager.Request(Uri.parse(url))
+            .setTitle("ERITAS update")
+            .setDescription("Downloading version ${info.latestName}…")
+            .setMimeType("application/vnd.android.package-archive")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalFilesDir(appCtx, Environment.DIRECTORY_DOWNLOADS, name)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+        val id = dm.enqueue(req)
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                if (i.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != id) return
+                runCatching { appCtx.unregisterReceiver(this) }
+                val ok = dm.query(DownloadManager.Query().setFilterById(id)).use { cur ->
+                    cur.moveToFirst() &&
+                        cur.getInt(cur.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) ==
+                        DownloadManager.STATUS_SUCCESSFUL
+                }
+                if (!ok) {
+                    runCatching {
+                        appCtx.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                    return
+                }
+                val uri = FileProvider.getUriForFile(appCtx, appCtx.packageName + ".fileprovider", dest)
+                runCatching {
+                    appCtx.startActivity(
+                        Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        },
+                    )
+                }
+            }
+        }
+        ContextCompat.registerReceiver(
+            appCtx,
+            receiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+
+        Toast.makeText(
+            context,
+            "Downloading update… it will install automatically when ready.",
             Toast.LENGTH_LONG,
         ).show()
     } catch (e: Exception) {
-        // Fallback: open the APK FILE url directly so the browser downloads the
-        // .apk — never the /apk landing page.
         runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 }
