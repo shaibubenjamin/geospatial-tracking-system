@@ -29,10 +29,14 @@ class UserCreate(BaseModel):
     # CSV of state names this account may access (e.g. "Sokoto" or "Sokoto,Kano").
     # Null/empty = no implicit access (superadmins always see all states).
     allowed_states: Optional[str] = None
+    # CSV of LGA names to further restrict the account to (e.g. "Binji,Wamako").
+    # Null/empty = no LGA restriction (sees every LGA in its allowed state[s]).
+    allowed_lgas: Optional[str] = None
 
 
 class UserStatesUpdate(BaseModel):
     allowed_states: Optional[str] = None   # CSV; null/empty clears the restriction
+    allowed_lgas: Optional[str] = None     # CSV; when present, sets LGA scope (empty clears it)
 
 
 class UserOut(BaseModel):
@@ -43,6 +47,7 @@ class UserOut(BaseModel):
     is_superadmin: bool = False
     is_active: bool
     allowed_states: Optional[str] = None
+    allowed_lgas: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

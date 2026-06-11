@@ -190,6 +190,10 @@ class User(Base):
     # CSV of state names this account may access (e.g. "Sokoto,Kano"). NULL/empty
     # = no implicit state access; superadmins always see every state regardless.
     allowed_states = Column(Text)
+    # CSV of LGA names this account is further restricted to (e.g. "Binji,Wamako").
+    # NULL/empty = no LGA restriction (sees every LGA in its allowed state[s]).
+    # When set, every coverage/quality/geo query is filtered to these LGAs.
+    allowed_lgas = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 

@@ -127,6 +127,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE sync_history ADD COLUMN IF NOT EXISTS rows_new INTEGER DEFAULT 0",
             # State-based access control: which state(s) a user may see (CSV).
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_states TEXT",
+            # LGA-level access (Phase 2): which LGA(s) a user is restricted to (CSV).
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_lgas TEXT",
             # Per-project public-dashboard opt-in (used by Phase 1b).
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE",
         ]:
