@@ -65,18 +65,29 @@ fun LoginScreen(optionalUpdate: VersionInfo? = null, onLoggedIn: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            "ERITAS MDA Coverage",
-            style = MaterialTheme.typography.headlineSmall,
+            "ERITAS",
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
         )
         Text(
-            "Field coverage monitoring",
+            "Coverage & Data Quality for field campaigns",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Track how far your campaign has reached — in real time, down to the " +
+                "last settlement. See where the gaps are, check the quality of " +
+                "incoming data, and know where to head next.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(26.dp))
 
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(20.dp)) {

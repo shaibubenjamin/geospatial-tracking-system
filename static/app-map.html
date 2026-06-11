@@ -13,43 +13,46 @@
     #map{width:100%;height:100vh}
     .pill{position:absolute;z-index:1000;background:rgba(255,255,255,.95);border-radius:10px;
           padding:7px 11px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
-    #hud{top:8px;left:8px;right:8px;font-size:12px}
-    #hud b{font-size:13px}
-    #hud small{color:#6b7280}
-    #legend{top:44px;right:8px;font-size:10px;color:#374151;display:flex;align-items:center;flex-wrap:wrap;gap:2px;max-width:80%;justify-content:flex-end}
+    #legend{top:8px;right:8px;font-size:10px;color:#374151;display:flex;align-items:center;flex-wrap:wrap;gap:2px;max-width:60%;justify-content:flex-end}
     #legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin:0 3px 0 8px;vertical-align:-1px}
     #legend .dot{width:9px;height:9px;border-radius:50%;border:1px solid #fff}
     #err{top:50%;left:8px;right:8px;transform:translateY(-50%);text-align:center;color:#b91c1c;display:none}
-    /* ── Collapsible LGA → ward → settlement explorer (bottom sheet) ── */
-    #drill{position:absolute;left:0;right:0;bottom:0;z-index:1200;background:#fff;
+    /* ── LGA → ward → settlement explorer: a draggable BOTTOM sheet. Its top &
+       height are set in JS from window.innerHeight (the same reliable value the
+       map uses) — CSS bottom:0 is NOT reliable in this WebView. Drag/tap the
+       handle to bring it up or collapse it; tap a settlement to collapse and see
+       the map. ── */
+    #drill{position:absolute;left:0;right:0;z-index:1200;background:#fff;
       border-radius:16px 16px 0 0;box-shadow:0 -3px 16px rgba(0,0,0,.22);
-      max-height:46vh;display:flex;flex-direction:column;transition:transform .25s ease}
-    #drill.collapsed{transform:translateY(calc(100% - 46px))}
-    #drill-head{display:flex;align-items:center;gap:8px;padding:13px 14px;cursor:pointer;
-      border-bottom:1px solid #eef0f3;flex-shrink:0;user-select:none}
+      display:flex;flex-direction:column;overflow:hidden;transition:top .22s ease,height .22s ease}
+    #drill-head{display:flex;flex-direction:column;padding:7px 13px 9px;cursor:pointer;user-select:none;flex-shrink:0;touch-action:none}
+    #drill-grip{width:40px;height:4px;border-radius:3px;background:#cbd5e1;margin:0 auto 7px}
+    #drill-bar{display:flex;align-items:center;gap:8px;width:100%}
     #drill-crumb{flex:1;font-size:12.5px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #drill-chev{font-size:15px;color:#6b7280;transition:transform .2s}
-    #drill.collapsed #drill-chev{transform:rotate(180deg)}
-    #drill-list{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 0 8px}
-    .drill-row{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid #f4f5f7}
+    #drill-chev{font-size:13px;color:#6b7280;transition:transform .2s}
+    #drill.open #drill-chev{transform:rotate(180deg)}
+    #drill-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;border-top:1px solid #eef0f3}
+    .drill-row{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:pointer;border-bottom:1px solid #f4f5f7}
     .drill-row:active{background:#eef2f7}
     .drill-row .nm{flex:1;font-size:13px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .drill-row .pc{font-size:12px;font-weight:700;min-width:36px;text-align:right}
     .drill-row .ch{color:#9ca3af;font-size:15px}
-    .drill-back{display:flex;align-items:center;padding:9px 14px;color:#2563eb;font-size:12.5px;font-weight:700;cursor:pointer}
+    .drill-back{display:flex;align-items:center;padding:9px 13px;color:#2563eb;font-size:12.5px;font-weight:700;cursor:pointer}
     .drill-back:active{background:#eef2f7}
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div id="hud" class="pill"><b id="hud-title">Loading…</b><br><small id="hud-hint"></small></div>
   <div id="legend" class="pill">
     <span id="lg-area"><i style="background:#dc2626"></i>&lt;40<i style="background:#f59e0b"></i>40–70<i style="background:#16a34a"></i>≥70% visited</span>
     <span id="lg-pts" style="display:none"><i class="dot" style="background:#16a34a"></i>in&nbsp;<i class="dot" style="background:#dc2626"></i>out</span>
   </div>
   <div id="err" class="pill"></div>
   <div id="drill">
-    <div id="drill-head"><span id="drill-crumb">Explore coverage</span><span id="drill-chev">&#9662;</span></div>
+    <div id="drill-head">
+      <div id="drill-grip"></div>
+      <div id="drill-bar"><span id="drill-crumb">Explore coverage</span><span id="drill-chev">&#9650;</span></div>
+    </div>
     <div id="drill-list"></div>
   </div>
   <script>
@@ -68,7 +71,8 @@
 
     // Size the map to the viewport (explicit px — WebView % height is unreliable).
     function sizeMap(){ var h=window.innerHeight||document.documentElement.clientHeight||600;
-      document.getElementById('map').style.height=h+'px'; if(window._map) _map.invalidateSize(); }
+      document.getElementById('map').style.height=h+'px'; if(window._map) _map.invalidateSize();
+      if(typeof placeDrill==='function') placeDrill(); }
     sizeMap(); window.addEventListener('resize',sizeMap);
 
     var map=L.map('map',{preferCanvas:true,zoomControl:true,attributionControl:false,
@@ -141,21 +145,25 @@
         });
       } else if(map.hasLayer(pointsLayer)) map.removeLayer(pointsLayer);
 
-      // HUD + legend
-      var t=document.getElementById('hud-title'), h=document.getElementById('hud-hint');
-      if(z<WARD_Z){ t.textContent='Statewide — LGA coverage'; h.textContent='% settlements visited · pinch to zoom into wards'; }
-      else if(z<SETT_Z){ t.textContent='Wards'; h.textContent='% settlements visited · zoom in for settlements'; }
-      else if(z<PT_Z){ t.textContent='Settlements'; h.textContent='green = visited · red = not · zoom in for GPS points'; }
-      else { t.textContent='Settlements + GPS points'; h.textContent='dots = household GPS submissions'; }
-      document.getElementById('lg-pts').style.display = z>=SETT_Z?'inline':'none';
+      // Legend: reveal the in/out GPS-dot key once points can appear.
+      var lp=document.getElementById('lg-pts'); if(lp) lp.style.display = z>=SETT_Z?'inline':'none';
     }
 
-    // ── Collapsible LGA → ward → settlement explorer ────────────────────────
+    // ── Draggable LGA → ward → settlement explorer (bottom sheet) ────────────
     // Tapping a row flies the map to that area (and reveals the next level via
     // the zoom thresholds above). Tapping a settlement (leaf) collapses the
-    // sheet so the map is fully visible. The header toggles collapse.
+    // sheet so the map is fully visible. Drag/tap the handle to open/collapse.
     var _lgasFC=null, _wardsFC=null, _settCache={};
     var drill={level:0, lga:null, ward:null};
+    var drillOpen=false;
+    // Position the sheet from the TOP using window.innerHeight (reliable here),
+    // not CSS bottom:0 (which this WebView gets wrong).
+    function placeDrill(){ var el=document.getElementById('drill'); if(!el) return;
+      var h=window.innerHeight||document.documentElement.clientHeight||600;
+      var sh = drillOpen ? Math.min(Math.round(h*0.52), 460) : 56;
+      el.style.height=sh+'px'; el.style.top=(h-sh)+'px'; }
+    function setDrillOpen(o){ drillOpen=!!o; var el=document.getElementById('drill');
+      if(el) el.classList.toggle('open',drillOpen); placeDrill(); }
     function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
     function byProp(k){ return function(a,b){ return String((a.properties||{})[k]||'').localeCompare(String((b.properties||{})[k]||'')); }; }
     function fitFeat(f){ try{ map.fitBounds(boundsOf(f),{padding:[22,22],maxZoom: drill.level>=2?15:(drill.level===1?13:11)}); }catch(e){} }
@@ -198,7 +206,7 @@
         if(!setts.length) list.appendChild(drillMsg('No settlements for this ward'));
         setts.forEach(function(f){ var p=f.properties||{};
           list.appendChild(drillRow(p.settlement_name, p.completeness_pct, false, function(){
-            fitFeat(f); document.getElementById('drill').classList.add('collapsed'); })); });
+            fitFeat(f); setDrillOpen(false); })); });
       }
     }
     function loadSettlements(){
@@ -229,15 +237,24 @@
 
       // Wire the drill explorer now that the data is in.
       _lgasFC=lgasFC; _wardsFC=wardsFC;
+      // Handle: tap toggles; a vertical swipe opens (up) / collapses (down).
       var dh=document.getElementById('drill-head');
-      if(dh) dh.onclick=function(){ document.getElementById('drill').classList.toggle('collapsed'); };
-      // Arrived with a focused LGA? open the explorer at that LGA's wards.
+      if(dh){
+        var ty=null, swiped=false, lastTouch=0;
+        dh.addEventListener('touchstart',function(e){ ty=e.touches[0].clientY; swiped=false; },{passive:true});
+        dh.addEventListener('touchmove',function(e){ if(ty!=null && Math.abs(e.touches[0].clientY-ty)>10) swiped=true; },{passive:true});
+        dh.addEventListener('touchend',function(e){ if(ty==null) return;
+          var dy=((((e.changedTouches||[])[0])||{}).clientY||ty)-ty; ty=null; lastTouch=Date.now();
+          if(swiped) setDrillOpen(dy<0); else setDrillOpen(!drillOpen); });
+        dh.addEventListener('click',function(){ if(Date.now()-lastTouch<500) return; setDrillOpen(!drillOpen); });
+      }
+      // Arrived with a focused LGA? pre-set the explorer at that LGA's wards.
       if(fit){
         var match=feats(lgasFC).filter(function(f){var p=f.properties||{};
           return p.lgacode===fit.lgacode || String(p.lga_name||'').trim().toLowerCase()===(fit.name||'').trim().toLowerCase();})[0];
         if(match){ drill.lga=match; drill.level=1; }
       }
-      renderDrill();
+      renderDrill(); placeDrill();
     }).catch(function(e){ err('Could not load coverage: '+e.message+'. Re-open the tab to retry.'); });
   </script>
 </body>
