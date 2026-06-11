@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, select
+from sqlalchemy.exc import IntegrityError
 import bcrypt as _bcrypt
 import jwt
 
@@ -150,9 +151,22 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(require_admin),
 ):
-    existing = await db.execute(select(User).where(User.username == data.username))
+    username = (data.username or "").strip()
+    # Empty email → NULL. `email` is UNIQUE, and storing "" for several users
+    # would itself collide; NULLs don't, so blank stays blank.
+    email = (data.email or "").strip() or None
+
+    existing = await db.execute(select(User).where(User.username == username))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Username already exists")
+        raise HTTPException(status_code=409, detail=f'Username "{username}" is already taken.')
+
+    # Email is UNIQUE. Pre-check so the user gets a clear message instead of a
+    # raw 500 from the DB constraint (which surfaces on the client as a
+    # misleading "Network error").
+    if email:
+        dup = await db.execute(select(User).where(User.email == email))
+        if dup.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail=f'Email "{email}" is already in use by another account.')
 
     # Only superadmins can mint admins or other superadmins.
     if (data.is_admin or data.is_superadmin) and not actor.is_superadmin:
@@ -162,8 +176,8 @@ async def create_user(
         )
 
     user = User(
-        username=data.username,
-        email=data.email,
+        username=username,
+        email=email,
         hashed_password=hash_password(data.password),
         is_admin=data.is_admin or data.is_superadmin,
         is_superadmin=data.is_superadmin,
@@ -171,7 +185,13 @@ async def create_user(
         allowed_lgas=(data.allowed_lgas or None),
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Lost the race against a concurrent create (or any other unique
+        # collision). Roll back so the session is reusable and report cleanly.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="That username or email is already in use.")
     await db.refresh(user)
     return user
 
@@ -205,6 +225,43 @@ async def set_user_states(
 @router.get("/me", response_model=UserOut)
 async def get_me(user: User = Depends(get_current_user)):
     return user
+
+
+@router.get("/scope-options")
+async def scope_options(
+    db: AsyncSession = Depends(get_db),
+    _actor: User = Depends(require_admin),
+):
+    """Distinct states and LGAs known to the platform, for the user-scope
+    pickers in the admin UI. LGAs carry their state so the UI can cascade the
+    LGA list off the chosen state(s). Names are normalised (trim + title-case)
+    and de-duplicated so the same LGA across rounds/projects appears once."""
+    states_res = await db.execute(text("""
+        SELECT DISTINCT INITCAP(TRIM(state_name)) AS s
+        FROM geo_projects
+        WHERE state_name IS NOT NULL AND TRIM(state_name) <> ''
+        ORDER BY s
+    """))
+    states = [r[0] for r in states_res.fetchall()]
+
+    # Union the LGA names from both boundary tables (lgas + wards) so the
+    # picker stays complete even when only one of them is loaded for a project.
+    lgas_res = await db.execute(text("""
+        SELECT DISTINCT lga, st FROM (
+            SELECT INITCAP(TRIM(l.lga_name)) AS lga, INITCAP(TRIM(g.state_name)) AS st
+            FROM lgas l JOIN geo_projects g ON g.id = l.project_id
+            WHERE l.lga_name IS NOT NULL AND TRIM(l.lga_name) <> ''
+            UNION
+            SELECT INITCAP(TRIM(w.lga_name)) AS lga, INITCAP(TRIM(g.state_name)) AS st
+            FROM wards w JOIN geo_projects g ON g.id = w.project_id
+            WHERE w.lga_name IS NOT NULL AND TRIM(w.lga_name) <> ''
+        ) q
+        WHERE st IS NOT NULL AND st <> ''
+        ORDER BY st, lga
+    """))
+    lgas = [{"name": r[0], "state": r[1]} for r in lgas_res.fetchall()]
+
+    return {"states": states, "lgas": lgas}
 
 
 from pydantic import BaseModel, Field  # noqa: E402 — colocated with the route below
