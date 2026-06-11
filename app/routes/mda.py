@@ -3322,10 +3322,18 @@ async def upload_baseline(
             return None
         return next((s for s in wb.sheetnames if s.strip().lower() == name_lc), None)
 
-    # Sheets we look for. CSV has no sheet concept → both come back None and
-    # the function falls through to the single-sheet branch below.
-    target_sheet = find_sheet("r5 target (ward)")
-    raw_sheet = find_sheet("raw data")
+    def find_sheet_where(pred) -> str | None:
+        if wb is None:
+            return None
+        return next((s for s in wb.sheetnames
+                     if pred(" ".join(str(s).split()).strip().lower())), None)
+
+    # The "target (ward)" sheet is named per round — "R5 Target (Ward)",
+    # "Round 3 Target (Ward)", etc. — so match the stable words, not a fixed
+    # round token (R5/R6/Round N all work). CSV has no sheets → None → the
+    # single-sheet branch below handles it.
+    target_sheet = find_sheet_where(lambda n: "target" in n and "ward" in n)
+    raw_sheet = find_sheet("raw data") or find_sheet_where(lambda n: "raw" in n and "data" in n)
 
     # ── Pre-read Raw Data (if present) so the R5 Target path can use its
     #    f/m ratios for proportional split. Keyed by (LGA_upper, WARD_upper).
@@ -3373,23 +3381,36 @@ async def upload_baseline(
         return f, total_band - f
 
     if target_sheet:
-        # ── R5 Target (Ward) — authoritative totals ─────────────────────────
+        # ── Target (Ward) — authoritative totals ────────────────────────────
         ws = wb[target_sheet]
         rows = list(ws.iter_rows(values_only=True))
-        # The R5 Target sheet uses multi-line headers; normalise to one line.
+        # The target sheet uses multi-line headers; normalise to one line.
         header = [" ".join(str(c or "").split()).strip().lower() for c in (rows[0] if rows else [])]
 
         def col(name_lc: str) -> int | None:
             try: return header.index(name_lc)
             except ValueError: return None
 
-        i_lga  = col("lga")
-        i_ward = col("ward")
-        i_1_11 = col("r5 target 1-11 months")
-        i_12_59 = col("r5 target 12-59 months")
-        i_total = col("r5 target")
+        def find_col(pred) -> int | None:
+            return next((idx for idx, h in enumerate(header) if pred(h)), None)
+
+        # Fully round-agnostic. Columns are "<round> Target 1-11 Months",
+        # "<round> Target 12-59 Months" and a grand-total "<round> Target" — the
+        # round token ("R5", "Round 3", …) varies, so match the stable parts:
+        # the band columns contain "N-M months"; the grand total is the column
+        # that ends in "target" (the band columns end in "months").
+        i_lga   = col("lga")
+        i_ward  = col("ward")
+        i_1_11  = find_col(lambda h: "1-11 months" in h)
+        i_12_59 = find_col(lambda h: "12-59 months" in h)
+        i_total = find_col(lambda h: h.endswith("target"))
         if None in (i_lga, i_ward, i_1_11, i_12_59, i_total):
-            raise HTTPException(400, f"'R5 Target (Ward)' sheet is missing expected columns. Found: {header}")
+            raise HTTPException(
+                400,
+                "The target sheet ('" + str(target_sheet) + "') is missing expected columns — need "
+                "LGA, Ward, a '… 1-11 months' target, a '… 12-59 months' target, and a grand-total "
+                "'… Target' column. Found: " + str(header),
+            )
 
         for row in rows[1:]:
             if i_lga >= len(row): continue
