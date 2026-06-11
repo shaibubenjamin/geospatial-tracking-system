@@ -105,16 +105,31 @@
       return L.latLngBounds([[minLat,minLon],[maxLat,maxLon]]);
     }
 
+    // LGAs outside this campaign: track by name so wards/settlements inside
+    // them inherit the "blank" treatment instead of being graded red for 0%.
+    var nonCampaignLgas=Object.create(null);
+    function lgaOutOfCampaign(name){ return !!nonCampaignLgas[String(name==null?'':name).trim().toLowerCase()]; }
+    // Faint neutral fill + dashed border — shared by every level for an LGA
+    // that isn't part of this round.
+    function blankStyle(weight){ return {color:'#94a3b8',weight:weight,opacity:0.6,
+      dashArray:'4 3',fillColor:'#cbd5e1',fillOpacity:0.12}; }
+
     function lgaStyle(f){ var p=f.properties||{};
       // LGAs not part of this campaign (no settlement plan) are shown blank —
       // a faint neutral fill + dashed border — never graded red for "0%".
-      if(p.in_campaign===false) return {color:'#94a3b8',weight:1,opacity:0.6,
-        dashArray:'4 3',fillColor:'#cbd5e1',fillOpacity:0.12};
+      if(p.in_campaign===false) return blankStyle(1);
       return {color:'#1f2937',weight:1.5,opacity:0.85,
         fillColor:visColor(p.visitation_pct),fillOpacity:0.55}; }
-    function wardStyle(f){ return {color:'#374151',weight:0.8,opacity:0.7,
-      fillColor:visColor((f.properties||{}).visitation_pct),fillOpacity:0.45}; }
-    function settStyle(f){ var v=(f.properties||{}).is_visited;
+    function wardStyle(f){ var p=f.properties||{};
+      // A ward whose LGA isn't in this campaign stays blank, matching the LGA
+      // layer — the boundary table holds wards for every LGA, so without this
+      // they'd grade red for 0% once you zoom in.
+      if(lgaOutOfCampaign(p.lga_name)) return blankStyle(0.8);
+      return {color:'#374151',weight:0.8,opacity:0.7,
+        fillColor:visColor(p.visitation_pct),fillOpacity:0.45}; }
+    function settStyle(f){ var p=f.properties||{};
+      if(lgaOutOfCampaign(p.lga_name)) return blankStyle(0.4);
+      var v=p.is_visited;
       return {color:'#ffffff',weight:0.4,opacity:0.5,fillColor:v?'#16a34a':'#dc2626',fillOpacity:0.6}; }
 
     function popupArea(kind){ return function(f,layer){ var p=f.properties||{};
@@ -149,7 +164,10 @@
       // Settlements appear at SETT_Z — lazy-load for each LGA in view.
       if(z>=SETT_Z){ if(!map.hasLayer(settLayer)) settLayer.addTo(map);
         lgaItems.forEach(function(it){
-          if(!loadedSett[it.lgacode] && it.bounds.intersects(b)){
+          // Skip LGAs that aren't part of this campaign — don't even fetch
+          // their settlements (mirrors how a project without their analytics
+          // behaves; keeps the map clean and the payload small on any project).
+          if(!loadedSett[it.lgacode] && it.bounds.intersects(b) && !lgaOutOfCampaign(it.name)){
             loadedSett[it.lgacode]=true;
             get('/api/app/geo/settlements?lgacode='+encodeURIComponent(it.lgacode)+(pid?'&project_id='+pid:''))
               .then(function(d){ settLayer.addData(d); }).catch(function(){});
@@ -160,7 +178,7 @@
       // GPS points appear at PT_Z — lazy-load per LGA in view.
       if(z>=PT_Z){ if(!map.hasLayer(pointsLayer)) pointsLayer.addTo(map); pointsLayer.bringToFront();
         lgaItems.forEach(function(it){
-          if(!loadedPts[it.lgacode] && it.bounds.intersects(b)){
+          if(!loadedPts[it.lgacode] && it.bounds.intersects(b) && !lgaOutOfCampaign(it.name)){
             loadedPts[it.lgacode]=true;
             get('/api/app/geo/points?lgacode='+encodeURIComponent(it.lgacode)+(pid?'&project_id='+pid:'')+'&limit=4000')
               .then(function(d){ pointsLayer.addData(d); }).catch(function(){});
@@ -212,10 +230,12 @@
         crumb.textContent=(lp.lga_name||'LGA')+' › wards';
         list.appendChild(drillBack(function(){ drill.level=0; drill.lga=null; renderDrill(); }));
         var ln=String(lp.lga_name||'').toLowerCase();
+        var lgaOut=lgaOutOfCampaign(lp.lga_name);
+        if(lgaOut) list.appendChild(drillMsg('Not part of this campaign'));
         var wards=feats(_wardsFC).filter(function(w){return String((w.properties||{}).lga_name||'').toLowerCase()===ln;}).sort(byProp('ward_name'));
-        if(!wards.length) list.appendChild(drillMsg('No ward boundaries for this LGA'));
+        if(!wards.length && !lgaOut) list.appendChild(drillMsg('No ward boundaries for this LGA'));
         wards.forEach(function(f){ var p=f.properties||{};
-          list.appendChild(drillRow(p.ward_name, p.visitation_pct, true, function(){
+          list.appendChild(drillRow(p.ward_name, lgaOut?null:p.visitation_pct, true, function(){
             drill.ward=f; drill.level=2; fitFeat(f); loadSettlements(); renderDrill(); })); });
       } else {
         var wp=drill.ward.properties||{};
@@ -242,9 +262,17 @@
 
     Promise.all([ get('/api/app/geo/lgas'+q), get('/api/app/geo/wards'+q) ]).then(function(res){
       var lgasFC=res[0], wardsFC=res[1];
+      // Record which LGAs are outside this campaign BEFORE building the ward /
+      // settlement layers, so the filter below can drop their geometry. This is
+      // what makes every project behave like Sokoto R5 — a greyed LGA shows
+      // nothing on zoom-in instead of a wall of red wards (Kano's full-state
+      // boundary otherwise renders ward polygons for non-campaign LGAs).
+      feats(lgasFC).forEach(function(f){ var p=f.properties||{};
+        if(p.in_campaign===false) nonCampaignLgas[String(p.lga_name||'').trim().toLowerCase()]=true; });
+      var inCampaignFeat=function(f){ return !lgaOutOfCampaign((f.properties||{}).lga_name); };
       lgaLayer=L.geoJSON(lgasFC,{style:lgaStyle,onEachFeature:onArea('Visitation','maplbl-lga','lga_name')}).addTo(map);
-      wardLayer=L.geoJSON(wardsFC,{style:wardStyle,onEachFeature:onArea('Visitation','maplbl-ward','ward_name')});
-      settLayer=L.geoJSON(null,{style:settStyle,onEachFeature:function(f,l){ var p=f.properties||{};
+      wardLayer=L.geoJSON(wardsFC,{style:wardStyle,filter:inCampaignFeat,onEachFeature:onArea('Visitation','maplbl-ward','ward_name')});
+      settLayer=L.geoJSON(null,{style:settStyle,filter:inCampaignFeat,onEachFeature:function(f,l){ var p=f.properties||{};
         l.bindPopup('<b>'+(p.settlement_name||'—')+'</b><br>'+(p.is_visited?'Visited':'Not visited')); }});
       pointsLayer=L.geoJSON(null,{pointToLayer:function(f,ll){ var ib=(f.properties||{}).in_bounds;
         return L.circleMarker(ll,{radius:3,fillColor:ib?'#16a34a':'#dc2626',color:'#fff',weight:0.6,fillOpacity:0.9}); }});
