@@ -42,10 +42,9 @@
     /* ── Area name labels (LGA at the state view, ward as you drill in). White
        halo so they read over any fill; no tooltip box/arrow. ── */
     .maplbl{background:none!important;border:none!important;box-shadow:none!important;padding:0!important;
-      color:#1f2937;font-weight:700;white-space:nowrap;
-      text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff,0 1px 2px #fff}
-    .maplbl.maplbl-lga{font-size:11px}
-    .maplbl.maplbl-ward{font-size:10px;color:#374151;font-weight:600}
+      color:#64748b;font-weight:500;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 2px #fff}
+    .maplbl.maplbl-lga{font-size:11px;color:#475569;font-weight:600}
+    .maplbl.maplbl-ward{font-size:9.5px;color:#94a3b8;font-weight:500}
     .leaflet-tooltip.maplbl::before{display:none!important;border:none!important}
     /* Once ward labels are on (zoomed in), drop the LGA labels to declutter. */
     .leaflet-container.lbl-ward .maplbl-lga{display:none}

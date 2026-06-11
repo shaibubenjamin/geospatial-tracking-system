@@ -1,8 +1,11 @@
 package org.ehealth.eritas.feature.update
 
+import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +54,33 @@ fun openUpdateUrl(context: Context, info: VersionInfo) {
         BuildConfig.BASE_URL.trimEnd('/') + "/" + info.updateUrl.trimStart('/')
     }
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+}
+
+/**
+ * Trigger an in-app download of the latest APK straight from the update button
+ * (it lands in the notification shade — tap to install), instead of bouncing
+ * the user to the download web page. Falls back to the web page if
+ * DownloadManager isn't available.
+ */
+fun downloadUpdate(context: Context, info: VersionInfo) {
+    val name = "eritas-" + (if (info.latest > 0) info.latest.toString() else "latest") + ".apk"
+    val url = BuildConfig.BASE_URL.trimEnd('/') + "/apk/eritas-latest.apk"
+    try {
+        val req = DownloadManager.Request(Uri.parse(url))
+            .setTitle("ERITAS update")
+            .setDescription("Downloading the latest version…")
+            .setMimeType("application/vnd.android.package-archive")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, name)
+        (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+        Toast.makeText(
+            context,
+            "Downloading update… open it from your notifications to install.",
+            Toast.LENGTH_LONG,
+        ).show()
+    } catch (e: Exception) {
+        openUpdateUrl(context, info)   // fallback: the browser download page
+    }
 }
 
 /**
@@ -137,7 +167,7 @@ private fun UpdateRequiredScreen(info: VersionInfo) {
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.padding(16.dp))
-            Button(onClick = { openUpdateUrl(context, info) }) {
+            Button(onClick = { downloadUpdate(context, info) }) {
                 Text("Update now")
             }
         }
@@ -164,7 +194,7 @@ fun UpdateBanner(info: VersionInfo, onDismiss: () -> Unit) {
                 modifier = Modifier.padding(end = 8.dp),
             )
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { openUpdateUrl(context, info) }) { Text("Update") }
+            TextButton(onClick = { downloadUpdate(context, info) }) { Text("Update") }
             TextButton(onClick = onDismiss) { Text("Later") }
         }
     }
