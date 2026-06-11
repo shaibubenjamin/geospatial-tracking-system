@@ -26,6 +26,22 @@ def allowed_states_of(user: "Optional[User]") -> "Optional[set]":
     raw = (getattr(user, "allowed_states", None) or "").strip()
     return {s.strip().lower() for s in raw.split(",") if s.strip()}
 
+
+def allowed_lgas_of(user: "Optional[User]") -> "Optional[set]":
+    """Lowercased set of LGA names an account is restricted to, or None for NO
+    LGA restriction. None covers superadmins/admins, the anonymous/public path,
+    AND a state-scoped user who isn't pinned to specific LGAs (they see every LGA
+    in their state). A set means the account is LGA-scoped — every coverage /
+    quality / geo query must filter to these LGAs. A NON-empty allowed_lgas that
+    parses to an empty set returns the empty set (→ no rows), never None, so a
+    malformed value fails closed rather than leaking everything."""
+    if user is None or getattr(user, "is_superadmin", False) or getattr(user, "is_admin", False):
+        return None
+    raw = (getattr(user, "allowed_lgas", None) or "").strip()
+    if not raw:
+        return None  # state-scoped but not LGA-scoped → all LGAs in their state(s)
+    return {s.strip().lower() for s in raw.split(",") if s.strip()}
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
@@ -152,6 +168,7 @@ async def create_user(
         is_admin=data.is_admin or data.is_superadmin,
         is_superadmin=data.is_superadmin,
         allowed_states=(data.allowed_states or None),
+        allowed_lgas=(data.allowed_lgas or None),
     )
     db.add(user)
     await db.commit()
@@ -166,8 +183,10 @@ async def set_user_states(
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(require_admin),
 ):
-    """Set which state(s) a user may access (CSV, e.g. 'Sokoto,Kano'). Clearing
-    it (empty) grants unrestricted access and is superadmin-only."""
+    """Set which state(s) a user may access (CSV, e.g. 'Sokoto,Kano') and,
+    optionally, which LGA(s) within them (CSV). Clearing states (empty) grants
+    unrestricted access and is superadmin-only. allowed_lgas is set whenever the
+    field is present on the request (empty/omitted → no LGA restriction)."""
     res = await db.execute(select(User).where(User.id == user_id))
     target = res.scalar_one_or_none()
     if not target:
@@ -176,6 +195,8 @@ async def set_user_states(
     if not states and not actor.is_superadmin:
         raise HTTPException(status_code=403, detail="Only a superadmin can clear a user's state restriction")
     target.allowed_states = states or None
+    if data.allowed_lgas is not None:
+        target.allowed_lgas = (data.allowed_lgas or "").strip() or None
     await db.commit()
     await db.refresh(target)
     return target
