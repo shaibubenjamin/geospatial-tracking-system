@@ -14,7 +14,7 @@ plugins {
 //   • appVersionName is the human-facing label shown in-app and on /apk.
 // The CI workflow reads these same two values from this file, so the built APK,
 // its published filename, and /version always agree.
-val appVersionCode = 266
+val appVersionCode = 267
 val appVersionName = "1.0"
 
 // ── Release signing ──────────────────────────────────────────────────────────
