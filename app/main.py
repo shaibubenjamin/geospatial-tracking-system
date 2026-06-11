@@ -156,6 +156,21 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+    # Public-dashboard backfill: preserve the existing public view by marking the
+    # active project public — but ONLY if no project is public yet (first run).
+    # After that, admins control is_public per project (so this never clobbers a
+    # deliberate toggle).
+    async with AsyncSessionLocal() as db:
+        try:
+            await db.execute(text("""
+                UPDATE geo_projects SET is_public = TRUE
+                WHERE is_active = TRUE
+                  AND NOT EXISTS (SELECT 1 FROM geo_projects WHERE is_public = TRUE)
+            """))
+            await db.commit()
+        except Exception:
+            pass
+
     # One-time backfill: GPS-accuracy threshold (set to 20 m for R5).
     # Scoped to the ACTIVE project only — R4 historical data stays at its
     # original threshold so existing reports aren't retroactively rewritten.

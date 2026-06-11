@@ -48,10 +48,14 @@ async def list_projects(
         )
     )
     projects = result.scalars().all()
-    # State scope: a non-superadmin only sees their assigned state(s).
-    allowed = allowed_states_of(_user)
-    if allowed is not None:
-        projects = [p for p in projects if (p.state_name or "").strip().lower() in allowed]
+    if _user is None:
+        # Anonymous (public dashboard) → only projects opted in as public.
+        projects = [p for p in projects if bool(getattr(p, "is_public", False))]
+    else:
+        # State scope: a non-(super)admin only sees their assigned state(s).
+        allowed = allowed_states_of(_user)
+        if allowed is not None:
+            projects = [p for p in projects if (p.state_name or "").strip().lower() in allowed]
     return projects
 
 
@@ -121,6 +125,8 @@ async def update_project(
         project.campaign_start_date = data.campaign_start_date
     if data.campaign_end_date is not None:
         project.campaign_end_date = data.campaign_end_date
+    if data.is_public is not None:
+        project.is_public = data.is_public
     if data.is_active is not None:
         # Deactivate all others if activating this one
         if data.is_active:
