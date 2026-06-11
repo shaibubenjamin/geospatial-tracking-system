@@ -2822,7 +2822,10 @@ async def geo_settlements_coverage(
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
                COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
-               ST_AsGeoJSON(s.geom) AS geom
+               -- Simplify geometry (~33 m) — settlement polygons are tiny at map
+               -- scale, so this sharply cuts the GeoJSON payload (faster load on
+               -- the phone) with no visible change.
+               ST_AsGeoJSON(ST_SimplifyPreserveTopology(s.geom, 0.0003)) AS geom
         FROM settlement_analytics sa
         JOIN settlements s ON s.id = sa.settlement_id
         WHERE {where}
