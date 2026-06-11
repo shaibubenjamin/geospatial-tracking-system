@@ -156,16 +156,22 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
-    # Public-dashboard backfill: preserve the existing public view by marking the
-    # active project public — but ONLY if no project is public yet (first run).
-    # After that, admins control is_public per project (so this never clobbers a
-    # deliberate toggle).
+    # Public-dashboard backfill: preserve the existing public view by marking
+    # ONE project public — but ONLY if no project is public yet (first run).
+    # Prefer the active project; if none is active (e.g. the campaign was marked
+    # ended), fall back to the newest round so the public dashboard is never left
+    # empty. After that, admins control is_public per project (this never
+    # clobbers a deliberate toggle thanks to the NOT EXISTS guard).
     async with AsyncSessionLocal() as db:
         try:
             await db.execute(text("""
                 UPDATE geo_projects SET is_public = TRUE
-                WHERE is_active = TRUE
-                  AND NOT EXISTS (SELECT 1 FROM geo_projects WHERE is_public = TRUE)
+                WHERE id = (
+                    SELECT id FROM geo_projects
+                    ORDER BY is_active DESC, round_number DESC NULLS LAST, id DESC
+                    LIMIT 1
+                )
+                AND NOT EXISTS (SELECT 1 FROM geo_projects WHERE is_public = TRUE)
             """))
             await db.commit()
         except Exception:
