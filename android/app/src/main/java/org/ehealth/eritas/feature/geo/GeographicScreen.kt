@@ -35,7 +35,7 @@ import kotlin.math.roundToInt
  * the at-a-glance % the map can't; the map gives the where.
  */
 @Composable
-fun GeographicScreen(projectId: Int?, focusLga: String? = null) {
+fun GeographicScreen(projectId: Int?, focusLga: String? = null, focusSettlement: String? = null) {
     var summary by remember { mutableStateOf<GeoSummary?>(null) }
 
     LaunchedEffect(projectId) {
@@ -50,6 +50,7 @@ fun GeographicScreen(projectId: Int?, focusLga: String? = null) {
             path = "/app/map",
             projectId = projectId,
             focusLga = focusLga,
+            focusSettlement = focusSettlement,
             modifier = Modifier.fillMaxWidth().weight(1f),
         )
     }

@@ -55,7 +55,7 @@ private fun coverageColor(pct: Double) = when {
 }
 
 @Composable
-fun LgaCoverageScreen(projectId: Int?, onOpenMap: (String) -> Unit = {}) {
+fun LgaCoverageScreen(projectId: Int?, onOpenMap: (String, String?) -> Unit = { _, _ -> }) {
     var selectedLga by remember { mutableStateOf<String?>(null) }
     var selectedWard by remember { mutableStateOf<String?>(null) }
 
@@ -95,7 +95,7 @@ fun LgaCoverageScreen(projectId: Int?, onOpenMap: (String) -> Unit = {}) {
 private fun LgaListPage(
     projectId: Int?,
     onOpenLga: (String?) -> Unit,
-    onOpenMap: (String) -> Unit,
+    onOpenMap: (String, String?) -> Unit,
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -138,7 +138,7 @@ private fun LgaListPage(
                 )
             }
             items(rows) { row ->
-                LgaRow(row, onOpenMap = { row.lga?.let(onOpenMap) }) { onOpenLga(row.lga) }
+                LgaRow(row, onViewMap = { row.lga?.let { onOpenMap(it, null) } }) { onOpenLga(row.lga) }
             }
         }
     }
@@ -205,7 +205,7 @@ private fun WardCoveragePage(
     lga: String,
     projectId: Int?,
     onBack: () -> Unit,
-    onOpenMap: (String) -> Unit,
+    onOpenMap: (String, String?) -> Unit,
     onOpenWard: (String) -> Unit,
 ) {
     var loading by remember { mutableStateOf(true) }
@@ -253,7 +253,7 @@ private fun WardCoveragePage(
                 items(wards) { w ->
                     WardCard(
                         w,
-                        onViewMap = { (w.lga ?: lga).let(onOpenMap) },
+                        onViewMap = { onOpenMap(w.lga ?: lga, null) },
                     ) { w.wardName?.let(onOpenWard) }
                 }
             }
@@ -262,7 +262,7 @@ private fun WardCoveragePage(
 }
 
 @Composable
-private fun LgaRow(row: LgaCoverage, onOpenMap: (String) -> Unit, onClick: () -> Unit) {
+private fun LgaRow(row: LgaCoverage, onViewMap: () -> Unit, onClick: () -> Unit) {
     val pct = row.coveragePct
     val color = coverageColor(pct)
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
@@ -287,7 +287,7 @@ private fun LgaRow(row: LgaCoverage, onOpenMap: (String) -> Unit, onClick: () ->
                     )
                     // Tapping the pin opens the Map tab on this LGA (doesn't
                     // trigger the card's drill-to-wards — the button consumes it).
-                    IconButton(onClick = { row.lga?.let(onOpenMap) }) {
+                    IconButton(onClick = onViewMap) {
                         Icon(
                             Icons.Filled.Place,
                             contentDescription = "View on map",
@@ -384,7 +384,7 @@ private fun SettlementCoveragePage(
     ward: String,
     projectId: Int?,
     onBack: () -> Unit,
-    onOpenMap: (String) -> Unit,
+    onOpenMap: (String, String?) -> Unit,
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -436,7 +436,7 @@ private fun SettlementCoveragePage(
                     )
                 }
                 items(setts) { s ->
-                    SettlementCard(s, onViewMap = { (s.lgaName ?: lga).let(onOpenMap) })
+                    SettlementCard(s, onViewMap = { onOpenMap(s.lgaName ?: lga, s.settlementName) })
                 }
             }
         }

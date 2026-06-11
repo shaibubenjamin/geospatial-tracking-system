@@ -79,7 +79,11 @@ fun downloadUpdate(context: Context, info: VersionInfo) {
             Toast.LENGTH_LONG,
         ).show()
     } catch (e: Exception) {
-        openUpdateUrl(context, info)   // fallback: the browser download page
+        // Fallback: open the APK FILE url directly so the browser downloads the
+        // .apk — never the /apk landing page.
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
     }
 }
 

@@ -172,7 +172,7 @@ async def resolve_pid(
     This is the single choke-point every project-scoped endpoint depends on, so
     state access is enforced identically for the web platform and the app.
     """
-    scoped = user is not None and not user.is_superadmin
+    scoped = user is not None and not user.is_superadmin and not user.is_admin
     allowed = allowed_states_of(user) if scoped else None  # a set for scoped users
 
     if project_id is not None:
@@ -2810,12 +2810,20 @@ async def geo_lgas_coverage(
                  -- the web map's LGA choropleth; "have we reached here at all?").
                  AVG(CASE WHEN COALESCE(point_count,0) > 0 THEN 1.0 ELSE 0.0 END) AS visit_frac
           FROM settlement_analytics WHERE project_id = :pid GROUP BY lgacode
+        ),
+        campaign AS (
+          -- LGAs actually part of THIS round: a baseline target OR submitted
+          -- households. Project-dynamic, so it's correct for any state/round
+          -- (not just whichever LGAs happen to have settlement_analytics rows).
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_baseline   WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+          UNION
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_households  WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
         )
         SELECT l.lga_name, l.lgacode,
                ST_AsGeoJSON(l.geom) AS geom,
                COALESCE(cov.frac, 0)::float AS frac,
                COALESCE(cov.visit_frac, 0)::float AS visit_frac,
-               (cov.lgacode IS NOT NULL) AS in_campaign
+               EXISTS (SELECT 1 FROM campaign c WHERE c.lga_u = upper(trim(l.lga_name))) AS in_campaign
         FROM lgas l LEFT JOIN cov ON cov.lgacode = l.lgacode
         WHERE l.project_id = :bpid
     """), {"pid": pid, "bpid": bpid})
@@ -2825,9 +2833,9 @@ async def geo_lgas_coverage(
         if not r.geom:
             continue
         frac = float(r.frac or 0)
-        # in_campaign: the LGA has settlement_analytics rows (it was part of this
-        # round's plan). LGAs in the boundary but NOT in the campaign have none —
-        # the map renders those blank instead of grading them red (0% coverage).
+        # in_campaign: the LGA was targeted (baseline) or submitted forms this
+        # round. LGAs in the boundary but NOT in the campaign render blank on the
+        # map instead of being graded red for 0% — works for any state/round.
         feats.append({"type": "Feature", "geometry": _json.loads(r.geom),
                       "properties": {"lga_name": r.lga_name, "lgacode": r.lgacode,
                                      "coverage_pct": round(100.0 * frac, 1),
