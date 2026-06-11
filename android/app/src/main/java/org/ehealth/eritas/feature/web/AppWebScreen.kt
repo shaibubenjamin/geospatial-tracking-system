@@ -28,18 +28,22 @@ fun AppWebScreen(
     // When set, the page can call `Native.openMap(lgacode)` to jump to the map
     // (the dashboard's LGA-coverage rows use this). Runs on the main thread.
     onOpenMap: ((String) -> Unit)? = null,
-    // When set, appended as ?focus=<lgacode> so the map page zooms to that LGA.
+    // When set, appended as ?focus=<lga> so the map page zooms to that LGA.
     focusLga: String? = null,
+    // When set, appended as &focus_settlement=<name> so the map zooms onto that
+    // settlement (URL-encoded — names have spaces/apostrophes).
+    focusSettlement: String? = null,
     // When true, append ?app=1 (the wrapped /mda reads this to switch to its
     // guarded mobile layout).
     appMode: Boolean = false,
 ) {
-    val url = remember(path, projectId, focusLga, appMode) {
+    val url = remember(path, projectId, focusLga, focusSettlement, appMode) {
         val token = ServiceLocator.tokenStore.token.orEmpty()
         val params = buildList {
             if (appMode) add("app=1")
             projectId?.let { add("project_id=$it") }
             focusLga?.let { add("focus=$it") }
+            focusSettlement?.let { add("focus_settlement=" + java.net.URLEncoder.encode(it, "UTF-8")) }
         }.joinToString("&")
         BuildConfig.BASE_URL.trimEnd('/') + path +
             (if (params.isNotEmpty()) "?$params" else "") +

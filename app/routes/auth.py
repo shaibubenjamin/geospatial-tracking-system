@@ -19,7 +19,9 @@ def allowed_states_of(user: "Optional[User]") -> "Optional[set]":
     superadmin, or the anonymous/public path which is gated separately). A set
     (possibly empty → no access) for a state-scoped account. Single enforcement
     point shared by the web platform and the Android app."""
-    if user is None or getattr(user, "is_superadmin", False):
+    # Admins AND superadmins see every state (HQ view); only non-admin accounts
+    # are state-scoped.
+    if user is None or getattr(user, "is_superadmin", False) or getattr(user, "is_admin", False):
         return None
     raw = (getattr(user, "allowed_states", None) or "").strip()
     return {s.strip().lower() for s in raw.split(",") if s.strip()}

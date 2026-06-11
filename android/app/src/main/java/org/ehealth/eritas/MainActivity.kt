@@ -124,9 +124,10 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var bannerDismissed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    // Set when an LGA's map pin is tapped on the Coverage tab — switches to the
-    // Map tab focused on that LGA.
+    // Set when a map pin is tapped on the Coverage tab — switches to the Geo tab
+    // focused on that LGA, and (for a settlement pin) zoomed onto the settlement.
     var mapFocusLga by remember { mutableStateOf<String?>(null) }
+    var mapFocusSettlement by remember { mutableStateOf<String?>(null) }
 
     // Campaign switching is allowed ONLY on the Dashboard. Changing the project
     // updates `projectId`, which every tab reads, so they all reload with the
@@ -244,13 +245,15 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 // the Geo tab focused on that LGA.
                 Tab.COVERAGE -> LgaCoverageScreen(
                     projectId = projectId,
-                    onOpenMap = { lga -> mapFocusLga = lga; selectedTab = Tab.GEO },
+                    onOpenMap = { lga, settlement ->
+                        mapFocusLga = lga; mapFocusSettlement = settlement; selectedTab = Tab.GEO
+                    },
                 )
                 // Native QC + team + daily-trend metrics.
                 Tab.QUALITY -> QualityScreen(projectId)
                 // Geographic — coverage % cards over the Leaflet map. Honour a
                 // pending LGA focus from a Coverage row's map pin.
-                Tab.GEO -> GeographicScreen(projectId, focusLga = mapFocusLga)
+                Tab.GEO -> GeographicScreen(projectId, focusLga = mapFocusLga, focusSettlement = mapFocusSettlement)
                 Tab.FIELD_GUIDE -> MyAreaScreen(projectId)
             }
         }

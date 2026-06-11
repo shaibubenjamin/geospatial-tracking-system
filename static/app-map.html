@@ -42,12 +42,15 @@
     /* ── Area name labels (LGA at the state view, ward as you drill in). White
        halo so they read over any fill; no tooltip box/arrow. ── */
     .maplbl{background:none!important;border:none!important;box-shadow:none!important;padding:0!important;
-      color:#64748b;font-weight:500;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 2px #fff}
-    .maplbl.maplbl-lga{font-size:11px;color:#475569;font-weight:600}
-    .maplbl.maplbl-ward{font-size:9.5px;color:#94a3b8;font-weight:500}
+      white-space:nowrap;text-shadow:0 0 2px #fff,0 0 2px #fff}
+    .maplbl.maplbl-lga{font-size:10.5px;color:#6b7280;font-weight:500}
+    .maplbl.maplbl-ward{font-size:9px;color:#9aa7b5;font-weight:400}
     .leaflet-tooltip.maplbl::before{display:none!important;border:none!important}
-    /* Once ward labels are on (zoomed in), drop the LGA labels to declutter. */
-    .leaflet-container.lbl-ward .maplbl-lga{display:none}
+    /* Keep the map from being a wall of text: ward labels only appear once you
+       zoom into an LGA, and LGA labels step aside then. */
+    .maplbl-ward{display:none}
+    .leaflet-container.zlbl-ward .maplbl-ward{display:block}
+    .leaflet-container.zlbl-ward .maplbl-lga{display:none}
   </style>
 </head>
 <body>
@@ -131,7 +134,9 @@
       if(!lgaLayer) return;
       var z=map.getZoom(), b=map.getBounds();
       // Show LGA names at the state view; swap to ward names once zoomed in.
-      map.getContainer().classList.toggle('lbl-ward', z>=WARD_Z);
+      // Ward names only once zoomed into ~one LGA (z>=11) — far less busy than
+      // labelling every ward across the whole state at the ward-reveal zoom.
+      map.getContainer().classList.toggle('zlbl-ward', z>=11);
 
       // LGA fill fades as we zoom in; borders stay.
       lgaLayer.setStyle({fillOpacity: z<WARD_Z?0.55 : z<SETT_Z?0.12 : 0.0, opacity: z<SETT_Z?0.85:0.5});
@@ -250,6 +255,15 @@
       var focus=qp('focus'), fl=focus?String(focus).trim().toLowerCase():'';
       var fit=focus&&lgaItems.filter(function(x){return x.lgacode===focus || (x.name||'').trim().toLowerCase()===fl;})[0];
       try{ if(fit){ map.fitBounds(fit.bounds,{padding:[24,24],maxZoom:11}); } else { map.fitBounds(lgaLayer.getBounds(),{padding:[16,16],maxZoom:8}); } }catch(e){}
+      // ?focus_settlement=<name> (from a Coverage settlement pin) → after the LGA
+      // fit, load that LGA's settlements, find it by name and zoom right onto it.
+      var fSett=qp('focus_settlement');
+      if(fSett && fit){
+        get('/api/app/geo/settlements?lgacode='+encodeURIComponent(fit.lgacode)+(pid?'&project_id='+pid:''))
+          .then(function(d){ var w=String(fSett).trim().toLowerCase();
+            var f=feats(d).filter(function(s){return String((s.properties||{}).settlement_name||'').trim().toLowerCase()===w;})[0];
+            if(f&&f.geometry){ try{ map.fitBounds(boundsOf(f),{padding:[30,30],maxZoom:16}); }catch(e){} } }).catch(function(){});
+      }
       sizeMap(); update();
       map.on('zoomend moveend', update);
 
