@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
                             optionalUpdate = optionalUpdate,
                             onLogout = {
                                 ServiceLocator.tokenStore.clear()
+                                ServiceLocator.projectStore.clear()
                                 SessionManager.reset()
                                 loggedIn = false
                             },

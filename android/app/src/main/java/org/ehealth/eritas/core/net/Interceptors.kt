@@ -48,6 +48,9 @@ class UnauthorizedInterceptor(private val tokenStore: TokenStore) : Interceptor 
         when (response.code) {
             401 -> {
                 tokenStore.clear()
+                // Forget the selected project too, so the next account doesn't
+                // inherit a round it can't access (e.g. an out-of-state LGA login).
+                ServiceLocator.projectStore.clear()
                 SessionManager.onUnauthorized()
             }
             // 426 Upgrade Required: this install is below the force-update floor.
