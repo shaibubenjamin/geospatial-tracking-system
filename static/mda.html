@@ -2291,6 +2291,22 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   /* ── FILTER STATE ── */
   let FILTER = { lga: '', ward: '' };
 
+  // For an LGA-scoped login the data (and therefore these dropdowns) only ever
+  // contain that one LGA. Auto-select it, hide "All LGAs", and lock the control
+  // so the LGA is fixed — the user can still pick a ward within it. Multi-LGA
+  // and unrestricted accounts (2+ options) are left fully selectable.
+  function lockSingleLgaFilter(lgaSelId, wardSelId) {
+    const sel = document.getElementById(lgaSelId);
+    if (!sel) return;
+    const real = Array.from(sel.options).filter(o => o.value);
+    if (real.length !== 1) return;
+    sel.value = real[0].value;
+    Array.from(sel.options).forEach(o => { if (!o.value) o.hidden = true; });
+    sel.disabled = true;
+    sel.title = 'Locked to your assigned LGA';
+    if (wardSelId) loadWardOptions(real[0].value, wardSelId);
+  }
+
   function populateLGAFilter() {
     const lsEl = document.getElementById('f-lga');
     if (!lsEl || lsEl.options.length > 1 || !lgaCovData.length) return;
@@ -2299,6 +2315,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       o.value = r.lga; o.textContent = r.lga;
       lsEl.appendChild(o);
     });
+    lockSingleLgaFilter('f-lga', 'f-ward');
   }
 
   async function applyFilter() {
@@ -2646,6 +2663,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       o.value = r.lga; o.textContent = r.lga;
       sel.appendChild(o);
     });
+    lockSingleLgaFilter('cov-f-lga', 'cov-f-ward');
   }
 
   window.applyCovFilter = applyCovFilter;
@@ -5486,6 +5504,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       o.value = lga; o.textContent = lga;
       sel.appendChild(o);
     });
+    lockSingleLgaFilter('qc-f-lga', 'qc-f-ward');
   }
 
   function applyQCFilter() {
