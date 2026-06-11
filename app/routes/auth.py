@@ -10,8 +10,19 @@ import jwt
 
 from app.database import get_db
 from app.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
-from app.schemas import LoginRequest, TokenResponse, UserCreate, UserOut
+from app.schemas import LoginRequest, TokenResponse, UserCreate, UserOut, UserStatesUpdate
 from app.models import User
+
+
+def allowed_states_of(user: "Optional[User]") -> "Optional[set]":
+    """Lowercased set of state names an account may access. None = ALL (a
+    superadmin, or the anonymous/public path which is gated separately). A set
+    (possibly empty → no access) for a state-scoped account. Single enforcement
+    point shared by the web platform and the Android app."""
+    if user is None or getattr(user, "is_superadmin", False):
+        return None
+    raw = (getattr(user, "allowed_states", None) or "").strip()
+    return {s.strip().lower() for s in raw.split(",") if s.strip()}
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
@@ -138,11 +149,34 @@ async def create_user(
         hashed_password=hash_password(data.password),
         is_admin=data.is_admin or data.is_superadmin,
         is_superadmin=data.is_superadmin,
+        allowed_states=(data.allowed_states or None),
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.put("/users/{user_id}/states", response_model=UserOut)
+async def set_user_states(
+    user_id: int,
+    data: UserStatesUpdate,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin),
+):
+    """Set which state(s) a user may access (CSV, e.g. 'Sokoto,Kano'). Clearing
+    it (empty) grants unrestricted access and is superadmin-only."""
+    res = await db.execute(select(User).where(User.id == user_id))
+    target = res.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    states = (data.allowed_states or "").strip()
+    if not states and not actor.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only a superadmin can clear a user's state restriction")
+    target.allowed_states = states or None
+    await db.commit()
+    await db.refresh(target)
+    return target
 
 
 @router.get("/me", response_model=UserOut)

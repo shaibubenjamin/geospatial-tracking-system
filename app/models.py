@@ -184,6 +184,9 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     is_superadmin = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    # CSV of state names this account may access (e.g. "Sokoto,Kano"). NULL/empty
+    # = no implicit state access; superadmins always see every state regardless.
+    allowed_states = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 

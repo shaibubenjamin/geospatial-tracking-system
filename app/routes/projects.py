@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models import GeoProject, User
 from app.schemas import ProjectCreate, ProjectUpdate, ProjectOut
-from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin
+from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin, allowed_states_of
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -47,7 +47,12 @@ async def list_projects(
             GeoProject.id.asc(),
         )
     )
-    return result.scalars().all()
+    projects = result.scalars().all()
+    # State scope: a non-superadmin only sees their assigned state(s).
+    allowed = allowed_states_of(_user)
+    if allowed is not None:
+        projects = [p for p in projects if (p.state_name or "").strip().lower() in allowed]
+    return projects
 
 
 @router.post("", response_model=ProjectOut)

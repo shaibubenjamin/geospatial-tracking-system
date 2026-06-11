@@ -125,12 +125,36 @@ async def lifespan(app: FastAPI):
             # row count. The UI shows rows_new on the history table because
             # that's the number the operator cares about.
             "ALTER TABLE sync_history ADD COLUMN IF NOT EXISTS rows_new INTEGER DEFAULT 0",
+            # State-based access control: which state(s) a user may see (CSV).
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_states TEXT",
+            # Per-project public-dashboard opt-in (used by Phase 1b).
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 await db.execute(text(stmt))
             except Exception:
                 pass
         await db.commit()
+
+    # Access-control backfill: scope existing non-superadmin accounts to the
+    # currently-loaded state(s) so they keep working but DON'T silently gain
+    # access to new states (e.g. Kano) once those are loaded. Superadmins are
+    # left unrestricted (they see all). Only touches accounts with no scope yet,
+    # so it never overwrites a state list an admin has set.
+    async with AsyncSessionLocal() as db:
+        try:
+            await db.execute(text("""
+                UPDATE users
+                SET allowed_states = COALESCE((
+                    SELECT string_agg(DISTINCT state_name, ',')
+                    FROM geo_projects WHERE state_name IS NOT NULL
+                ), 'Sokoto')
+                WHERE is_superadmin = FALSE
+                  AND (allowed_states IS NULL OR allowed_states = '')
+            """))
+            await db.commit()
+        except Exception:
+            pass
 
     # One-time backfill: GPS-accuracy threshold (set to 20 m for R5).
     # Scoped to the ACTIVE project only — R4 historical data stays at its

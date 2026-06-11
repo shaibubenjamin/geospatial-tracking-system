@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 from app.database import get_db
 from app.models import User
-from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin
+from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin, allowed_states_of
 from app.config import DATABASE_URL_SYNC
 
 logger = logging.getLogger(__name__)
@@ -156,15 +156,49 @@ def _get_sync_conn():
     return psycopg2.connect(DATABASE_URL_SYNC)
 
 
-async def resolve_pid(project_id: Optional[int] = None, db: AsyncSession = Depends(get_db)) -> int:
-    """Resolve which project's data to query.
+async def resolve_pid(
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    user: "Optional[User]" = Depends(get_current_user_optional),
+) -> int:
+    """Resolve which project's data to query, enforcing per-user STATE access.
 
-    - Explicit ?project_id=N in the request → that project (lets users view any historical round).
-    - Otherwise → the project flagged is_active = TRUE (default behaviour).
-    - As a last resort → the lowest-id project (so a fresh DB without an active project still works).
+    - Explicit ?project_id=N → that project, but a state-scoped (non-superadmin)
+      user gets 403 if it belongs to a state they're not assigned to.
+    - Otherwise → the active project within the user's state(s); falls back to
+      the global active project for superadmins and the public dashboard.
+    - Last resort → the lowest-id project (fresh DB).
+
+    This is the single choke-point every project-scoped endpoint depends on, so
+    state access is enforced identically for the web platform and the app.
     """
+    scoped = user is not None and not user.is_superadmin
+    allowed = allowed_states_of(user) if scoped else None  # a set for scoped users
+
     if project_id is not None:
+        if scoped:
+            state = (await db.execute(
+                text("SELECT state_name FROM geo_projects WHERE id = :id"),
+                {"id": project_id},
+            )).scalar()
+            if (state or "").strip().lower() not in (allowed or set()):
+                raise HTTPException(status_code=403, detail="You don't have access to this campaign.")
         return project_id
+
+    if scoped:
+        if allowed:
+            row = (await db.execute(
+                text("SELECT id FROM geo_projects WHERE lower(state_name) = ANY(:st) "
+                     "ORDER BY is_active DESC, round_number DESC NULLS LAST, id LIMIT 1"),
+                {"st": list(allowed)},
+            )).fetchone()
+            if row:
+                return row[0]
+        # A scoped user with no project in their state(s) sees NOTHING — never
+        # fall through to another state's data.
+        raise HTTPException(status_code=403, detail="No campaign is available for your assigned state(s).")
+
+    # Superadmin / anonymous (public) / unrestricted → global active project.
     res = await db.execute(text("SELECT id FROM geo_projects WHERE is_active = TRUE ORDER BY id LIMIT 1"))
     row = res.fetchone()
     if row:

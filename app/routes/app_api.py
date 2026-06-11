@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import GeoProject, User
-from app.routes.auth import get_current_user
+from app.routes.auth import get_current_user, allowed_states_of
 from typing import Optional as _Optional
 
 from app.routes.mda import (
@@ -60,6 +60,10 @@ async def app_projects(
         )
     )
     projects = res.scalars().all()
+    # State scope: a non-superadmin only sees their assigned state(s).
+    allowed = allowed_states_of(_u)
+    if allowed is not None:
+        projects = [p for p in projects if (p.state_name or "").strip().lower() in allowed]
     return [
         {
             "id": p.id,
