@@ -828,22 +828,26 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
 async def rounds_summary(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    _deny: None = Depends(deny_lga_scoped),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Per-round summary. When ``project_id`` is supplied, the query scopes
     to that project's state — so switching to "Kano Round 1" only returns
     Kano rounds, not Sokoto. With no ``project_id`` it returns every round
-    of every state (the original cross-state view)."""
+    of every state (the original cross-state view). An LGA-scoped account sees
+    each round's totals for its own LGA only."""
     # Every per-project subquery filters received_on >= the project's official
     # campaign_start_date (when set) so pre-campaign test submissions are
     # excluded from period dates, totals, refusal counts and QC totals.
     # COALESCE keeps it a no-op for projects without a configured start.
-    DATE_CLAUSE = """
+    params: dict = {}
+    lgas = allowed_lgas_of(_u)
+    lga_h = _lga_and(lgas, "h.lga", params)   # baked into every household subquery
+    lga_b = _lga_and(lgas, "b.lga", params)   # for the baseline subquery
+    DATE_CLAUSE = f"""
         AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-            >= COALESCE(p.campaign_start_date, '1900-01-01'::date)
+            >= COALESCE(p.campaign_start_date, '1900-01-01'::date){lga_h}
     """
     state_filter_sql = ""
-    params: dict = {}
     if project_id is not None:
         state_filter_sql = """
         WHERE p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)
@@ -854,7 +858,7 @@ async def rounds_summary(
             SELECT
               p.id, p.state_name, p.round_number, p.is_active,
               (SELECT COALESCE(SUM(total_treated), 0)
-                 FROM mda_baseline b WHERE b.project_id = p.id) AS targeted,
+                 FROM mda_baseline b WHERE b.project_id = p.id{lga_b}) AS targeted,
               (SELECT COALESCE(SUM(number_of_treated), 0)
                  FROM mda_households h WHERE h.project_id = p.id {DATE_CLAUSE}) AS administered,
               (SELECT MIN((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
@@ -918,11 +922,12 @@ async def rounds_summary(
 async def trends_daily_by_round(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    _deny: None = Depends(deny_lga_scoped),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Daily series per round. When ``project_id`` is supplied, the response
     is scoped to that project's state — so switching to Kano returns only
-    Kano rounds, not Sokoto."""
+    Kano rounds, not Sokoto. An LGA-scoped account sees only its own LGA's
+    daily series across rounds."""
     # Daily series is also bounded by the project's campaign_start_date so the
     # Day-1 alignment used by the Campaign Trends charts matches the official
     # campaign start (e.g. R5 begins Day-1 on 19 May, not the 18 May test).
@@ -931,6 +936,7 @@ async def trends_daily_by_round(
     if project_id is not None:
         state_filter_sql = "AND p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)"
         params["pid"] = project_id
+    lga_h = _lga_and(allowed_lgas_of(_u), "h.lga", params)
     res = await db.execute(text(f"""
         WITH per_day AS (
             SELECT h.project_id,
@@ -941,7 +947,7 @@ async def trends_daily_by_round(
             JOIN geo_projects p ON p.id = h.project_id
             WHERE h.received_on IS NOT NULL
               AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-                  >= COALESCE(p.campaign_start_date, '1900-01-01'::date)
+                  >= COALESCE(p.campaign_start_date, '1900-01-01'::date){lga_h}
               {state_filter_sql}
             GROUP BY h.project_id, (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
         ),
@@ -988,18 +994,24 @@ async def trends_daily_by_round(
 async def rounds_lga_compare(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    _deny: None = Depends(deny_lga_scoped),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """Per-LGA cross-round comparison. When ``project_id`` is supplied, the
     query is scoped to that project's state — so switching to Kano returns
-    only Kano LGAs, not Sokoto."""
-    state_filter_pr = ""  # in per_round CTE (p is geo_projects)
-    state_filter_tr = ""  # in treated CTE   (p is geo_projects, joined)
+    only Kano LGAs, not Sokoto. An LGA-scoped account sees only its own LGA's
+    row(s)."""
     params: dict = {}
+    lgas = allowed_lgas_of(_u)
+    lga_b = _lga_and(lgas, "b.lga", params)
+    lga_h = _lga_and(lgas, "h.lga", params)
+    # per_round always carries a WHERE so the state + LGA clauses append as AND.
+    state_filter_pr = "WHERE TRUE"
+    state_filter_tr = ""  # in treated CTE   (p is geo_projects, joined)
     if project_id is not None:
-        state_filter_pr = "WHERE p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)"
+        state_filter_pr += " AND p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)"
         state_filter_tr = "AND p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)"
         params["pid"] = project_id
+    state_filter_pr += lga_b
     res = await db.execute(text(f"""
         WITH per_round AS (
             SELECT p.id AS project_id,
@@ -1019,7 +1031,7 @@ async def rounds_lga_compare(
             JOIN geo_projects p ON p.id = h.project_id
             WHERE h.lga IS NOT NULL
               AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-                  >= COALESCE(p.campaign_start_date, '1900-01-01'::date)
+                  >= COALESCE(p.campaign_start_date, '1900-01-01'::date){lga_h}
               {state_filter_tr}
             GROUP BY h.project_id, INITCAP(TRIM(h.lga))
         )
@@ -1972,7 +1984,6 @@ async def coverage_refusals_analysis(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
-    _deny: None = Depends(deny_lga_scoped),
 ):
     # Round-over-round refusal rates. We also estimate missed children per
     # refusal: refusing households never enter the individual repeat-group so
@@ -1987,31 +1998,34 @@ async def coverage_refusals_analysis(
     # comparisons only make sense within a state (Kano Pilot is not "the round
     # before Sokoto R4"). Each row carries `is_selected` so the frontend can
     # pick the active project's summary deterministically rather than guessing.
-    rounds_res = await db.execute(text("""
+    lgas = allowed_lgas_of(_u)
+    params_r: dict = {"pid": pid}
+    lga_h = _lga_and(lgas, "h.lga", params_r)  # each round sub-query is on mda_households h
+    rounds_res = await db.execute(text(f"""
         SELECT
           p.id, p.round_number,
           (p.id = :pid) AS is_selected,
           (SELECT COUNT(*) FROM mda_households h
-             WHERE h.project_id = p.id
+             WHERE h.project_id = p.id{lga_h}
                AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                    >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS total_forms,
           (SELECT COUNT(*) FROM mda_households h
-             WHERE h.project_id = p.id AND h.flag_refusal
+             WHERE h.project_id = p.id AND h.flag_refusal{lga_h}
                AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                    >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS refusals,
           (SELECT COUNT(*) FROM mda_individuals i
               JOIN mda_households h ON h.formid = i.hh_formid AND h.project_id = i.project_id
-              WHERE h.project_id = p.id AND NOT h.flag_refusal
+              WHERE h.project_id = p.id AND NOT h.flag_refusal{lga_h}
                 AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                     >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS consenting_individuals,
           (SELECT COUNT(*) FROM mda_households h
-             WHERE h.project_id = p.id AND NOT h.flag_refusal
+             WHERE h.project_id = p.id AND NOT h.flag_refusal{lga_h}
                AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
                    >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS consenting_households
         FROM geo_projects p
         WHERE p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)
         ORDER BY p.round_number NULLS LAST, p.id
-    """), {"pid": pid})
+    """), params_r)
     rounds_rows = []
     for r in rounds_res.fetchall():
         tf = int(r.total_forms or 0)
@@ -2032,43 +2046,50 @@ async def coverage_refusals_analysis(
         })
 
     # Per-reason breakdown — active round only
-    reason_res = await db.execute(text("""
+    params_re: dict = {"pid": pid}
+    lga_l_re = _lga_and(lgas, "lga", params_re)
+    reason_res = await db.execute(text(f"""
         SELECT reasons_for_refusal AS code, COUNT(*) AS cnt
         FROM mda_households
-        WHERE project_id = :pid AND flag_refusal = TRUE
+        WHERE project_id = :pid AND flag_refusal = TRUE{lga_l_re}
         GROUP BY reasons_for_refusal
         ORDER BY cnt DESC
-    """), {"pid": pid})
+    """), params_re)
     by_reason = [{"code": (r.code or 'unspecified'), "count": int(r.cnt)} for r in reason_res.fetchall()]
 
     # Free-text "other" reasons — case-folded so 'INSECURITY ISSUE' and
     # 'insecurity issue' aren't double-counted.
-    free_res = await db.execute(text("""
+    params_fr: dict = {"pid": pid}
+    lga_l_fr = _lga_and(lgas, "lga", params_fr)
+    free_res = await db.execute(text(f"""
         SELECT LOWER(TRIM(others_reasons_for_refusal)) AS reason, COUNT(*) AS cnt
         FROM mda_households
-        WHERE project_id = :pid AND flag_refusal = TRUE
+        WHERE project_id = :pid AND flag_refusal = TRUE{lga_l_fr}
           AND others_reasons_for_refusal IS NOT NULL
           AND TRIM(others_reasons_for_refusal) <> ''
         GROUP BY LOWER(TRIM(others_reasons_for_refusal))
         ORDER BY cnt DESC LIMIT 15
-    """), {"pid": pid})
+    """), params_fr)
     free_text = [{"text": r.reason, "count": int(r.cnt)} for r in free_res.fetchall()]
 
     # Per-LGA refusal totals + missed children — active round only
-    lga_res = await db.execute(text("""
+    params_lg: dict = {"pid": pid}
+    lga_l_lg = _lga_and(lgas, "lga", params_lg)
+    lga_h_lg = _lga_and(lgas, "h.lga", params_lg)
+    lga_res = await db.execute(text(f"""
         WITH r AS (
           SELECT INITCAP(TRIM(lga)) AS lga,
                  COUNT(*) AS total_forms,
                  COUNT(*) FILTER (WHERE flag_refusal) AS refusals
           FROM mda_households
-          WHERE project_id = :pid AND lga IS NOT NULL
+          WHERE project_id = :pid AND lga IS NOT NULL{lga_l_lg}
           GROUP BY INITCAP(TRIM(lga))
         ),
         m AS (
           SELECT INITCAP(TRIM(h.lga)) AS lga, COUNT(*) AS missed
           FROM mda_individuals i
           JOIN mda_households h ON h.formid = i.hh_formid AND h.project_id = i.project_id
-          WHERE h.project_id = :pid AND h.flag_refusal AND h.lga IS NOT NULL
+          WHERE h.project_id = :pid AND h.flag_refusal AND h.lga IS NOT NULL{lga_h_lg}
           GROUP BY INITCAP(TRIM(h.lga))
         )
         SELECT r.lga, r.total_forms, r.refusals,
@@ -2078,7 +2099,7 @@ async def coverage_refusals_analysis(
                     ELSE 0 END AS refusal_pct
         FROM r LEFT JOIN m ON m.lga = r.lga
         ORDER BY r.refusals DESC, r.lga
-    """), {"pid": pid})
+    """), params_lg)
     # Estimate missed children per LGA using the same ratio as the round
     # total. The per-LGA `missed_individuals` from the SQL is always 0
     # (refusing households never enter the individual repeat-group) — see
