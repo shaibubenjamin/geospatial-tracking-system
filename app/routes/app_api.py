@@ -148,15 +148,17 @@ async def app_coverage_ward(
     rows = await mda_coverage_ward(lga=lga, pid=pid, db=db, _u=user)
     if rows or not lga:
         return rows
-    res = await db.execute(text("""
+    params: dict = {"pid": pid, "lga": lga}
+    lga_sql = mda_route._lga_and(mda_route.allowed_lgas_of(user), "sa.lga_name", params)
+    res = await db.execute(text(f"""
         SELECT sa.ward_name,
                COUNT(*) AS total,
                SUM(CASE WHEN sa.is_visited THEN 1 ELSE 0 END) AS visited
         FROM settlement_analytics sa
-        WHERE sa.project_id = :pid AND sa.lga_name = :lga AND sa.ward_name IS NOT NULL
+        WHERE sa.project_id = :pid AND sa.lga_name = :lga AND sa.ward_name IS NOT NULL{lga_sql}
         GROUP BY sa.ward_name
         ORDER BY sa.ward_name
-    """), {"pid": pid, "lga": lga})
+    """), params)
     out = []
     for r in res.fetchall():
         total = int(r.total or 0)
@@ -201,7 +203,7 @@ async def app_coverage_settlement(
     if ward:
         clauses.append("sa.ward_name = :ward")
         params["ward"] = ward
-    where = " AND ".join(clauses)
+    where = " AND ".join(clauses) + mda_route._lga_and(mda_route.allowed_lgas_of(user), "sa.lga_name", params)
     res = await db.execute(text(f"""
         SELECT sa.settlement_name, sa.ward_name, sa.lga_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
@@ -267,9 +269,11 @@ async def app_geo_wards(
     reached point-by-point via /api/app/near.
     """
     bpid = await _boundary_pid(pid, db)
+    params: dict = {"pid": pid, "bpid": bpid}
+    lga_sql = mda_route._lga_and(mda_route.allowed_lgas_of(_u), "w.lga_name", params)
     res = await db.execute(
         text(
-            """
+            f"""
             WITH cov AS (
               SELECT wardcode,
                      -- visitation = share of settlements with >=1 GPS point.
@@ -287,10 +291,10 @@ async def app_geo_wards(
                    COALESCE(cov.settlements_visited, 0) AS settlements_visited
             FROM wards w
             LEFT JOIN cov ON cov.wardcode = w.wardcode
-            WHERE w.project_id = :bpid
+            WHERE w.project_id = :bpid{lga_sql}
             """
         ),
-        {"pid": pid, "bpid": bpid},
+        params,
     )
     import json as _json
 
@@ -356,7 +360,8 @@ async def app_geo_points(
     outside. Slimmed to geometry + in_bounds (no PII, small payload) since the
     app only needs to plot dots — the web dashboard keeps the full detail."""
     fc = await get_points_geojson(
-        pid, db, unique_cod=unique_cod, wardcode=wardcode, lgacode=lgacode, limit=limit
+        pid, db, unique_cod=unique_cod, wardcode=wardcode, lgacode=lgacode, limit=limit,
+        allowed_lgas=mda_route.allowed_lgas_of(user),
     )
     features = [
         {
@@ -408,7 +413,10 @@ async def app_near(
         so the field user knows where to head next.
     """
     point = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
+    lgas = mda_route.allowed_lgas_of(_u)
 
+    cur_params: dict = {"pid": pid, "lat": lat, "lon": lon}
+    cur_lga_sql = mda_route._lga_and(lgas, "sa.lga_name", cur_params)
     cur_res = await db.execute(
         text(
             f"""
@@ -419,12 +427,12 @@ async def app_near(
             FROM settlement_analytics sa
             JOIN settlements s ON s.id = sa.settlement_id
             WHERE sa.project_id = :pid
-              AND ST_Contains(s.geom, {point})
+              AND ST_Contains(s.geom, {point}){cur_lga_sql}
             ORDER BY ST_Area(s.geom) ASC
             LIMIT 1
             """
         ),
-        {"pid": pid, "lat": lat, "lon": lon},
+        cur_params,
     )
     cur = cur_res.fetchone()
     current = None
@@ -442,6 +450,8 @@ async def app_near(
     # Ranked "where to cover next" list: the nearest settlements not yet
     # covered (no GPS point AND grid completeness < 70%), closest first — a
     # practical to-do list for the team standing at (lat, lon).
+    near_params: dict = {"pid": pid, "lat": lat, "lon": lon}
+    near_lga_sql = mda_route._lga_and(lgas, "sa.lga_name", near_params)
     near_res = await db.execute(
         text(
             f"""
@@ -454,12 +464,12 @@ async def app_near(
             FROM settlement_analytics sa
             JOIN settlements s ON s.id = sa.settlement_id
             WHERE sa.project_id = :pid
-              AND NOT (sa.is_visited OR COALESCE(sa.completeness_pct, 0) >= 70)
+              AND NOT (sa.is_visited OR COALESCE(sa.completeness_pct, 0) >= 70){near_lga_sql}
             ORDER BY s.geom <-> {point}
             LIMIT 12
             """
         ),
-        {"pid": pid, "lat": lat, "lon": lon},
+        near_params,
     )
     recommendations = [
         {

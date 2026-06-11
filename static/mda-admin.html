@@ -895,6 +895,11 @@
                 <input type="text" id="new-states" placeholder="e.g. Sokoto  or  Sokoto, Kano" autocomplete="off">
                 <small style="color:var(--muted);font-size:11.5px">Comma-separated. The user only sees these state's projects (web + app). Leave blank for no access.</small>
               </div>
+              <div class="form-group" id="new-lgas-group">
+                <label>Allowed LGAs <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+                <input type="text" id="new-lgas" placeholder="e.g. Binji  or  Binji, Wamako" autocomplete="off">
+                <small style="color:var(--muted);font-size:11.5px">Comma-separated. Leave blank for the whole state. When set, the account only ever sees these LGAs' data — on the web and the app (mainly the app).</small>
+              </div>
               <button class="btn btn-primary" style="width:100%" onclick="createUser()">
                 <i class="fa-solid fa-user-plus"></i> Create User
               </button>
@@ -2505,16 +2510,24 @@
         const usernameEsc = String(u.username || '').replace(/'/g, "\\'");
         // States cell: admins/superadmins implicitly see everything; scoped
         // users show their assigned state(s) as chips (or a "none" warning).
-        const statesCell = (u.is_superadmin || u.is_admin)
-          ? '<span class="chip" style="background:var(--mist);color:var(--muted)">All states</span>'
-          : (u.allowed_states && u.allowed_states.trim()
-              ? u.allowed_states.split(',').map(s => `<span class="chip info">${s.trim()}</span>`).join(' ')
-              : '<span class="chip bad">none</span>');
+        let statesCell;
+        if (u.is_superadmin || u.is_admin) {
+          statesCell = '<span class="chip" style="background:var(--mist);color:var(--muted)">All states</span>';
+        } else if (u.allowed_states && u.allowed_states.trim()) {
+          statesCell = u.allowed_states.split(',').map(s => `<span class="chip info">${s.trim()}</span>`).join(' ');
+          // LGA-scoped accounts show their LGA chips beneath the state chips.
+          if (u.allowed_lgas && u.allowed_lgas.trim()) {
+            statesCell += '<br>' + u.allowed_lgas.split(',').map(s => `<span class="chip" style="background:#ede9fe;color:#5b21b6">LGA: ${s.trim()}</span>`).join(' ');
+          }
+        } else {
+          statesCell = '<span class="chip bad">none</span>';
+        }
         const actions = [];
-        // Assign/replace the scoped state(s) for a non-admin account.
+        // Assign/replace the scoped state(s) + LGA(s) for a non-admin account.
         if ((isAdmin || isSuperadmin) && !u.is_superadmin && !u.is_admin) {
           const curStates = String(u.allowed_states || '').replace(/'/g, "\\'");
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="setUserStates(${u.id},'${usernameEsc}','${curStates}')" title="Set this user's allowed states"><i class="fa-solid fa-earth-africa"></i></button>`);
+          const curLgas   = String(u.allowed_lgas || '').replace(/'/g, "\\'");
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="setUserStates(${u.id},'${usernameEsc}','${curStates}','${curLgas}')" title="Set this user's allowed states / LGAs"><i class="fa-solid fa-earth-africa"></i></button>`);
         }
         if (isSuperadmin && !u.is_superadmin) {
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="promoteUser(${u.id})" title="Promote to Superadmin"><i class="fa-solid fa-arrow-up"></i> Promote</button>`);
@@ -2564,8 +2577,9 @@
   // admins/superadmins always see every state, so the field is irrelevant.
   window.onRoleChange = function() {
     const role = document.getElementById('new-role').value;
-    const grp  = document.getElementById('new-states-group');
-    if (grp) grp.style.display = (role === 'state') ? '' : 'none';
+    const show = (role === 'state') ? '' : 'none';
+    const sg = document.getElementById('new-states-group'); if (sg) sg.style.display = show;
+    const lg = document.getElementById('new-lgas-group');   if (lg) lg.style.display = show;
   };
 
   window.createUser = async function() {
@@ -2576,6 +2590,7 @@
     const isAdm    = role === 'admin' || role === 'superadmin';
     const isSup    = role === 'superadmin';
     const states   = (document.getElementById('new-states')?.value || '').trim();
+    const lgas     = (document.getElementById('new-lgas')?.value || '').trim();
     if (!uname || !password) { setFeedback('user-feedback', 'Username and password are required.', 'err'); return; }
     if (password.length < 6) { setFeedback('user-feedback', 'Password must be at least 6 characters.', 'err'); return; }
     if (role === 'state' && !states) { setFeedback('user-feedback', 'A state user needs at least one allowed state.', 'err'); return; }
@@ -2586,6 +2601,7 @@
           username: uname, email: email || null, password,
           is_admin: isAdm, is_superadmin: isSup,
           allowed_states: role === 'state' ? states : null,
+          allowed_lgas: (role === 'state' && lgas) ? lgas : null,
         }),
       });
       if (!res) return;
@@ -2596,6 +2612,7 @@
         document.getElementById('new-email').value    = '';
         document.getElementById('new-password').value = '';
         document.getElementById('new-states').value   = '';
+        document.getElementById('new-lgas').value      = '';
         document.getElementById('new-role').value     = 'state';
         onRoleChange();
         loadUsers();
@@ -2607,21 +2624,30 @@
     }
   };
 
-  window.setUserStates = async function(id, uname, current) {
-    // Assign the state(s) a scoped account may access. Comma-separated names;
-    // an empty value clears the restriction (superadmin-only on the server).
-    const val = await promptDialog({
+  window.setUserStates = async function(id, uname, currentStates, currentLgas) {
+    // Assign the state(s) a scoped account may access, then (optionally) the
+    // LGA(s) within them. States: empty clears all access (superadmin-only on
+    // the server). LGAs: empty = whole state; any value restricts to those LGAs.
+    const states = await promptDialog({
       title:             `Allowed states for "${uname}"`,
       message:           "Comma-separated state names (e.g. Sokoto, Kano). The user only sees these state's projects on the web and in the app. Clearing the field removes all access.",
-      promptValue:       current || '',
+      promptValue:       currentStates || '',
       promptPlaceholder: 'e.g. Sokoto, Kano',
-      confirmLabel:      'Save states',
+      confirmLabel:      'Next: LGAs',
     });
-    if (val === null) return;   // dialog cancelled
+    if (states === null) return;   // dialog cancelled
+    const lgas = await promptDialog({
+      title:             `Allowed LGAs for "${uname}"`,
+      message:           "Comma-separated LGA names to restrict this account to (e.g. Binji, Wamako). Leave blank for the whole state. Applies on the web and the app.",
+      promptValue:       currentLgas || '',
+      promptPlaceholder: 'e.g. Binji, Wamako  (blank = whole state)',
+      confirmLabel:      'Save access',
+    });
+    if (lgas === null) return;
     try {
       const res = await api('/api/auth/users/' + id + '/states', {
         method: 'PUT',
-        body: JSON.stringify({ allowed_states: val.trim() || null }),
+        body: JSON.stringify({ allowed_states: states.trim() || null, allowed_lgas: lgas.trim() || null }),
       });
       if (res && res.ok) { loadUsers(); }
       else {

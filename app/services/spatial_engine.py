@@ -284,6 +284,7 @@ async def get_points_geojson(
     wardcode: Optional[str] = None,
     lgacode: Optional[str] = None,
     limit: int = 5000,
+    allowed_lgas: Optional[set] = None,
 ) -> Dict[str, Any]:
     """
     Return GeoJSON for MDA household GPS points for the selected project (round),
@@ -326,6 +327,16 @@ async def get_points_geojson(
              AND ST_Within(h.geom, l.geom)
         """
         params["lgacode"] = lgacode
+
+    # LGA-scoped account: hard-restrict points to its own LGA(s) by name,
+    # regardless of any lgacode/wardcode drill (None = no restriction; an empty
+    # set fails closed so a misconfigured LGA login sees nothing, not everything).
+    if allowed_lgas is not None:
+        if allowed_lgas:
+            extra_filter += " AND lower(trim(h.lga)) = ANY(:lga_scope)"
+            params["lga_scope"] = list(allowed_lgas)
+        else:
+            extra_filter += " AND FALSE"
 
     # in_settlement: TRUE when the point falls inside any settlement polygon
     # for this state. Per the campaign-team rule, a point is "in-bounds" if it

@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 from app.database import get_db
 from app.models import User
-from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin, allowed_states_of
+from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin, allowed_states_of, allowed_lgas_of
 from app.config import DATABASE_URL_SYNC
 
 logger = logging.getLogger(__name__)
@@ -226,8 +226,29 @@ async def resolve_pid(
     return row[0] if row else 1
 
 
+def _lga_and(lgas, col: str, params: dict, key: str = "lgascope") -> str:
+    """SQL fragment restricting an LGA-name column to an LGA-scoped user's set.
+
+    - ``lgas`` is ``None`` (no LGA restriction — admins, public, or a state-only
+      user) → returns "" so the query is unchanged.
+    - a non-empty set → ``AND lower(trim(col)) = ANY(:lgascope)``.
+    - an empty set (an LGA account whose list is blank/malformed) → ``AND FALSE``
+      so it fails CLOSED (no rows) rather than leaking every LGA.
+
+    The same ``key`` is reused across all sub-queries of one statement (the bound
+    value is identical), so callers can drop this into several predicates.
+    """
+    if lgas is None:
+        return ""
+    if not lgas:
+        return " AND FALSE"
+    params[key] = list(lgas)
+    return f" AND lower(trim({col})) = ANY(:{key})"
+
+
 def _scoped_where(pid: int, filters: list, params: dict, alias: str = "",
-                  date_filter: bool = True, date_col: str = "received_on") -> str:
+                  date_filter: bool = True, date_col: str = "received_on",
+                  lgas=None, lga_col: str = "lga") -> str:
     """Build a WHERE clause that always pins the query to a single project.
 
     When ``date_filter`` is True (default) we also bound the query at the
@@ -238,6 +259,9 @@ def _scoped_where(pid: int, filters: list, params: dict, alias: str = "",
 
     Pass ``alias`` when the table is aliased (e.g. ``"h"`` for ``mda_households h``).
     Pass ``date_filter=False`` for queries that don't reference received_on.
+    Pass ``lgas`` (from ``allowed_lgas_of(user)``) to additionally restrict an
+    LGA-scoped account to its own LGA(s); ``lga_col`` names the LGA column on the
+    primary table (``lga`` for mda_households, ``lga_name`` for analytics/geo).
     """
     col = f"{alias}.project_id" if alias else "project_id"
     filters.insert(0, f"{col} = :pid")
@@ -252,7 +276,17 @@ def _scoped_where(pid: int, filters: list, params: dict, alias: str = "",
             f" '1900-01-01'::date))"
         ))
     params["pid"] = pid
-    return "WHERE " + " AND ".join(filters)
+    lcol = f"{alias}.{lga_col}" if alias else lga_col
+    return "WHERE " + " AND ".join(filters) + _lga_and(lgas, lcol, params)
+
+
+async def deny_lga_scoped(user: "Optional[User]" = Depends(get_current_user_optional)) -> None:
+    """Dependency guard for cross-LGA / cross-round endpoints that can't be
+    meaningfully narrowed to a single LGA (round-over-round comparisons, etc.).
+    An LGA-scoped account is refused (403); admins, state-only users and the
+    public pass through unchanged."""
+    if allowed_lgas_of(user) is not None:
+        raise HTTPException(status_code=403, detail="This view isn't available for LGA-scoped accounts.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -794,6 +828,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
 async def rounds_summary(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
+    _deny: None = Depends(deny_lga_scoped),
 ):
     """Per-round summary. When ``project_id`` is supplied, the query scopes
     to that project's state — so switching to "Kano Round 1" only returns
@@ -883,6 +918,7 @@ async def rounds_summary(
 async def trends_daily_by_round(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
+    _deny: None = Depends(deny_lga_scoped),
 ):
     """Daily series per round. When ``project_id`` is supplied, the response
     is scoped to that project's state — so switching to Kano returns only
@@ -952,6 +988,7 @@ async def trends_daily_by_round(
 async def rounds_lga_compare(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
+    _deny: None = Depends(deny_lga_scoped),
 ):
     """Per-LGA cross-round comparison. When ``project_id`` is supplied, the
     query is scoped to that project's state — so switching to Kano returns
@@ -1090,7 +1127,7 @@ async def qc_summary(
     # that reflects what the platform actually has data for.
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = _scoped_where(pid, filters, params)
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
           COUNT(*) AS total_forms,
@@ -1173,7 +1210,9 @@ async def qc_ra_performance(
 ):
     # date_trt (treatment date as entered by RA) replaced with received_on
     # so every "by date" surface in the dashboard uses the same column.
-    result = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lga_sql = _lga_and(allowed_lgas_of(_user), "lga", params)
+    result = await db.execute(text(f"""
         SELECT
           data_entry_persons,
           phone_number_data,
@@ -1184,12 +1223,12 @@ async def qc_ra_performance(
           SUM(CASE WHEN flag_refusal THEN 1 ELSE 0 END) AS refusals,
           ROUND(AVG(form_duration_min)::numeric, 1) AS avg_duration_min
         FROM mda_households
-        WHERE project_id = :pid AND ra_key IS NOT NULL
+        WHERE project_id = :pid AND ra_key IS NOT NULL{lga_sql}
         GROUP BY data_entry_persons, phone_number_data, lga,
                  (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date, ra_key
         ORDER BY lga,
                  (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date, data_entry_persons
-    """), {"pid": pid})
+    """), params)
     rows = result.fetchall()
     keys = [
         "data_entry_persons", "phone_number_data", "lga", "date_trt",
@@ -1222,7 +1261,7 @@ async def qc_refusals_by_lga(
     filters: list = []
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = _scoped_where(pid, filters, params)
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
           lga,
@@ -1264,7 +1303,7 @@ async def qc_duration_by_lga(
     filters: list = ["form_duration_min IS NOT NULL"]
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = _scoped_where(pid, filters, params)
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
           lga,
@@ -1310,7 +1349,7 @@ async def submissions_by_ward(
     params: dict = {}
     if lga:  filters.append("lga = :lga");       params["lga"]  = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = _scoped_where(pid, filters, params)
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
           ward_name,
@@ -1348,7 +1387,7 @@ async def qc_teams_summary(
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = _scoped_where(pid, filters, params)
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     # forms_with_error uses the same definition as /qc/summary and /overview
     # (refusal NOT counted — it's an outcome; sync_lag NOT counted — it's a
     # connectivity issue, not data quality). sync_lag is still returned as a
@@ -1396,11 +1435,14 @@ async def qc_teams_summary(
 # GET /api/mda/qc/gps/geojson
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _gps_geojson(db: AsyncSession, pid: int, where_clause: str, limit: int = 20000):
-    """Shared helper for filtered GPS GeoJSON endpoints."""
+async def _gps_geojson(db: AsyncSession, pid: int, where_clause: str, limit: int = 20000, lgas=None):
+    """Shared helper for filtered GPS GeoJSON endpoints. ``lgas`` (from
+    allowed_lgas_of) restricts the points to an LGA-scoped account's LGA(s)."""
     # Map tooltip shows received_on (the platform's date of record). The
     # outer property key stays `date_trt` so the frontend tooltip template
     # doesn't have to change.
+    params: dict = {"pid": pid}
+    lga_sql = _lga_and(lgas, "lga", params)
     result = await db.execute(text(f"""
         SELECT
           formid, lga, data_entry_persons,
@@ -1411,9 +1453,9 @@ async def _gps_geojson(db: AsyncSession, pid: int, where_clause: str, limit: int
           latitude, longitude,
           ST_AsGeoJSON(geom)::json AS geometry
         FROM mda_households
-        WHERE project_id = :pid AND geom IS NOT NULL AND {where_clause}
+        WHERE project_id = :pid AND geom IS NOT NULL AND {where_clause}{lga_sql}
         LIMIT {limit}
-    """), {"pid": pid})
+    """), params)
     rows = result.fetchall()
     features = []
     for row in rows:
@@ -1438,22 +1480,22 @@ async def _gps_geojson(db: AsyncSession, pid: int, where_clause: str, limit: int
 
 @router.get("/qc/gps/outside-lga")
 async def gps_outside_lga(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, pid, "flag_gps_outside_lga = TRUE")
+    return await _gps_geojson(db, pid, "flag_gps_outside_lga = TRUE", lgas=allowed_lgas_of(_u))
 
 
 @router.get("/qc/gps/outside-ward")
 async def gps_outside_ward(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, pid, "flag_gps_outside_ward = TRUE")
+    return await _gps_geojson(db, pid, "flag_gps_outside_ward = TRUE", lgas=allowed_lgas_of(_u))
 
 
 @router.get("/qc/gps/outside-state")
 async def gps_outside_state(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, pid, "flag_gps_outside_state = TRUE")
+    return await _gps_geojson(db, pid, "flag_gps_outside_state = TRUE", lgas=allowed_lgas_of(_u))
 
 
 @router.get("/qc/gps/duplicate")
 async def gps_duplicate(pid: int = Depends(resolve_pid), db: AsyncSession = Depends(get_db), _u: Optional[User] = Depends(get_current_user_optional)):
-    return await _gps_geojson(db, pid, "flag_duplicate_gps = TRUE")
+    return await _gps_geojson(db, pid, "flag_duplicate_gps = TRUE", lgas=allowed_lgas_of(_u))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1475,7 +1517,9 @@ async def mda_overview(
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = _scoped_where(pid, filters, params)
+    lgas = allowed_lgas_of(_u)
+    where = _scoped_where(pid, filters, params, lgas=lgas)
+    lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
     result = await db.execute(text(f"""
         SELECT
           COUNT(*) AS total_forms,
@@ -1497,7 +1541,7 @@ async def mda_overview(
               OR flag_gps_outside_lga OR flag_gps_poor_accuracy
               OR flag_duplicate_gps OR flag_duplicate OR flag_gps_zero
           ) THEN 1 ELSE 0 END) AS forms_with_error,
-          (SELECT COALESCE(SUM(total_treated),0) FROM mda_baseline WHERE project_id = :pid) AS baseline_total,
+          (SELECT COALESCE(SUM(total_treated),0) FROM mda_baseline WHERE project_id = :pid{lga_bl}) AS baseline_total,
           MIN((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS campaign_start,
           MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS campaign_end
         FROM mda_households {where}
@@ -1645,7 +1689,7 @@ async def mda_trends_daily(
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
-    where = _scoped_where(pid, filters, params)
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
           (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date::text AS date,
@@ -1675,7 +1719,7 @@ async def mda_teams(
     params: dict = {}
     if lga:  filters.append("lga = :lga");       params["lga"]  = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = _scoped_where(pid, filters, params)
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
           hq_user,
@@ -1747,6 +1791,10 @@ async def mda_coverage_lga(
         lga_filter_baseline = "AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga))"
         lga_filter_hh = "AND UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))"
         params["lga"] = lga
+    # LGA-scoped account: further restrict the LGA universe to its own LGA(s).
+    lgas = allowed_lgas_of(_u)
+    lga_filter_baseline += _lga_and(lgas, "lga", params)
+    lga_filter_hh += _lga_and(lgas, "h.lga", params)
 
     result = await db.execute(text(f"""
         WITH baseline AS (
@@ -1814,7 +1862,7 @@ async def mda_coverage_ward(
     if lga:
         filters.append("UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))")
         params["lga"] = lga
-    where = _scoped_where(pid, filters, params, alias="h")
+    where = _scoped_where(pid, filters, params, alias="h", lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
           h.ward_name,
@@ -1862,7 +1910,9 @@ async def individuals_age_summary(
     if ward:
         hh_filters.append("h.ward_name = :ward")
         params["ward"] = ward
-    hh_where = " AND ".join(hh_filters)
+    lgas = allowed_lgas_of(_u)
+    hh_where = " AND ".join(hh_filters) + _lga_and(lgas, "h.lga", params)
+    lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
 
     result = await db.execute(text(f"""
         SELECT
@@ -1879,14 +1929,14 @@ async def individuals_age_summary(
     """), params)
     row = result.fetchone()
     # Baselines: grand total + age-band breakdown (R5+ populates the breakdown columns).
-    bl = await db.execute(text("""
+    bl = await db.execute(text(f"""
         SELECT
           COALESCE(SUM(total_treated), 0)                                          AS total,
           COALESCE(SUM(COALESCE(target_1_11_f, 0) + COALESCE(target_1_11_m, 0)), 0)   AS baseline_1_11,
           COALESCE(SUM(COALESCE(target_12_59_f, 0) + COALESCE(target_12_59_m, 0)), 0) AS baseline_12_59
         FROM mda_baseline
-        WHERE project_id = :pid
-    """), {"pid": pid})
+        WHERE project_id = :pid{lga_bl}
+    """), params)
     bl_row = bl.fetchone()
 
     treated_1_11   = int(row.treated_1_11 or 0)
@@ -1922,6 +1972,7 @@ async def coverage_refusals_analysis(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
+    _deny: None = Depends(deny_lga_scoped),
 ):
     # Round-over-round refusal rates. We also estimate missed children per
     # refusal: refusing households never enter the individual repeat-group so
@@ -2066,13 +2117,17 @@ async def coverage_lga_by_age(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    res = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lgas = allowed_lgas_of(_u)
+    lga_b = _lga_and(lgas, "lga", params)
+    lga_h = _lga_and(lgas, "h.lga", params)
+    res = await db.execute(text(f"""
         WITH baseline AS (
           SELECT INITCAP(TRIM(lga)) AS lga,
                  SUM(COALESCE(target_1_11_f,  0) + COALESCE(target_1_11_m,  0)) AS bl_1_11,
                  SUM(COALESCE(target_12_59_f, 0) + COALESCE(target_12_59_m, 0)) AS bl_12_59
           FROM mda_baseline
-          WHERE project_id = :pid
+          WHERE project_id = :pid{lga_b}
           GROUP BY INITCAP(TRIM(lga))
         ),
         treated AS (
@@ -2086,7 +2141,7 @@ async def coverage_lga_by_age(
           WHERE h.project_id = :pid AND i.project_id = :pid
             AND i.age_in_months IS NOT NULL
             AND i.age_in_months BETWEEN 1 AND 59
-            AND h.lga IS NOT NULL
+            AND h.lga IS NOT NULL{lga_h}
           GROUP BY INITCAP(TRIM(h.lga))
         )
         SELECT b.lga,
@@ -2097,7 +2152,7 @@ async def coverage_lga_by_age(
         FROM baseline b
         LEFT JOIN treated t ON t.lga = b.lga
         ORDER BY b.lga
-    """), {"pid": pid})
+    """), params)
     rows = []
     for r in res.fetchall():
         bl1, bl2, t1, t2 = int(r.bl_1_11 or 0), int(r.bl_12_59 or 0), int(r.tr_1_11 or 0), int(r.tr_12_59 or 0)
@@ -2132,6 +2187,8 @@ async def qc_heatmap_geojson(
         "all": "(flag_gps_outside_lga = TRUE OR flag_gps_outside_ward = TRUE OR flag_duplicate_gps = TRUE)",
     }
     where = where_map.get(flag, where_map["all"])
+    params: dict = {"pid": pid}
+    lga_sql = _lga_and(allowed_lgas_of(_u), "lga", params)
     result = await db.execute(text(f"""
         SELECT latitude, longitude, lga, hq_user,
                CASE WHEN flag_duplicate_gps      THEN 'duplicate'
@@ -2143,9 +2200,9 @@ async def qc_heatmap_geojson(
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude  BETWEEN 10 AND 16
           AND longitude BETWEEN  3 AND  8
-          AND {where}
+          AND {where}{lga_sql}
         LIMIT 15000
-    """), {"pid": pid})
+    """), params)
     rows = result.fetchall()
     features = [
         {
@@ -2220,7 +2277,7 @@ async def teams_movement_geojson(
     brow = bres.fetchone()
     boundary_pid = (brow[0] if brow and brow[0] else pid)
     params["boundary_pid"] = boundary_pid
-    where = " AND ".join(filters)
+    where = " AND ".join(filters) + _lga_and(allowed_lgas_of(_u), "lga", params)
     result = await db.execute(text(f"""
         WITH base AS (
             SELECT id, latitude, longitude, hq_user, lga, ward_name, started_time,
@@ -2315,7 +2372,9 @@ async def geo_settlement_breakdown(
     so supervisors can see at a glance how many settlements per LGA still
     need any team contact vs which need a second pass to fill the grid.
     """
-    res = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lga_sql = _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
+    res = await db.execute(text(f"""
         WITH s AS (
           SELECT
             sa.lga_name,
@@ -2325,7 +2384,7 @@ async def geo_settlement_breakdown(
               ELSE 'partially_covered'
             END AS bucket
           FROM settlement_analytics sa
-          WHERE sa.project_id = :pid
+          WHERE sa.project_id = :pid{lga_sql}
         )
         SELECT
           COALESCE(lga_name, '—')                              AS lga,
@@ -2336,7 +2395,7 @@ async def geo_settlement_breakdown(
         FROM s
         GROUP BY lga_name
         ORDER BY lga_name NULLS LAST
-    """), {"pid": pid})
+    """), params)
     rows = res.fetchall()
     per_lga = []
     tot_total = tot_not = tot_partial = tot_full = 0
@@ -2389,14 +2448,16 @@ async def teams_footprint(
       quality_pct    = 100 - (after_hours + fast_forms) ÷ forms × 100, clamped 0-100
       last_seen      = ISO date string
     """
-    res = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lga_sql = _lga_and(allowed_lgas_of(_u), "lga", params)
+    res = await db.execute(text(f"""
         WITH per_team_lga AS (
           SELECT
             COALESCE(hq_user, 'Unknown') AS team,
             INITCAP(LOWER(TRIM(lga)))    AS lga,
             COUNT(*)                     AS forms
           FROM mda_households
-          WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''
+          WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''{lga_sql}
           GROUP BY 1, 2
         ),
         primary_lga AS (
@@ -2414,7 +2475,7 @@ async def teams_footprint(
             SUM(CASE WHEN flag_fast_form   THEN 1 ELSE 0 END) AS fast_forms,
             MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS last_seen
           FROM mda_households
-          WHERE project_id = :pid
+          WHERE project_id = :pid{lga_sql}
           GROUP BY COALESCE(hq_user, 'Unknown')
         )
         SELECT
@@ -2429,7 +2490,7 @@ async def teams_footprint(
         FROM per_team pt
         LEFT JOIN primary_lga pl ON pl.team = pt.team
         ORDER BY pt.forms DESC, pt.team
-    """), {"pid": pid})
+    """), params)
     out = []
     for r in res.fetchall():
         forms = int(r.forms or 0)
@@ -2467,14 +2528,18 @@ async def geo_mop_up_shortlist(
     so LGAs with both a big un-reached-settlement count *and* a coverage shortfall
     rise first. Returns the top 10 plus a tiny recommended action string for each.
     """
-    res = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lgas = allowed_lgas_of(_u)
+    lga_sa = _lga_and(lgas, "sa.lga_name", params)
+    lga_l = _lga_and(lgas, "lga", params)
+    res = await db.execute(text(f"""
         WITH s AS (
           SELECT
             INITCAP(LOWER(TRIM(sa.lga_name))) AS lga,
             COUNT(*) FILTER (WHERE COALESCE(sa.point_count, 0) = 0) AS not_visited,
             COUNT(*) AS total_settlements
           FROM settlement_analytics sa
-          WHERE sa.project_id = :pid AND sa.lga_name IS NOT NULL
+          WHERE sa.project_id = :pid AND sa.lga_name IS NOT NULL{lga_sa}
           GROUP BY INITCAP(LOWER(TRIM(sa.lga_name)))
         ),
         cov AS (
@@ -2482,7 +2547,7 @@ async def geo_mop_up_shortlist(
             INITCAP(LOWER(TRIM(lga))) AS lga,
             COALESCE(SUM(total_treated), 0) AS baseline_total
           FROM mda_baseline
-          WHERE project_id = :pid AND lga IS NOT NULL
+          WHERE project_id = :pid AND lga IS NOT NULL{lga_l}
           GROUP BY INITCAP(LOWER(TRIM(lga)))
         ),
         hh AS (
@@ -2491,7 +2556,7 @@ async def geo_mop_up_shortlist(
             COUNT(DISTINCT hq_user) AS teams,
             COALESCE(SUM(number_of_treated), 0) AS treated
           FROM mda_households
-          WHERE project_id = :pid AND lga IS NOT NULL
+          WHERE project_id = :pid AND lga IS NOT NULL{lga_l}
           GROUP BY INITCAP(LOWER(TRIM(lga)))
         )
         SELECT
@@ -2504,7 +2569,7 @@ async def geo_mop_up_shortlist(
         FROM s
         FULL OUTER JOIN cov ON cov.lga = s.lga
         FULL OUTER JOIN hh  ON hh.lga  = COALESCE(s.lga, cov.lga)
-    """), {"pid": pid})
+    """), params)
     rows = []
     for r in res.fetchall():
         if not r.lga:
@@ -2569,7 +2634,11 @@ async def teams_by_lga(
     # and one settlement ≈ one form, then expected_teams ≈ N ÷ (80 × planned_days)
     # so a team can finish in the campaign window. Falls back gracefully when
     # planned days isn't set.
-    res = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lgas = allowed_lgas_of(_u)
+    lga_l = _lga_and(lgas, "lga", params)
+    lga_sa = _lga_and(lgas, "lga_name", params)
+    res = await db.execute(text(f"""
         WITH hh AS (
           SELECT
             INITCAP(LOWER(TRIM(lga)))                       AS lga,
@@ -2579,20 +2648,20 @@ async def teams_by_lga(
             MIN((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS first_seen,
             MAX((received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text     AS last_seen
           FROM mda_households
-          WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''
+          WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> ''{lga_l}
           GROUP BY INITCAP(LOWER(TRIM(lga)))
         ),
         st AS (
           SELECT INITCAP(LOWER(TRIM(lga_name))) AS lga,
                  COUNT(*) AS settlements
           FROM settlement_analytics
-          WHERE project_id = :pid AND lga_name IS NOT NULL
+          WHERE project_id = :pid AND lga_name IS NOT NULL{lga_sa}
           GROUP BY INITCAP(LOWER(TRIM(lga_name)))
         )
         SELECT hh.*, COALESCE(st.settlements, 0) AS settlements
         FROM hh LEFT JOIN st ON st.lga = hh.lga
         ORDER BY hh.teams DESC, hh.forms DESC
-    """), {"pid": pid})
+    """), params)
 
     # Planned campaign window — drives the target-team denominator.
     proj_res = await db.execute(text("""
@@ -2661,13 +2730,15 @@ async def geo_coverage_summary(
     """
     # First compute the per-settlement bucket once and reuse for LGA + Ward
     # rollups. Saves us doing three near-identical CTEs.
-    s_res = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lga_sql = _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
+    s_res = await db.execute(text(f"""
         WITH s AS (
           SELECT sa.lgacode, sa.lga_name, sa.wardcode, sa.ward_name,
                  CASE WHEN sa.is_visited OR COALESCE(sa.completeness_pct, 0) >= 70
                       THEN 1 ELSE 0 END AS covered
           FROM settlement_analytics sa
-          WHERE sa.project_id = :pid
+          WHERE sa.project_id = :pid{lga_sql}
         ),
         per_lga AS (
           SELECT lgacode, AVG(covered) AS frac
@@ -2686,7 +2757,7 @@ async def geo_coverage_summary(
           (SELECT COUNT(*) FILTER (WHERE frac >= 0.7) FROM per_ward) AS ward_at,
           (SELECT COUNT(*)                       FROM s)        AS sett_total,
           (SELECT COUNT(*) FILTER (WHERE covered = 1) FROM s)   AS sett_at
-    """), {"pid": pid})
+    """), params)
     row = s_res.fetchone()
     def split(total, atv):
         total = int(total or 0); atv = int(atv or 0)
@@ -2725,7 +2796,9 @@ async def geo_completeness(
     in the average). visited_settlements is the count of settlements with
     ≥1 GPS point inside their polygon (no completeness gate).
     """
-    result = await db.execute(text("""
+    params: dict = {"pid": pid}
+    lga_sql = _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
+    result = await db.execute(text(f"""
         SELECT
           ROUND(AVG(CASE WHEN COALESCE(completeness_pct, 0) >= 70
                           THEN 100.0
@@ -2735,8 +2808,8 @@ async def geo_completeness(
           COUNT(*) FILTER (WHERE COALESCE(point_count, 0)       > 0)   AS visited_settlements,
           COUNT(*) AS total_settlements
         FROM settlement_analytics sa
-        WHERE sa.project_id = :pid
-    """), {"pid": pid})
+        WHERE sa.project_id = :pid{lga_sql}
+    """), params)
     row = result.fetchone()
     if not row:
         return {"overall_completeness": 0.0, "completed_60": 0, "completed_70": 0,
@@ -2772,7 +2845,9 @@ async def geo_wards_coverage(
     """), {"pid": pid})
     brow = bpid_res.fetchone()
     bpid = int(brow[0]) if brow and brow[0] is not None else pid
-    res = await db.execute(text("""
+    params: dict = {"pid": pid, "bpid": bpid}
+    lga_sql = _lga_and(allowed_lgas_of(_u), "w.lga_name", params)
+    res = await db.execute(text(f"""
         WITH cov AS (
           SELECT wardcode,
                  AVG(CASE WHEN is_visited OR COALESCE(completeness_pct, 0) >= 70
@@ -2786,8 +2861,8 @@ async def geo_wards_coverage(
                COALESCE(cov.frac, 0)::float AS frac
         FROM wards w
         LEFT JOIN cov ON cov.wardcode = w.wardcode
-        WHERE w.project_id = :bpid
-    """), {"pid": pid, "bpid": bpid})
+        WHERE w.project_id = :bpid{lga_sql}
+    """), params)
     import json as _json
     features = []
     for r in res.fetchall():
@@ -2820,7 +2895,9 @@ async def geo_lgas_coverage(
         WHERE p1.id = :pid AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id)
     """), {"pid": pid})).fetchone()
     bpid = int(brow[0]) if brow and brow[0] is not None else pid
-    res = await db.execute(text("""
+    params: dict = {"pid": pid, "bpid": bpid}
+    lga_sql = _lga_and(allowed_lgas_of(_u), "l.lga_name", params)
+    res = await db.execute(text(f"""
         WITH cov AS (
           SELECT lgacode,
                  AVG(CASE WHEN is_visited OR COALESCE(completeness_pct,0) >= 70 THEN 1.0 ELSE 0.0 END) AS frac,
@@ -2843,8 +2920,8 @@ async def geo_lgas_coverage(
                COALESCE(cov.visit_frac, 0)::float AS visit_frac,
                EXISTS (SELECT 1 FROM campaign c WHERE c.lga_u = upper(trim(l.lga_name))) AS in_campaign
         FROM lgas l LEFT JOIN cov ON cov.lgacode = l.lgacode
-        WHERE l.project_id = :bpid
-    """), {"pid": pid, "bpid": bpid})
+        WHERE l.project_id = :bpid{lga_sql}
+    """), params)
     import json as _json
     feats = []
     for r in res.fetchall():
@@ -2878,6 +2955,7 @@ async def geo_settlements_coverage(
     if lgacode:
         where += " AND sa.lgacode = :lgacode"
         params["lgacode"] = lgacode
+    where += _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
     res = await db.execute(text(f"""
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
@@ -3149,24 +3227,29 @@ async def get_ward_list(
     - Without lga  → dict { lga_name: [ward1, ward2, ...] } for all LGAs
     LGA names are Title Case (normalised to match shapefile).
     """
+    lgas = allowed_lgas_of(_u)
     if lga:
-        result = await db.execute(text("""
+        params: dict = {"pid": pid, "lga": lga}
+        lga_sql = _lga_and(lgas, "lga", params)
+        result = await db.execute(text(f"""
             SELECT DISTINCT ward_name
             FROM mda_households
             WHERE project_id = :pid
               AND ward_name IS NOT NULL
-              AND lga = :lga
+              AND lga = :lga{lga_sql}
             ORDER BY ward_name
-        """), {"pid": pid, "lga": lga})
+        """), params)
         return [r[0] for r in result.fetchall()]
     else:
-        result = await db.execute(text("""
+        params = {"pid": pid}
+        lga_sql = _lga_and(lgas, "lga", params)
+        result = await db.execute(text(f"""
             SELECT lga, ward_name
             FROM mda_households
-            WHERE project_id = :pid AND ward_name IS NOT NULL AND lga IS NOT NULL
+            WHERE project_id = :pid AND ward_name IS NOT NULL AND lga IS NOT NULL{lga_sql}
             GROUP BY lga, ward_name
             ORDER BY lga, ward_name
-        """), {"pid": pid})
+        """), params)
         grouped: Dict[str, list] = {}
         for row in result.fetchall():
             lga_key, ward = row[0], row[1]
