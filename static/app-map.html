@@ -39,6 +39,16 @@
     .drill-row .ch{color:#9ca3af;font-size:15px}
     .drill-back{display:flex;align-items:center;padding:9px 13px;color:#2563eb;font-size:12.5px;font-weight:700;cursor:pointer}
     .drill-back:active{background:#eef2f7}
+    /* ── Area name labels (LGA at the state view, ward as you drill in). White
+       halo so they read over any fill; no tooltip box/arrow. ── */
+    .maplbl{background:none!important;border:none!important;box-shadow:none!important;padding:0!important;
+      color:#1f2937;font-weight:700;white-space:nowrap;
+      text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff,0 1px 2px #fff}
+    .maplbl.maplbl-lga{font-size:11px}
+    .maplbl.maplbl-ward{font-size:10px;color:#374151;font-weight:600}
+    .leaflet-tooltip.maplbl::before{display:none!important;border:none!important}
+    /* Once ward labels are on (zoomed in), drop the LGA labels to declutter. */
+    .leaflet-container.lbl-ward .maplbl-lga{display:none}
   </style>
 </head>
 <body>
@@ -110,10 +120,19 @@
       if(p.in_campaign===false){ layer.bindPopup('<b>'+nm+'</b><br><i>Not part of this campaign</i>'); return; }
       layer.bindPopup('<b>'+nm+'</b><br>'+kind+': <b style="color:'+visColor(p.visitation_pct)+'">'+fpct(p.visitation_pct)+' visited</b>'); }; }
 
+    // Popup (on tap) + a permanent name label centered on each area.
+    function onArea(kind, cls, key){ return function(f,layer){
+      popupArea(kind)(f,layer);
+      var nm=(f.properties||{})[key];
+      if(nm) layer.bindTooltip(String(nm),{permanent:true,direction:'center',className:'maplbl '+cls,interactive:false});
+    }; }
+
     // ── progressive reveal by zoom ───────────────────────────────────────────
     function update(){
       if(!lgaLayer) return;
       var z=map.getZoom(), b=map.getBounds();
+      // Show LGA names at the state view; swap to ward names once zoomed in.
+      map.getContainer().classList.toggle('lbl-ward', z>=WARD_Z);
 
       // LGA fill fades as we zoom in; borders stay.
       lgaLayer.setStyle({fillOpacity: z<WARD_Z?0.55 : z<SETT_Z?0.12 : 0.0, opacity: z<SETT_Z?0.85:0.5});
@@ -219,8 +238,8 @@
 
     Promise.all([ get('/api/app/geo/lgas'+q), get('/api/app/geo/wards'+q) ]).then(function(res){
       var lgasFC=res[0], wardsFC=res[1];
-      lgaLayer=L.geoJSON(lgasFC,{style:lgaStyle,onEachFeature:popupArea('Visitation')}).addTo(map);
-      wardLayer=L.geoJSON(wardsFC,{style:wardStyle,onEachFeature:popupArea('Visitation')});
+      lgaLayer=L.geoJSON(lgasFC,{style:lgaStyle,onEachFeature:onArea('Visitation','maplbl-lga','lga_name')}).addTo(map);
+      wardLayer=L.geoJSON(wardsFC,{style:wardStyle,onEachFeature:onArea('Visitation','maplbl-ward','ward_name')});
       settLayer=L.geoJSON(null,{style:settStyle,onEachFeature:function(f,l){ var p=f.properties||{};
         l.bindPopup('<b>'+(p.settlement_name||'—')+'</b><br>'+(p.is_visited?'Visited':'Not visited')); }});
       pointsLayer=L.geoJSON(null,{pointToLayer:function(f,ll){ var ib=(f.properties||{}).in_bounds;
