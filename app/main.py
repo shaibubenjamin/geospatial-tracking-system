@@ -49,7 +49,7 @@ from app.config import (
     MIN_VERSION_CODE, LATEST_VERSION_CODE, LATEST_VERSION_NAME, UPDATE_URL,
     APP_API_PREFIX, APK_DIR, APK_FILENAME,
 )
-from app.routes import auth, projects, boundaries, ingestion, analytics, qc, sync
+from app.routes import auth, projects, boundaries, ingestion, analytics, qc, sync, sources
 from app.routes import mda as mda_route
 from app.routes import app_api
 
@@ -701,6 +701,7 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(qc.router, prefix="/api")
 app.include_router(mda_route.router, prefix="/api")
 app.include_router(sync.router, prefix="/api")
+app.include_router(sources.router, prefix="/api")
 app.include_router(app_api.router, prefix="/api")
 
 # Serve static files

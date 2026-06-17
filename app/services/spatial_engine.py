@@ -26,7 +26,23 @@ async def _resolve_boundary_pid(project_id: int, db: AsyncSession) -> int:
     return (row[0] if row and row[0] else project_id)
 
 
-async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
+def _scope_lga_names(allowed_lgas: Optional[set], col: str, params: Dict[str, Any], key: str = "scope_lgas") -> str:
+    """SQL fragment restricting a boundary query to an account's allowed LGAs.
+
+    ``allowed_lgas`` is ``allowed_lgas_of(user)``:
+      - None  → no restriction (admins, public, or a state-but-not-LGA account).
+      - set   → restrict to those LGA names (lowercased). An empty set matches
+                nothing (fail closed), so a malformed scope can't leak the state.
+    Without this, the LGA/ward/settlement boundary endpoints return the whole
+    state, so an LGA-scoped login would still see every LGA on the map.
+    """
+    if allowed_lgas is None:
+        return ""
+    params[key] = list(allowed_lgas)
+    return f" AND lower(trim({col})) = ANY(:{key})"
+
+
+async def get_lga_geojson(project_id: int, db: AsyncSession, allowed_lgas: Optional[set] = None) -> Dict[str, Any]:
     """Return GeoJSON FeatureCollection for all LGAs of the state.
 
     Geometries come from the state's canonical boundary project (state-shared).
@@ -35,11 +51,13 @@ async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
     previous round's colouring.
     """
     boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
+    lga_filter = _scope_lga_names(allowed_lgas, "l.lga_name", params)
     # Visited = settlement has ≥ 1 GPS point inside; completeness ≥70 rounds
     # up to 100 (May 2026 campaign-team rule). LGA visitation_pct is the share
     # of LGA settlements that are "visited" under that rule.
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT
                 l.id,
                 l.lgacode,
@@ -57,11 +75,11 @@ async def get_lga_geojson(project_id: int, db: AsyncSession) -> Dict[str, Any]:
             FROM lgas l
             LEFT JOIN settlements s ON s.lgacode = l.lgacode AND s.project_id = l.project_id
             LEFT JOIN settlement_analytics sa ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
-            WHERE l.project_id = :boundary_pid
+            WHERE l.project_id = :boundary_pid{lga_filter}
             GROUP BY l.id, l.lgacode, l.lga_name, l.geom
             ORDER BY l.lga_name
         """),
-        {"boundary_pid": boundary_pid, "mda_pid": project_id},
+        params,
     )
     rows = result.fetchall()
     features = []
@@ -87,10 +105,12 @@ async def get_ward_geojson(
     project_id: int,
     db: AsyncSession,
     lgacode: Optional[str] = None,
+    allowed_lgas: Optional[set] = None,
 ) -> Dict[str, Any]:
     """Return GeoJSON FeatureCollection for wards, optionally filtered by LGA.
 
     Geometries from the state's boundary project; analytics from ``project_id``.
+    ``allowed_lgas`` further restricts the result to an LGA-scoped account.
     """
     boundary_pid = await _resolve_boundary_pid(project_id, db)
     params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
@@ -98,6 +118,7 @@ async def get_ward_geojson(
     if lgacode:
         where_extra = "AND w.lgacode = :lgacode"
         params["lgacode"] = lgacode
+    where_extra += _scope_lga_names(allowed_lgas, "w.lga_name", params)
 
     # Ward metrics use the same "visited = ≥1 GPS point" rule and per-settlement
     # capped completeness (≥70 → 100). Ward completeness is mean of those caps.
@@ -155,10 +176,12 @@ async def get_settlement_geojson(
     db: AsyncSession,
     lgacode: Optional[str] = None,
     wardcode: Optional[str] = None,
+    allowed_lgas: Optional[set] = None,
 ) -> Dict[str, Any]:
     """Return GeoJSON for settlements with analytics, filtered by LGA or ward.
 
     Geometries from the state's boundary project; analytics from ``project_id``.
+    ``allowed_lgas`` further restricts the result to an LGA-scoped account.
     """
     boundary_pid = await _resolve_boundary_pid(project_id, db)
     params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
@@ -171,6 +194,7 @@ async def get_settlement_geojson(
         params["wardcode"] = wardcode
 
     where_extra = ("AND " + " AND ".join(filters)) if filters else ""
+    where_extra += _scope_lga_names(allowed_lgas, "s.lga_name", params)
 
     result = await db.execute(
         text(f"""
