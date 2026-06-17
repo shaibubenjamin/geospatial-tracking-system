@@ -407,3 +407,29 @@ class OnpremMirrorState(Base):
     last_progress_step  = Column(Integer)
     last_progress_total = Column(Integer)
     last_progress_label = Column(Text)
+
+
+class SourceConnection(Base):
+    """A configured data-source connection other than CommCare.
+
+    CommCare keeps its dedicated, fully-wired config in ``sync_config`` and is
+    NOT represented here. This table holds the saved configuration for the
+    additional sources surfaced in the Data Sources gallery (Kobo, ODK, Google
+    Drive, …). The config is persisted so the connection is "registered", but no
+    sync engine consumes it yet — that's a later phase. Non-secret fields live in
+    ``config`` (JSONB); secrets (tokens, passwords, service-account keys) are
+    Fernet-encrypted as a JSON blob in ``credentials_encrypted`` (same key as
+    the CommCare password).
+    """
+    __tablename__ = "source_connections"
+    __table_args__ = (UniqueConstraint("project_id", "source_type", name="uq_source_project_type"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("geo_projects.id"), nullable=False)
+    source_type = Column(Text, nullable=False)   # 'kobo' | 'odk' | 'gdrive'
+    display_name = Column(Text)
+    config = Column(JSONB, default=dict)          # non-secret fields only
+    credentials_encrypted = Column(Text)          # Fernet(JSON) of secret fields
+    status = Column(Text, default="configured")   # 'configured' | 'draft'
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

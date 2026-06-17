@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.database import get_db
 from app.models import GeoProject, User
-from app.routes.auth import require_admin, require_superadmin
+from app.routes.auth import require_admin, require_superadmin, get_current_user_optional, allowed_lgas_of
 from app.services.boundary_importer import (
     import_lga_shapefile,
     import_ward_shapefile,
@@ -269,8 +269,11 @@ async def recompute_spatial(
 async def lga_geojson(
     project_id: int,
     db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_lga_geojson(project_id, db)
+    # LGA-scope the boundaries so an LGA-restricted login's map shows only their
+    # LGA(s), not the whole state. None (admin/public/state-only) = no filter.
+    return await get_lga_geojson(project_id, db, allowed_lgas=allowed_lgas_of(_u))
 
 
 @router.get("/ward/geojson")
@@ -278,8 +281,9 @@ async def ward_geojson(
     project_id: int,
     lgacode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_ward_geojson(project_id, db, lgacode=lgacode)
+    return await get_ward_geojson(project_id, db, lgacode=lgacode, allowed_lgas=allowed_lgas_of(_u))
 
 
 @router.get("/settlement/geojson")
@@ -288,8 +292,9 @@ async def settlement_geojson(
     lgacode: Optional[str] = None,
     wardcode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_settlement_geojson(project_id, db, lgacode=lgacode, wardcode=wardcode)
+    return await get_settlement_geojson(project_id, db, lgacode=lgacode, wardcode=wardcode, allowed_lgas=allowed_lgas_of(_u))
 
 
 @router.get("/grid/geojson")

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ERITAS MDA — Admin Panel</title>
+  <title>ERITAS — Admin Panel</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -274,16 +274,19 @@
       display: flex; flex-direction: column; max-height: min(340px, 60vh);
     }
     .ms-panel[hidden] { display: none; }
-    .ms-search { border: none; border-bottom: 1px solid var(--line); padding: 10px 13px; font-size: 13px; outline: none; font-family: inherit; color: var(--ink); }
+    /* Scoped under .ms-root so the page's global `.form-group input` / `.form-group label`
+       styles (higher specificity) don't bleed in — that bleed removed the checkbox↔label
+       gap (labels looked joined) and forced a heavy border/bg on the search field. */
+    .ms-root .ms-search { width: 100%; border: none; border-bottom: 1px solid var(--line); border-radius: 0; background: #fff; padding: 11px 14px; font-size: 13px; outline: none; font-family: inherit; color: var(--ink); }
     .ms-bulk { display: flex; gap: 14px; padding: 7px 13px; border-bottom: 1px solid var(--line); background: var(--pale); }
     .ms-bulk a { color: var(--blue); cursor: pointer; font-size: 11.5px; font-weight: 600; }
     .ms-bulk a:hover { color: var(--deep); text-decoration: underline; }
     .ms-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 5px; }
-    .ms-opt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--ink); }
-    .ms-opt:hover { background: var(--mist); }
-    .ms-opt.on { background: var(--pale); }
-    .ms-opt input { accent-color: var(--blue); width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
-    .ms-opt-lbl { flex: 1; }
+    .ms-root .ms-opt { display: flex; align-items: center; gap: 12px; margin: 0; padding: 9px 12px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink); }
+    .ms-root .ms-opt:hover { background: var(--mist); }
+    .ms-root .ms-opt.on { background: var(--pale); }
+    .ms-root .ms-opt input { accent-color: var(--blue); width: 16px; height: 16px; flex-shrink: 0; margin: 0; cursor: pointer; }
+    .ms-root .ms-opt-lbl { flex: 1; }
     .ms-grp { font-size: 10.5px; color: var(--muted); background: var(--pale); border: 1px solid var(--line); padding: 1px 8px; border-radius: 99px; }
     .ms-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 12.5px; }
 
@@ -334,6 +337,50 @@
     .status-dot::before { content: ''; width: 7px; height: 7px; border-radius: 50%; }
     .status-dot.on { color: var(--good); } .status-dot.on::before { background: var(--good); }
     .status-dot.off { color: var(--muted); } .status-dot.off::before { background: var(--muted); }
+
+    /* ── Data Sources: connector gallery ── */
+    .src-tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+    .src-tab { padding: 9px 16px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; font-family: inherit; display: flex; align-items: center; gap: 8px; }
+    .src-tab:hover { color: var(--deep); }
+    .src-tab.active { color: var(--navy); border-bottom-color: var(--blue); }
+    .src-tab .src-tab-count { background: var(--mist); color: var(--deep); border-radius: 99px; font-size: 11px; font-weight: 700; padding: 1px 8px; }
+    .src-pane { display: none; } .src-pane.active { display: block; }
+
+    .src-search { position: relative; max-width: 520px; margin-bottom: 18px; }
+    .src-search input { width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 11px 14px 11px 40px; font-size: 13.5px; background: #fff; outline: none; font-family: inherit; color: var(--ink); }
+    .src-search input:focus { border-color: var(--blue); }
+    .src-search i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+
+    .src-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+    .src-card { position: relative; background: #fff; border: 1.5px solid var(--line); border-radius: 14px; padding: 24px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 11px; text-align: center; cursor: pointer; transition: border-color .16s, box-shadow .16s, transform .16s; }
+    .src-card:hover { border-color: rgba(0,107,46,.45); box-shadow: 0 8px 24px rgba(0,61,26,.12); transform: translateY(-2px); }
+    .src-card-logo { width: 54px; height: 54px; border-radius: 13px; display: grid; place-items: center; font-size: 25px; background: #fff; border: 1px solid var(--line); flex-shrink: 0; overflow: hidden; }
+    .src-logo-img { max-width: 62%; max-height: 62%; object-fit: contain; }
+    .src-card-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+    .src-card-sub { font-size: 11px; color: var(--muted); line-height: 1.4; }
+    .src-card-badge { display: inline-block; margin-top: 8px; font-size: 9px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; padding: 3px 10px; border-radius: 99px; }
+    .src-badge-connected { background: var(--good-bg); color: var(--good); }
+    .src-badge-beta { background: #EEF2FF; color: #4338CA; }
+    .src-badge-upload { background: var(--mist); color: var(--deep); }
+
+    /* Connected list */
+    .conn-list { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+    .conn-row { display: flex; align-items: center; gap: 14px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 13px 16px; }
+    .conn-logo { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 17px; background: #fff; border: 1px solid var(--line); flex-shrink: 0; overflow: hidden; }
+    .conn-meta { flex: 1; min-width: 0; }
+    .conn-name { font-weight: 700; color: var(--ink); font-size: 13.5px; }
+    .conn-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+    /* Source config modal field stack */
+    .src-modal-body { padding: 18px 24px 4px; max-height: 60vh; overflow-y: auto; }
+    .src-modal-body .form-group { margin-bottom: 14px; }
+    .src-modal-body textarea { width: 100%; border: 1.5px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 12px; font-family: 'SF Mono','Monaco',monospace; background: var(--pale); outline: none; min-height: 92px; resize: vertical; color: var(--ink); }
+    .src-modal-body textarea:focus { border-color: var(--blue); background: #fff; }
+
+    /* The Add-User card holds the states/LGA multi-selects whose panels are
+       absolutely-positioned. The base .card clips with overflow:hidden, which
+       cut off the open dropdown — let this card overflow so the panel shows. */
+    .add-user-card { overflow: visible; }
   </style>
 </head>
 <body>
@@ -344,7 +391,7 @@
     <div class="brand">
       <div class="brand-logo"><i class="fa-solid fa-capsules"></i></div>
       <div>
-        <div class="brand-name">ERITAS MDA</div>
+        <div class="brand-name">ERITAS</div>
         <div class="brand-sub">Admin Panel</div>
       </div>
     </div>
@@ -354,7 +401,8 @@
     </div>
 
     <div class="nav-section">Data Management</div>
-    <div class="nav-item" data-view="sync"><i class="fa-solid fa-rotate"></i> Data Sources</div>
+    <div class="nav-item" data-view="sync"><i class="fa-solid fa-rotate"></i> Data Services</div>
+    <div class="nav-item" data-view="connected"><i class="fa-solid fa-plug-circle-check"></i> Data Sources</div>
     <div class="nav-item super-only" data-view="uploads" style="display:none"><i class="fa-solid fa-cloud-arrow-up"></i> Data Uploads</div>
 
     <div class="nav-section">Configuration</div>
@@ -369,7 +417,7 @@
 
     <div class="sidebar-footer">
       <a href="/home"><i class="fa-solid fa-arrow-left"></i> Back to Home</a>
-      <div style="margin-top:6px;font-size:10.5px;color:#7ea9d4">ERITAS MDA &mdash; v1.0</div>
+      <div style="margin-top:6px;font-size:10.5px;color:#7ea9d4">ERITAS &mdash; v1.0</div>
       <div style="margin-top:4px;font-size:10.5px;color:#7ea9d4;opacity:.85">Powered by <a href="https://ehealthafrica.org" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">eHealth Africa</a></div>
     </div>
   </aside>
@@ -404,7 +452,7 @@
         <div class="page-head">
           <div>
             <div class="page-title">Data Uploads</div>
-            <div class="page-sub">Upload MDA household data, baseline targets, settlements, or boundary shapefiles</div>
+            <div class="page-sub">Upload household data, baseline targets, settlements, or boundary shapefiles</div>
           </div>
           <!-- Target-project selector. Every upload on this page scopes to
                whichever project is selected here (not the globally active
@@ -427,21 +475,21 @@
           <!-- MDA Household Upload -->
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
-              <div class="card-title"><i class="fa-solid fa-house-chimney-user"></i> MDA Household Data</div>
+              <div class="card-title"><i class="fa-solid fa-house-chimney-user"></i> Household Data</div>
             </div>
             <div class="card-body">
               <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
-                Upload the MDA file (<code>.xlsx</code> or <code>.csv</code>). For <code>.xlsx</code>: must contain a <b>Forms</b> sheet and optionally a <b>Repeat-group_indv</b> sheet. For <code>.csv</code>: treated as the Forms sheet only — individuals stay at their current values (use <code>.xlsx</code> if you also need to refresh individuals).
+                Upload the household file (<code>.xlsx</code> or <code>.csv</code>). For <code>.xlsx</code>: must contain a <b>Forms</b> sheet and optionally a <b>Repeat-group_indv</b> sheet. For <code>.csv</code>: treated as the Forms sheet only, and individuals stay at their current values (use <code>.xlsx</code> if you also need to refresh individuals).
               </p>
               <div class="upload-zone" id="mda-drop" onclick="document.getElementById('mda-file').click()">
                 <i class="fa-solid fa-file-excel"></i>
-                <div class="uz-title">Click to select MDA file</div>
+                <div class="uz-title">Click to select file</div>
                 <div class="uz-sub">Accepts .xlsx or .csv</div>
                 <input type="file" id="mda-file" accept=".xlsx,.csv" onchange="onFileSelected('mda-file','mda-file-label')">
               </div>
               <div id="mda-file-label" style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:600"></div>
               <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="uploadMDA()">
-                <i class="fa-solid fa-upload"></i> Upload MDA Data
+                <i class="fa-solid fa-upload"></i> Upload Data
               </button>
               <div class="inline-feedback" id="mda-feedback"></div>
             </div>
@@ -645,28 +693,41 @@
       <section class="view" id="view-sync">
         <div class="page-head">
           <div>
+            <div class="page-title">Data Services</div>
+            <div class="page-sub">Browse available connectors and connect a new source to this project</div>
+          </div>
+        </div>
+
+        <!-- Searchable connector gallery -->
+        <div class="src-search">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="src-search-input" placeholder="Search for a connector…" autocomplete="off" oninput="renderSourceGallery()">
+        </div>
+        <div class="src-grid" id="src-grid"></div>
+      </section>
+
+      <!-- ═══════════ DATA CONNECTED ═══════════ -->
+      <section class="view" id="view-connected">
+        <div class="page-head">
+          <div>
             <div class="page-title">Data Sources</div>
-            <div class="page-sub">CommCare HQ pull — incremental, scoped to one project (state + round)</div>
+            <div class="page-sub">Configured sources and their sync status for this project</div>
           </div>
           <div class="actions" style="display:flex;align-items:center;gap:10px">
-            <!-- Sync-worker queue status. Hidden until first poll resolves.
-                 - Worker mode + 0 depth   → muted "Worker idle"
-                 - Worker mode + N ≥ 1     → blue chip "Sync queue: N job(s) ahead"
-                 - Inline mode (Redis down)→ amber chip warning that syncs
-                   will run in-process and an API restart will kill them. -->
             <span id="sync-queue-chip" style="display:none;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:99px;align-items:center;gap:6px;white-space:nowrap"></span>
             <select id="sync-project-selector" style="border:1.5px solid var(--line);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;background:#fff;cursor:pointer">
               <option value="">Loading projects…</option>
             </select>
-            <button class="btn btn-primary" onclick="runSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
-            <!-- Stop button: visible only while a sync is in progress. Sets
-                 sync_config.cancel_requested so the per-set loop exits
-                 cleanly after the current set, no rollback. -->
-            <button id="sync-stop-btn" class="btn btn-danger" style="display:none" onclick="stopSync()">
-              <i class="fa-solid fa-stop"></i> Stop
-            </button>
+            <span id="sync-cc-actions" style="display:inline-flex;gap:10px;align-items:center">
+              <button class="btn btn-primary" onclick="runSync()"><i class="fa-solid fa-bolt"></i> Sync Now</button>
+              <button id="sync-stop-btn" class="btn btn-danger" style="display:none" onclick="stopSync()">
+                <i class="fa-solid fa-stop"></i> Stop
+              </button>
+            </span>
           </div>
         </div>
+
+        <div class="conn-list" id="conn-list" style="margin-bottom:18px"></div>
 
         <!-- On-prem mirror banner. Sits directly under the page head so it's
              visible without scrolling. Hidden by default; loadOnpremMirrorState()
@@ -877,7 +938,7 @@
             </div>
           </div>
         </div>
-      </section>
+      </section><!-- /#view-connected -->
 
       <!-- ═══════════ PROJECTS ═══════════ -->
       <section class="view" id="view-projects">
@@ -1051,7 +1112,7 @@
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-house-chimney-user"></i></div>
             <div class="st-val" id="ss-households">—</div>
-            <div class="st-lbl">MDA Households</div>
+            <div class="st-lbl">Households</div>
           </div>
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-child"></i></div>
@@ -1205,6 +1266,24 @@
     <div style="display:flex;gap:8px;justify-content:flex-end;padding:16px 22px 20px;background:var(--pale);border-top:1px solid var(--line)">
       <button id="scope-modal-cancel" type="button" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i> Cancel</button>
       <button id="scope-modal-save" type="button" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save access</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Data-source config modal (Kobo / ODK / Google Drive scaffolds) ─── -->
+<div id="source-modal" style="display:none;position:fixed;inset:0;background:rgba(0,26,8,.55);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px);font-family:'Inter',system-ui,sans-serif">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.32);max-width:480px;width:92vw;overflow:visible">
+    <div style="padding:20px 24px 6px;display:flex;align-items:flex-start;gap:14px">
+      <div id="source-modal-icon" style="width:44px;height:44px;border-radius:11px;display:grid;place-items:center;font-size:19px;flex-shrink:0;background:var(--blue);color:#fff"></div>
+      <div style="flex:1;min-width:0">
+        <div id="source-modal-title" style="font-size:16px;font-weight:700;color:var(--navy);letter-spacing:-.2px">Configure source</div>
+        <div style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:3px">Saves the connection settings for this project. Secrets are encrypted at rest. No data is synced yet.</div>
+      </div>
+    </div>
+    <div class="src-modal-body" id="source-modal-body"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:16px 22px 20px;background:var(--pale);border-top:1px solid var(--line)">
+      <button id="source-modal-cancel" type="button" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i> Cancel</button>
+      <button id="source-modal-save" type="button" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save connection</button>
     </div>
   </div>
 </div>
@@ -1550,7 +1629,7 @@
 
   /* ── NAVIGATION ── */
   const crumbs = {
-    uploads: 'Data Uploads', sync: 'Data Sources', projects: 'Projects',
+    uploads: 'Data Uploads', sync: 'Data Services', connected: 'Data Sources', projects: 'Projects',
     users: 'Users', qc: 'QC Re-run', system: 'System Status'
   };
   document.querySelectorAll('.nav-item[data-view]').forEach(el => {
@@ -1570,11 +1649,13 @@
     if (v === 'projects') { loadProjects(); }
     if (v === 'users')    { initAddUserForm(); loadUsers(); }
     if (v === 'system')   { loadSystemStatus(); }
-    if (v === 'sync')     { loadSyncProjects(); }
+    // Data Sources (gallery) and Data Connected both run off the same project
+    // load: it populates the selector, CommCare config, and the source list.
+    if (v === 'sync' || v === 'connected') { loadSyncProjects(); }
     if (v === 'account')  { resetPasswordForm(); }
-    // Stop the sync-queue polling when leaving the Data Sources view so
-    // we don't hammer /api/sync/queue/depth from a background tab.
-    if (v !== 'sync' && typeof stopSyncQueuePolling === 'function') {
+    // Stop the sync-queue polling when leaving BOTH data views so we don't
+    // hammer /api/sync/queue/depth from a background tab.
+    if (v !== 'sync' && v !== 'connected' && typeof stopSyncQueuePolling === 'function') {
       stopSyncQueuePolling();
     }
   }
@@ -2061,10 +2142,217 @@
       const lbl      = (p.name || fallback) + status;
       return `<option value="${p.id}"${p.id === SYNC_PROJECT_ID ? ' selected' : ''}>${lbl}</option>`;
     }).join('');
-    sel.onchange = () => { SYNC_PROJECT_ID = parseInt(sel.value, 10); loadSyncConfig(); };
+    sel.onchange = () => { SYNC_PROJECT_ID = parseInt(sel.value, 10); loadSyncConfig(); loadSourceConnections(); };
     await loadSyncConfig();
     startSyncQueuePolling();
+    loadSourceConnections();
   }
+
+  /* ── DATA SOURCE GALLERY (connector cards) ────────────────────────────
+     CommCare is the only live source. Kobo / ODK / Google Drive persist
+     their config only (no sync engine yet). Flat files route to Data Upload.
+     Catalog field defs mirror each platform's real connection schema. */
+  const SOURCE_CATALOG = [
+    { type:'commcare', name:'CommCare', icon:'fa-house-chimney-user', color:'#1A8A9C', kind:'native', sub:'Household survey HQ',
+      logo:'https://logo.clearbit.com/commcarehq.org' },
+    { type:'kobo', name:'Kobo Toolbox', icon:'fa-clipboard-list', color:'#2A9D8F', kind:'config', sub:'KoboToolbox API',
+      logo:'https://logo.clearbit.com/kobotoolbox.org',
+      fields:[
+        { key:'server_url', label:'Server URL', type:'url', placeholder:'https://kf.kobotoolbox.org' },
+        { key:'asset_uid', label:'Asset / Form UID', type:'text', placeholder:'e.g. aXyZ12345' },
+        { key:'api_token', label:'API token', type:'password', secret:true },
+      ] },
+    { type:'odk', name:'ODK Central', icon:'fa-mobile-screen-button', color:'#53B948', kind:'config', sub:'ODK Central OData',
+      logo:'https://logo.clearbit.com/getodk.org',
+      fields:[
+        { key:'base_url', label:'Base URL', type:'url', placeholder:'https://central.example.org' },
+        { key:'project_id', label:'Project ID', type:'text', placeholder:'e.g. 4' },
+        { key:'form_id', label:'Form ID (xmlFormId)', type:'text', placeholder:'e.g. household_survey' },
+        { key:'email', label:'Web-user email', type:'text', placeholder:'user@example.org' },
+        { key:'password', label:'Password', type:'password', secret:true },
+      ] },
+    { type:'dhis2', name:'DHIS2', icon:'fa-chart-simple', color:'#2C6693', kind:'config', sub:'National HMIS',
+      logo:'https://logo.clearbit.com/dhis2.org',
+      fields:[
+        { key:'base_url', label:'Base URL', type:'url', placeholder:'https://hmis.example.gov.ng' },
+        { key:'username', label:'Username', type:'text' },
+        { key:'password', label:'Password', type:'password', secret:true },
+        { key:'org_unit', label:'Org unit (UID)', type:'text', placeholder:'optional' },
+        { key:'dataset', label:'Dataset / Program (UID)', type:'text', placeholder:'optional' },
+      ] },
+    { type:'surveycto', name:'SurveyCTO', icon:'fa-clipboard-check', color:'#1F6FB2', kind:'config', sub:'SurveyCTO API',
+      logo:'https://logo.clearbit.com/surveycto.com',
+      fields:[
+        { key:'server_name', label:'Server name', type:'text', placeholder:'yourteam.surveycto.com' },
+        { key:'form_id', label:'Form ID', type:'text' },
+        { key:'username', label:'Username (email)', type:'text' },
+        { key:'password', label:'Password', type:'password', secret:true },
+      ] },
+    { type:'gsheets', name:'Google Sheets', icon:'fa-table', color:'#0F9D58', kind:'config', sub:'Spreadsheet sync',
+      logo:'https://cdn.simpleicons.org/googlesheets',
+      fields:[
+        { key:'spreadsheet_id', label:'Spreadsheet ID', type:'text', placeholder:'e.g. 1AbC…' },
+        { key:'sheet_name', label:'Sheet / tab name', type:'text', placeholder:'e.g. Sheet1' },
+        { key:'service_account_json', label:'Service-account JSON key', type:'textarea', secret:true, placeholder:'Paste the service-account key JSON' },
+      ] },
+    { type:'gdrive', name:'Google Drive', icon:'fa-google-drive', color:'#2D6CDF', kind:'config', brand:true, sub:'Service account',
+      logo:'https://cdn.simpleicons.org/googledrive',
+      fields:[
+        { key:'folder_id', label:'Folder / Shared-Drive ID', type:'text', placeholder:'e.g. 1AbC…' },
+        { key:'file_filter', label:'File type', type:'select', options:['Google Sheets','CSV','Excel'] },
+        { key:'service_account_json', label:'Service-account JSON key', type:'textarea', secret:true, placeholder:'Paste the service-account key JSON' },
+      ] },
+    { type:'databricks', name:'Databricks', icon:'fa-fire', color:'#FF3621', kind:'config', sub:'Lakehouse SQL',
+      logo:'https://cdn.simpleicons.org/databricks',
+      fields:[
+        { key:'workspace_url', label:'Workspace URL', type:'url', placeholder:'https://xxxx.cloud.databricks.com' },
+        { key:'http_path', label:'SQL warehouse HTTP path', type:'text', placeholder:'/sql/1.0/warehouses/…' },
+        { key:'access_token', label:'Access token', type:'password', secret:true },
+        { key:'catalog_table', label:'Catalog.schema.table', type:'text', placeholder:'optional' },
+      ] },
+    { type:'rest', name:'REST / Webhook', icon:'fa-code', color:'#475569', kind:'config', sub:'Generic API',
+      fields:[
+        { key:'endpoint_url', label:'Endpoint URL', type:'url', placeholder:'https://api.example.org/data' },
+        { key:'auth_header', label:'Auth header name', type:'text', placeholder:'e.g. Authorization (optional)' },
+        { key:'auth_token', label:'Token / API key', type:'password', secret:true },
+        { key:'json_path', label:'JSON path to records', type:'text', placeholder:'e.g. data.results (optional)' },
+      ] },
+  ];
+  function srcMeta(t){ return SOURCE_CATALOG.find(s => s.type === t); }
+  let SOURCE_CONNS = {};   // { source_type: {status, has_credentials, display_name, ...} }
+
+  function srcBadge(s, conn){
+    if (s.kind === 'native')  return conn ? '<span class="src-card-badge src-badge-connected">Connected</span>' : '<span class="src-card-badge src-badge-beta">Set up</span>';
+    if (s.kind === 'upload')  return '<span class="src-card-badge src-badge-upload">Upload</span>';
+    return conn ? '<span class="src-card-badge src-badge-connected">Configured</span>' : '<span class="src-card-badge src-badge-beta">Beta</span>';
+  }
+  // Real brand logo when we have one, falling back to a coloured Font Awesome
+  // glyph if the logo image fails to load (404 / offline / CSP).
+  function srcLogoIcon(s){
+    const fa = `<i class="fa-${s.brand ? 'brands' : 'solid'} ${s.icon}" style="color:${s.color}"></i>`;
+    if (!s.logo) return fa;
+    return `<img src="${s.logo}" alt="${escAttr(s.name)}" class="src-logo-img" `
+         + `onerror="this.style.display='none';this.insertAdjacentHTML('afterend', this.dataset.fa)" `
+         + `data-fa="${escAttr(fa)}">`;
+  }
+
+  window.renderSourceGallery = function(){
+    const grid = document.getElementById('src-grid'); if (!grid) return;
+    const q = (document.getElementById('src-search-input')?.value || '').trim().toLowerCase();
+    const items = SOURCE_CATALOG.filter(s => !q || s.name.toLowerCase().includes(q) || (s.sub||'').toLowerCase().includes(q));
+    if (!items.length){ grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><i class="fa-solid fa-magnifying-glass"></i>No connectors match.</div>'; return; }
+    grid.innerHTML = items.map(s => {
+      const conn = SOURCE_CONNS[s.type];
+      return `<div class="src-card" onclick="openSourceCard('${s.type}')">
+        <div class="src-card-logo">${srcLogoIcon(s)}</div>
+        <div class="src-card-name">${escHtml(s.name)}</div>
+        <div class="src-card-sub">${escHtml(s.sub||'')}</div>
+        ${srcBadge(s, conn)}
+      </div>`;
+    }).join('');
+  };
+
+  window.openSourceCard = function(type){
+    const s = srcMeta(type); if (!s) return;
+    if (s.kind === 'native'){ document.querySelector('.nav-item[data-view="connected"]')?.click(); return; }
+    if (s.kind === 'upload'){ const nav = document.querySelector('.nav-item[data-view="uploads"]'); if (nav) nav.click(); return; }
+    openSourceConfigModal(type);
+  };
+
+  // (Browse sources / Data Connected are now separate nav pages, not tabs.)
+
+  async function loadSourceConnections(){
+    const pid = SYNC_PROJECT_ID || (typeof syncProjectId === 'function' ? syncProjectId() : null);
+    SOURCE_CONNS = {};
+    if (pid){
+      try {
+        const res = await api('/api/sources/connections?project_id=' + pid);
+        if (res && res.ok){ const d = await res.json(); (d.connections||[]).forEach(c => { SOURCE_CONNS[c.source_type] = c; }); }
+      } catch(_){}
+    }
+    renderSourceGallery();
+    renderConnectedList();
+    const n = Object.keys(SOURCE_CONNS).length;
+    const cnt = document.getElementById('src-connected-count');
+    if (cnt){ cnt.textContent = String(n); cnt.style.display = n ? '' : 'none'; }
+  }
+  window.loadSourceConnections = loadSourceConnections;
+
+  function renderConnectedList(){
+    const el = document.getElementById('conn-list'); if (!el) return;
+    const conns = Object.values(SOURCE_CONNS);
+    if (!conns.length){ el.innerHTML = '<div class="empty-state" style="padding:22px"><i class="fa-solid fa-plug"></i>No sources connected yet. Use “Browse sources” to add one.</div>'; return; }
+    el.innerHTML = conns.map(c => {
+      const s = srcMeta(c.source_type) || { name:c.source_type, icon:'fa-database', color:'#64748b', sub:c.source_type };
+      const native = c.source_type === 'commcare';
+      const action = native
+        ? '<span class="chip info">Configured below ↓</span>'
+        : `<button class="btn btn-ghost btn-sm" onclick="openSourceConfigModal('${c.source_type}')"><i class="fa-solid fa-gear"></i> Edit</button>`;
+      const cred = c.has_credentials ? '<span class="chip good">Credentials set</span>' : '<span class="chip warn">No credentials</span>';
+      return `<div class="conn-row">
+        <div class="conn-logo">${srcLogoIcon(s)}</div>
+        <div class="conn-meta"><div class="conn-name">${escHtml(c.display_name || s.name)}</div><div class="conn-sub">${escHtml(s.sub || c.source_type)} &nbsp;·&nbsp; ${cred}</div></div>
+        ${action}
+      </div>`;
+    }).join('');
+  }
+
+  let _srcModalCleanup = null;
+  window.openSourceConfigModal = async function(type){
+    const s = srcMeta(type); if (!s || !s.fields) return;
+    const pid = SYNC_PROJECT_ID || (typeof syncProjectId === 'function' ? syncProjectId() : null);
+    if (!pid){ await alertDialog({ title:'No project selected', message:'Pick a project from the selector first.' }); return; }
+    const modal = document.getElementById('source-modal');
+
+    let existing = { config:{}, has_credentials:false };
+    try { const r = await api(`/api/sources/connections/${type}?project_id=${pid}`); if (r && r.ok) existing = await r.json(); } catch(_){}
+
+    document.getElementById('source-modal-title').textContent = `Configure ${s.name}`;
+    const iconEl = document.getElementById('source-modal-icon');
+    iconEl.innerHTML = srcLogoIcon(s); iconEl.style.background = '#fff'; iconEl.style.border = '1px solid var(--line)';
+    const body = document.getElementById('source-modal-body');
+    body.innerHTML = s.fields.map(f => {
+      const val = (!f.secret && existing.config && existing.config[f.key] != null) ? String(existing.config[f.key]) : '';
+      const ph  = (f.secret && existing.has_credentials) ? 'leave blank to keep existing' : (f.placeholder || '');
+      if (f.type === 'textarea') return `<div class="form-group"><label>${escHtml(f.label)}</label><textarea data-k="${f.key}" data-secret="${f.secret?1:0}" placeholder="${escAttr(ph)}">${escHtml(val)}</textarea></div>`;
+      if (f.type === 'select')   return `<div class="form-group"><label>${escHtml(f.label)}</label><select data-k="${f.key}">${f.options.map(o=>`<option ${val===o?'selected':''}>${escHtml(o)}</option>`).join('')}</select></div>`;
+      return `<div class="form-group"><label>${escHtml(f.label)}</label><input type="${f.type}" data-k="${f.key}" data-secret="${f.secret?1:0}" value="${escAttr(val)}" placeholder="${escAttr(ph)}" autocomplete="off"></div>`;
+    }).join('') + '<div class="inline-feedback" id="source-modal-feedback"></div>';
+
+    const saveBtn = document.getElementById('source-modal-save');
+    const cancelBtn = document.getElementById('source-modal-cancel');
+    const close = () => {
+      modal.style.display = 'none';
+      saveBtn.removeEventListener('click', onSave); cancelBtn.removeEventListener('click', close);
+      modal.removeEventListener('click', onBackdrop); document.removeEventListener('keydown', onKey);
+      _srcModalCleanup = null;
+    };
+    const onBackdrop = (e) => { if (e.target === modal) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const onSave = async () => {
+      const config = {}, credentials = {};
+      body.querySelectorAll('[data-k]').forEach(inp => {
+        const k = inp.getAttribute('data-k'); const v = (inp.value || '').trim();
+        if (inp.getAttribute('data-secret') === '1'){ if (v) credentials[k] = v; }   // blank secret → keep existing
+        else if (v) config[k] = v;
+      });
+      saveBtn.disabled = true;
+      try {
+        const res = await api(`/api/sources/connections/${type}?project_id=${pid}`, { method:'PUT', body: JSON.stringify({ display_name: s.name, config, credentials }) });
+        const d = res ? await res.json().catch(() => ({})) : {};
+        if (res && res.ok){ close(); loadSourceConnections(); }
+        else setFeedback('source-modal-feedback', d.detail || `Save failed (HTTP ${res ? res.status : '—'})`, 'err');
+      } catch(_){ setFeedback('source-modal-feedback', 'Could not reach the server.', 'err'); }
+      finally { saveBtn.disabled = false; }
+    };
+    if (_srcModalCleanup) _srcModalCleanup();
+    _srcModalCleanup = close;
+    saveBtn.addEventListener('click', onSave);
+    cancelBtn.addEventListener('click', close);
+    modal.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+    modal.style.display = 'flex';
+  };
 
   /* ── SYNC QUEUE DEPTH CHIP ──────────────────────────────────────────────
      Poll /api/sync/queue/depth every 5 s while the Data Sources view is

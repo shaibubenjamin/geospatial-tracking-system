@@ -48,14 +48,28 @@ async def create_all_tables():
     from sqlalchemy import text
     log = logging.getLogger(__name__)
 
+    def _first_line(e: Exception) -> str:
+        s = str(e).strip()
+        return s.splitlines()[0][:160] if s else type(e).__name__
+
     for ext in ("postgis", '"uuid-ossp"'):
         try:
             async with engine.begin() as ext_conn:
                 await ext_conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {ext}"))
         except Exception as e:
             log.info("Skipping CREATE EXTENSION %s (likely pre-installed by DBA): %s",
-                     ext, str(e).splitlines()[0][:120])
+                     ext, _first_line(e))
 
-    async with engine.begin() as conn:
-        from app import models  # noqa: F401
-        await conn.run_sync(Base.metadata.create_all)
+    # Best-effort, like the extensions above. On managed Postgres (AWS RDS) the
+    # app role is DML-only — it has no DDL/REFERENCES privilege — so existing
+    # tables are a no-op here but a NEW model would raise "permission denied".
+    # New tables are added out-of-band by a privileged migration (server_admin),
+    # so a permission error must NOT crash startup. Catch OUTSIDE the begin()
+    # block so the failed transaction is rolled back cleanly first.
+    from app import models  # noqa: F401
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        log.warning("metadata.create_all skipped (app role likely lacks DDL; "
+                    "new tables need a privileged migration): %s", _first_line(e))
