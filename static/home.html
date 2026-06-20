@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ERITAS</title>
+  <title>ERITAS — SARMAAN MDA</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -188,6 +188,19 @@
       font-weight: 500;
     }
     .hero-meaning b { color: var(--pale-g); font-weight: 800; }
+    .hero-programme {
+      display: inline-block;
+      margin: 0 0 16px;
+      padding: 5px 13px;
+      border-radius: 999px;
+      background: rgba(240,192,64,.14);
+      border: 1px solid rgba(240,192,64,.38);
+      color: #F0C040;
+      font-size: 12.5px;
+      font-weight: 800;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+    }
     .hero-sub {
       font-size: 16.5px;
       color: rgba(255,255,255,.62);
@@ -483,6 +496,7 @@
         <span class="accent">ERITAS</span><br>
         <span class="gold">Coverage Dashboard</span>
       </h1>
+      <div class="hero-programme">SARMAAN MDA</div>
       <p class="hero-meaning">
         <b>E</b>vidence through <b>R</b>eal-time <b>I</b>ntelligence,
         <b>T</b>racking, and <b>A</b>ccountability <b>S</b>ystems
@@ -559,13 +573,13 @@
               <strong>ERITAS</strong> &mdash; <strong>E</strong>vidence through
               <strong>R</strong>eal-time <strong>I</strong>ntelligence,
               <strong>T</strong>racking, and <strong>A</strong>ccountability
-              <strong>S</strong>ystems &mdash; is the monitoring platform built for
-              <strong>SARMAAN MDA</strong>, the Mass Drug Administration programme.
+              <strong>S</strong>ystems &mdash; is the monitoring platform built for the
+              <strong>SARMAAN MDA</strong> programme.
               It turns field data into real-time, accountable evidence that
               programme managers can act on.
             </p>
             <p>
-              <strong>Mass Drug Administration (MDA)</strong> delivers preventive
+              The <strong>SARMAAN MDA</strong> campaign delivers preventive
               treatment to eligible children across whole communities, round after
               round. During each round, field teams move from settlement to
               settlement recording every child treated &mdash; and ERITAS tracks
@@ -662,7 +676,7 @@
   </div>
 
   <footer class="footer">
-    <strong>ERITAS</strong>
+    <strong>ERITAS &mdash; SARMAAN MDA</strong>
     <div style="margin-top:6px;opacity:.7;font-size:12px">Powered by <a href="https://ehealthafrica.org" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">eHealth Africa</a> &nbsp;·&nbsp; &copy; 2026</div>
   </footer>
 
@@ -718,7 +732,7 @@
         document.getElementById('s-teams').textContent    = activeTeams + ' / ' + TOTAL_TEAMS;
         const teamPct = ((activeTeams / TOTAL_TEAMS) * 100).toFixed(0) + '% deployed';
         document.getElementById('s-teams-pct').textContent = teamPct;
-        document.getElementById('s-days').textContent     = fmt(d.days_active);
+        document.getElementById('s-days').textContent     = fmt(d.planned_duration_days != null ? d.planned_duration_days : d.days_active);
         document.getElementById('s-flags').textContent    = fmt(d.total_qc_flags);
       } catch(e) { console.warn('Stats load failed', e); }
       finally   { document.getElementById('stats-loading').style.display = 'none'; }

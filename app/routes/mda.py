@@ -763,7 +763,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     """
     # Pick the currently-active project; fall back to the most recent one.
     proj = await db.execute(text("""
-        SELECT id, state_name, round_number
+        SELECT id, state_name, round_number, campaign_start_date, campaign_end_date
         FROM geo_projects
         ORDER BY is_active DESC, round_number DESC NULLS LAST, id DESC
         LIMIT 1
@@ -778,12 +778,20 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
             "lgas_in_scope": 0,
             "wards_in_scope": 0,
             "days_active": 0,
+            "planned_duration_days": None,
         }
 
     pid = p[0]
     label = (
         f"{p[1]} Round {p[2]}" if p[1] and p[2] is not None else f"Project #{pid}"
     )
+    # "Campaign Days" = the official planned duration from the configured
+    # campaign window (end − start + 1), NOT the count of distinct submission
+    # days, which is inflated by pre-campaign test forms and a late/out-of-window
+    # trickle. Falls back to None when no window is set (the UI then shows
+    # days_active instead).
+    start_d, end_d = p[3], p[4]
+    planned_days = (end_d - start_d).days + 1 if (start_d and end_d) else None
 
     # Boundary tables are typically loaded under a single project per state
     # (R4 holds Sokoto's polygons; R5 reuses them) — count distinct codes
@@ -813,6 +821,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
         "lgas_in_scope":   int(row.lgas_in_scope or 0),
         "wards_in_scope":  int(row.wards_in_scope or 0),
         "days_active":     int(row.days_active or 0),
+        "planned_duration_days": planned_days,
     }
 
 
