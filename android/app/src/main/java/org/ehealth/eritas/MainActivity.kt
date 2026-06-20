@@ -362,13 +362,13 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             Column {
                 Text(
                     "ERITAS — Evidence through Real-time Intelligence, Tracking, and " +
-                        "Accountability Systems — is the monitoring platform for SARMAAN " +
-                        "MDA, the Mass Drug Administration programme.",
+                        "Accountability Systems — is the monitoring platform for the " +
+                        "SARMAAN MDA programme.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Mass Drug Administration (MDA) delivers preventive treatment to eligible " +
+                    "The SARMAAN MDA campaign delivers preventive treatment to eligible " +
                         "children across whole communities, round after round. ERITAS tracks " +
                         "coverage, data quality, and team performance live as data arrives " +
                         "from the field.",
