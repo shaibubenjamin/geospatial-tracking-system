@@ -21,6 +21,7 @@ Two long-lived dev lines, both PR'd into `main`:
 - New change → checkout the branch that owns that surface, commit, push, then `gh pr create --base main --head <dev|apk_dev>`, merge.
 - Put a fix on the branch that owns the surface: dashboard map CSP fix → `dev`; WebView / `app-map.html` change → `apk_dev`.
 - Don't carry one stream's uncommitted changes onto the other — **stash before switching**.
+- **Keep `apk_dev` current with `main` before app work.** `apk_dev` is a full branch of the monorepo, so its non-app files (web `static/*.html`, backend) silently drift while only `android/` gets updated. Run `git fetch origin main && git merge origin/main` on `apk_dev` **before** starting app work — otherwise a later `apk_dev → main` merge overwrites `main`'s newer web files with stale copies (a real landmine: `apk_dev → main` merges have happened). `dev` stays current naturally via frequent `dev → main` PRs.
 - Only create a separate branch for genuinely parallel work-streams (e.g. emergency hotfix during a larger refactor) — and call it out to the user first.
 
 ---
