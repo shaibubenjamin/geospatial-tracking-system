@@ -763,7 +763,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     """
     # Pick the currently-active project; fall back to the most recent one.
     proj = await db.execute(text("""
-        SELECT id, state_name, round_number
+        SELECT id, state_name, round_number, campaign_start_date, campaign_end_date
         FROM geo_projects
         ORDER BY is_active DESC, round_number DESC NULLS LAST, id DESC
         LIMIT 1
@@ -778,12 +778,20 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
             "lgas_in_scope": 0,
             "wards_in_scope": 0,
             "days_active": 0,
+            "planned_duration_days": None,
         }
 
     pid = p[0]
     label = (
         f"{p[1]} Round {p[2]}" if p[1] and p[2] is not None else f"Project #{pid}"
     )
+    # "Campaign Days" = the official planned duration from the configured
+    # campaign window (end − start + 1), NOT the count of distinct submission
+    # days, which is inflated by pre-campaign test forms and a late/out-of-window
+    # trickle. Falls back to None when no window is set (the UI then shows
+    # days_active instead).
+    start_d, end_d = p[3], p[4]
+    planned_days = (end_d - start_d).days + 1 if (start_d and end_d) else None
 
     # Boundary tables are typically loaded under a single project per state
     # (R4 holds Sokoto's polygons; R5 reuses them) — count distinct codes
@@ -813,6 +821,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
         "lgas_in_scope":   int(row.lgas_in_scope or 0),
         "wards_in_scope":  int(row.wards_in_scope or 0),
         "days_active":     int(row.days_active or 0),
+        "planned_duration_days": planned_days,
     }
 
 
@@ -2999,6 +3008,41 @@ async def geo_settlements_coverage(
                                      "ward_name": r.ward_name, "is_visited": bool(r.is_visited),
                                      "completeness_pct": round(float(r.completeness_pct or 0), 1)}})
     return {"type": "FeatureCollection", "project_id": pid, "features": feats}
+
+
+@router.get("/coverage/settlement")
+async def mda_coverage_settlement(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Settlements within a ward — name, visited flag, completeness %, points.
+    Lightweight (no geometry); drives the dashboard charts' ward → settlement
+    drill. Filtered by LGA + ward NAME, and LGA-scoped for restricted accounts."""
+    clauses = ["sa.project_id = :pid"]
+    params: dict = {"pid": pid}
+    if lga:
+        clauses.append("sa.lga_name = :lga"); params["lga"] = lga
+    if ward:
+        clauses.append("sa.ward_name = :ward"); params["ward"] = ward
+    where = " AND ".join(clauses) + _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
+    res = await db.execute(text(f"""
+        SELECT sa.settlement_name, sa.ward_name, sa.lga_name,
+               COALESCE(sa.is_visited, FALSE) AS is_visited,
+               COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
+               COALESCE(sa.point_count, 0) AS point_count
+        FROM settlement_analytics sa
+        WHERE {where}
+        ORDER BY sa.completeness_pct DESC, sa.settlement_name
+    """), params)
+    return [
+        {"settlement_name": r.settlement_name, "ward_name": r.ward_name, "lga_name": r.lga_name,
+         "is_visited": bool(r.is_visited), "completeness_pct": round(float(r.completeness_pct or 0), 1),
+         "point_count": int(r.point_count or 0)}
+        for r in res.fetchall()
+    ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ERITAS MDA Dashboard</title>
+<title>ERITAS — SARMAAN MDA · Dashboard</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -423,7 +423,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     <div class="brand">
       <div class="brand-logo">SS</div>
       <div>
-        <div class="brand-name">ERITAS MDA</div>
+        <div class="brand-name">ERITAS</div>
         <div class="brand-sub" data-state-label>&mdash;</div>
       </div>
     </div>
@@ -442,7 +442,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     <div class="nav-item" data-view="reports" data-label="Reports &amp; Export"><i class="fa-solid fa-file-export"></i> Reports &amp; Export</div>
 
     <div class="sidebar-footer">
-      <div>Sightsavers &mdash; SARMAAN</div>
+      <div>ERITAS &mdash; SARMAAN MDA</div>
       <div style="color:#90c9a0;font-size:10.5px;margin-top:2px" data-state-round-label>&mdash;</div>
       <div style="font-size:10.5px;margin-top:4px;opacity:.75">Powered by <a href="https://ehealthafrica.org" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">eHealth Africa</a></div>
       <div id="admin-nav-link" style="display:none;margin-top:10px">
@@ -3257,20 +3257,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           if (!elems.length) return;
           const ward = data[elems[0].index]?.ward_name;
           if (!ward) return;
-          if (FILTER.ward === ward) {
-            // same ward clicked again — reset to LGA drill-down
-            FILTER.ward = '';
-            const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = '';
-            delete built['teams']; delete built['trends'];
-            _reloadOverviewKPIs();
-            showToast('Ward filter cleared — showing all wards in ' + (FILTER.lga || 'selected LGA'));
-          } else {
-            const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = ward;
-            FILTER.ward = ward;
-            delete built['teams']; delete built['trends'];
-            _reloadOverviewKPIs();
-            showToast(ward + ' ward selected — dashboard filtered. Click again to deselect.');
-          }
+          // Drill one level deeper: ward → settlements. Also filter the
+          // dashboard to the ward so the KPIs follow the drill.
+          const wardSel = document.getElementById('f-ward'); if (wardSel) wardSel.value = ward;
+          FILTER.ward = ward;
+          delete built['teams']; delete built['trends'];
+          _reloadOverviewKPIs();
+          drillDownToSettlements(lga, ward);
         },
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
@@ -3284,6 +3277,63 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       }
     });
   }
+
+  /* ── SETTLEMENT DRILL-DOWN — replaces ward chart with settlement coverage ──
+     Forms-per-settlement isn't reliable (households don't carry settlement
+     reliably), so the leaf level shows each settlement's coverage % from
+     settlement_analytics — the same measure the Geographic View uses. */
+  async function drillDownToSettlements(lga, ward) {
+    const el = document.getElementById('c_lgaBar');
+    if (!el) return;
+    const existing = Chart.getChart(el); if (existing) existing.destroy();
+
+    const lgaEsc = String(lga).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const titleEl = el.closest('.card')?.querySelector('.card-title');
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlement coverage — ' + ward +
+      ' &nbsp;<button onclick="drillDownToWards(\'' + lgaEsc + '\')" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> Wards</button>' +
+      ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-table-cells-large" style="font-size:10px"></i> All LGAs</button>';
+
+    const data = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!data.length) { showToast('No settlement data for ' + ward); return; }
+
+    const wrap = el.parentElement;
+    const rowH = 30, maxViewport = 500;
+    wrap.style.height = Math.max(300, data.length * rowH) + 'px';
+    wrap.style.overflow = 'visible';
+    if (!document.getElementById('ward-chart-scroller')) {
+      const scroller = document.createElement('div');
+      scroller.id = 'ward-chart-scroller';
+      scroller.style.cssText = 'max-height:' + maxViewport + 'px;overflow-y:auto;overflow-x:hidden;margin:0 -18px;padding:0 18px';
+      wrap.parentNode.insertBefore(scroller, wrap);
+      scroller.appendChild(wrap);
+    }
+    new Chart(el, {
+      type: 'bar',
+      data: {
+        labels: data.map(r => r.settlement_name || '(unnamed)'),
+        datasets: [{ label: 'Coverage %', data: data.map(r => r.completeness_pct || 0),
+          backgroundColor: data.map(r => { const c = r.completeness_pct || 0; return c >= 80 ? '#006B2E' : c >= 60 ? '#16A34A' : c > 0 ? '#4CAF50' : '#CBD5E1'; }),
+          borderRadius: 5, maxBarThickness: 22 }]
+      },
+      options: {
+        indexAxis: 'y',
+        onHover: (evt, elems) => { el.style.cursor = 'default'; },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => {
+            const r = data[ctx.dataIndex] || {};
+            return ' ' + (r.completeness_pct || 0) + '% · ' + (r.point_count || 0) + ' pts · ' + (r.is_visited ? 'visited' : 'not visited');
+          } } },
+          datalabels: { ...DL_BASE, anchor: 'center', align: 'center',
+            color: ctx => (ctx.dataset.data[ctx.dataIndex] > 18) ? '#fff' : '#334155',
+            font: { size: 10, weight: '700' }, formatter: v => (v || 0) + '%' }
+        },
+        scales: { x: { display: false, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
+        maintainAspectRatio: false
+      }
+    });
+  }
+  window.drillDownToWards = drillDownToWards;
 
   function drillUpToLGA() {
     // Restore original LGA chart
@@ -3309,6 +3359,86 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     rebuildOverviewCharts();
   }
   window.drillUpToLGA = drillUpToLGA;
+
+  /* ── COVERAGE chart drill (Treatment Coverage by LGA → ward → settlement) ──
+     Same model as the Overview Forms chart but on c_covLgaBar and showing
+     coverage % at every level. Drill-up rebuilds the whole coverage view. */
+  function _covDrillBack(lga, ward) {
+    const lgaEsc = String(lga || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const wards = '<button onclick="covDrillToWards(\'' + lgaEsc + '\')" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> Wards</button>';
+    const all = '<button onclick="covDrillUp()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-table-cells-large" style="font-size:10px"></i> All LGAs</button>';
+    return (ward ? wards + ' &nbsp;' : '') + all;
+  }
+  function _covDrillScroll(el, n) {
+    const wrap = el.parentElement;
+    wrap.style.height = Math.max(300, n * 30) + 'px';
+    wrap.style.overflow = 'visible';
+    if (!document.getElementById('cov-drill-scroller')) {
+      const sc = document.createElement('div');
+      sc.id = 'cov-drill-scroller';
+      sc.style.cssText = 'max-height:500px;overflow-y:auto;overflow-x:hidden;margin:0 -18px;padding:0 18px';
+      wrap.parentNode.insertBefore(sc, wrap);
+      sc.appendChild(wrap);
+    }
+  }
+  function _covDrillChart(el, labels, values, rows, onBarClick) {
+    new Chart(el, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Coverage %', data: values,
+        backgroundColor: values.map(v => v >= 80 ? '#006B2E' : v >= 60 ? '#16A34A' : v > 0 ? '#4CAF50' : '#CBD5E1'),
+        borderRadius: 5, maxBarThickness: 24 }] },
+      options: {
+        indexAxis: 'y',
+        onClick: (e, els) => { if (els.length && onBarClick) onBarClick(els[0].index); },
+        onHover: (e, els) => { el.style.cursor = (els.length && onBarClick) ? 'pointer' : 'default'; },
+        plugins: {
+          legend: { display: false },
+          datalabels: { display: true, anchor: 'center', align: 'center', color: '#fff',
+            font: { size: 10.5, weight: '700' }, formatter: v => (v || 0).toFixed(1) + '%' },
+          tooltip: { callbacks: { label: ctx => {
+            const r = rows[ctx.dataIndex] || {};
+            return ' ' + (ctx.raw || 0).toFixed(1) + '%' + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
+          } } }
+        },
+        scales: { x: { display: false, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
+        maintainAspectRatio: false
+      }
+    });
+  }
+  async function covDrillToWards(lga) {
+    const el = document.getElementById('c_covLgaBar'); if (!el) return;
+    const ex = Chart.getChart(el); if (ex) ex.destroy();
+    const t = el.closest('.card')?.querySelector('.card-title');
+    if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Ward coverage — ' + lga + ' &nbsp;' + _covDrillBack(lga, null);
+    const data = await api('/api/mda/coverage/ward?lga=' + encodeURIComponent(lga)) || [];
+    if (!data.length) { showToast('No ward data for ' + lga); return; }
+    _covDrillScroll(el, data.length);
+    _covDrillChart(el, data.map(r => r.ward_name), data.map(r => parseFloat(r.coverage_pct) || 0), data,
+      i => { const w = data[i]?.ward_name; if (w) covDrillToSettlements(lga, w); });
+  }
+  async function covDrillToSettlements(lga, ward) {
+    const el = document.getElementById('c_covLgaBar'); if (!el) return;
+    const ex = Chart.getChart(el); if (ex) ex.destroy();
+    const t = el.closest('.card')?.querySelector('.card-title');
+    if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlement coverage — ' + ward + ' &nbsp;' + _covDrillBack(lga, ward);
+    const data = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!data.length) { showToast('No settlement data for ' + ward); return; }
+    _covDrillScroll(el, data.length);
+    _covDrillChart(el, data.map(r => r.settlement_name || '(unnamed)'), data.map(r => r.completeness_pct || 0), data, null);
+  }
+  function covDrillUp() {
+    const el = document.getElementById('c_covLgaBar');
+    if (el) { const c = Chart.getChart(el); if (c) c.destroy(); }
+    const sc = document.getElementById('cov-drill-scroller');
+    if (sc) { const wrap = el?.parentElement; if (wrap) sc.parentNode.insertBefore(wrap, sc); sc.remove(); }
+    const wrap = el?.parentElement; if (wrap) { wrap.style.height = ''; wrap.style.overflow = ''; }
+    const t = el?.closest('.card')?.querySelector('.card-title');
+    if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Treatment Coverage by LGA (%)';
+    buildCharts('coverage');
+  }
+  window.covDrillToWards = covDrillToWards;
+  window.covDrillToSettlements = covDrillToSettlements;
+  window.covDrillUp = covDrillUp;
 
   function buildLGABarChart(data, sortBy) {
     const el = document.getElementById('c_lgaBar');
@@ -3646,12 +3776,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             onClick: (evt, elems) => {
               if (!elems.length) return;
               const lga = sorted[elems[0].index]?.lga;
-              const cov = sorted[elems[0].index]?.coverage_pct;
-              if (lga) {
-                const sel = document.getElementById('cov-f-lga'); if(sel) sel.value = lga;
-                applyCovFilter();
-                showToast(lga + ' — ' + parseFloat(cov||0).toFixed(1) + '% coverage  (click again to reset)');
-              }
+              if (lga) covDrillToWards(lga);   // drill: LGA → ward → settlement
             },
             onHover: (evt, elems) => { document.getElementById('c_covLgaBar').style.cursor = elems.length ? 'pointer' : 'default'; },
             plugins: {
@@ -5624,7 +5749,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       el.textContent = state;
     });
     document.querySelectorAll('[data-state-round-label]').forEach(el => {
-      el.textContent = `${projectLabel} · Sightsavers`;
+      el.textContent = projectLabel;
     });
     document.querySelectorAll('[data-state-mda-label]').forEach(el => {
       el.textContent = `${state} MDA`;
@@ -5634,7 +5759,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     });
     // Browser tab — use the project name so "Kano Pilot" shows as named,
     // not auto-composed into "Kano Round 1".
-    document.title = `ERITAS MDA — ${projectLabel}`;
+    document.title = `ERITAS — ${projectLabel}`;
   }
 
   /* ── PROJECT SELECTOR (topbar) ──
