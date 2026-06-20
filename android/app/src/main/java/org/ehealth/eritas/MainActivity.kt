@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.ui.Alignment
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +39,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -184,6 +188,7 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var bannerDismissed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     // Set when a map pin is tapped on the Coverage tab — switches to the Geo tab
     // focused on that LGA, and (for a settlement pin) zoomed onto the settlement.
     var mapFocusLga by remember { mutableStateOf<String?>(null) }
@@ -250,6 +255,10 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("About") },
+                            onClick = { menuOpen = false; showAbout = true },
+                        )
                         DropdownMenuItem(
                             text = { Text("Log out") },
                             onClick = { menuOpen = false; onLogout() },
@@ -329,4 +338,49 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
             },
         )
     }
+
+    if (showAbout) {
+        AboutDialog(onDismiss = { showAbout = false })
+    }
+}
+
+/**
+ * About dialog — what ERITAS is and the SARMAAN MDA programme it monitors.
+ * Mirrors the "About Us" section on the web landing page.
+ */
+@Composable
+private fun AboutDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+        title = {
+            Text("ERITAS — SARMAAN MDA", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column {
+                Text(
+                    "ERITAS — Evidence through Real-time Intelligence, Tracking, and " +
+                        "Accountability Systems — is the monitoring platform for SARMAAN " +
+                        "MDA, the Mass Drug Administration programme.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Mass Drug Administration (MDA) delivers preventive treatment to eligible " +
+                        "children across whole communities, round after round. ERITAS tracks " +
+                        "coverage, data quality, and team performance live as data arrives " +
+                        "from the field.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Powered by eHealth Africa · v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+    )
 }
