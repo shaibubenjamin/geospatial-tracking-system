@@ -70,12 +70,46 @@ preflight() {
     fi
 }
 
+# ── Bastion lifecycle ────────────────────────────────────────────────────────
+# Make `up` self-contained: start the bastion if it's stopped and wait for its
+# SSM agent before we tunnel. A least-privilege tunnel user can start/stop just
+# this one instance (see scripts/dev-tunnel-policy.json), so no manual
+# `aws ec2 start-instances` is needed.
+ensure_bastion_running() {
+    local state
+    state=$(aws ec2 describe-instances --region "$REGION" \
+        --instance-ids "$EC2_INSTANCE_ID" \
+        --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null || echo "unknown")
+    if [[ "$state" != "running" ]]; then
+        echo "  Bastion ${EC2_INSTANCE_ID} is '${state}' — starting it (first run can take ~1 min)..."
+        aws ec2 start-instances --region "$REGION" --instance-ids "$EC2_INSTANCE_ID" >/dev/null
+        aws ec2 wait instance-running --region "$REGION" --instance-ids "$EC2_INSTANCE_ID"
+    fi
+    # 'running' can precede the SSM agent being online; StartSession needs the
+    # agent. Poll until it registers (give up after ~90s).
+    local i=0
+    while true; do
+        local ping
+        ping=$(aws ssm describe-instance-information --region "$REGION" \
+            --filters "Key=InstanceIds,Values=${EC2_INSTANCE_ID}" \
+            --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || echo "")
+        [[ "$ping" == "Online" ]] && break
+        i=$((i+1))
+        if (( i > 90 )); then
+            echo "  ✗ Bastion is running but never registered with SSM (~90s)." >&2
+            exit 1
+        fi
+        sleep 1
+    done
+}
+
 # ── Tunnel control ───────────────────────────────────────────────────────────
 open_tunnel() {
     if [[ -f "$tunnel_pid_file" ]] && kill -0 "$(cat "$tunnel_pid_file")" 2>/dev/null; then
         echo "  Tunnel already open (pid $(cat "$tunnel_pid_file"))"
         return
     fi
+    ensure_bastion_running
     echo "  Opening SSM port-forward localhost:${LOCAL_PORT} → ${RDS_ENDPOINT}:5432 via ${EC2_INSTANCE_ID}..."
     # Background SSM session — logs to /tmp so we can debug if it dies.
     nohup aws ssm start-session \
@@ -132,6 +166,17 @@ write_env() {
         --secret-id "${PROJECT}/onprem-database-url" \
         --query SecretString --output text 2>/dev/null || echo "")
 
+    # Fernet key for decrypting sync_config secrets. OPTIONAL: a least-privilege
+    # tunnel user (one without access to the app-secrets secret) simply gets a
+    # blank key — the dashboard preview still works; only sync / secret-decrypt
+    # features are disabled. Never aborts the run when access is denied.
+    local sync_encryption_key
+    sync_encryption_key=$(aws secretsmanager get-secret-value \
+        --region "$REGION" \
+        --secret-id "${PROJECT}/app-secrets" \
+        --query SecretString --output text 2>/dev/null \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('SYNC_ENCRYPTION_KEY',''))" 2>/dev/null || echo "")
+
     # Back up an existing .env once
     if [[ -f .env && ! -f .env.local-onprem.bak ]]; then
         cp .env .env.local-onprem.bak
@@ -158,7 +203,7 @@ ENVIRONMENT=development
 
 # Fernet key — required so the encrypted sync_config password fields in RDS
 # decrypt from the dev container. Same key prod uses.
-SYNC_ENCRYPTION_KEY=$(aws secretsmanager get-secret-value --region "$REGION" --secret-id "${PROJECT}/app-secrets" --query SecretString --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['SYNC_ENCRYPTION_KEY'])")
+SYNC_ENCRYPTION_KEY=${sync_encryption_key}
 
 # Reverse-mirror to on-prem. Fetched from AWS Secrets Manager so the button
 # is always available when running dev-aws.sh — no manual export needed.
@@ -195,6 +240,7 @@ case "$CMD" in
     tunnel)
         echo "▸ Opening SSM port-forward only (foreground — Ctrl-C to close)"
         preflight
+        ensure_bastion_running
         aws ssm start-session \
             --region "$REGION" \
             --target "$EC2_INSTANCE_ID" \
