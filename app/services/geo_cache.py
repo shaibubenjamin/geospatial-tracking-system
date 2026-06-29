@@ -1,27 +1,31 @@
-"""Tiny in-process TTL cache for boundary GeoJSON.
+"""Tiny in-process TTL cache for boundary / coverage GeoJSON.
 
-The boundary layers (LGA / ward / settlement) are large and change rarely — only
-on a data reload or sync. The settlement layer alone is ~22 MB and tens of
-seconds to generate + serialize, and it was being recomputed on every single map
-load. This caches the *serialized* JSON (already encoded to bytes) so a request
-never recomputes within the TTL.
+These layers (LGA / ward / settlement, web *and* the app's /api/app/geo/*) are
+expensive to generate and change rarely — only on a data reload or sync. The web
+settlement layer alone is ~22 MB and tens of seconds, and it was regenerated on
+every map load. This caches the *serialized* JSON (already encoded to bytes) so a
+request never recomputes within the TTL. The GZip middleware compresses the
+bytes on the way out.
 
 Scope safety: the caller's LGA scope is part of the cache key, so an
 LGA-restricted user can only ever hit — and be served — their own scope's entry,
 never another scope's data.
 
 Prod runs a single uvicorn worker, so a module-level dict is shared across all
-requests. The TTL bounds how stale the coverage stats baked into a layer can be;
-``clear()`` is also called after a manual spatial recompute for instant
-freshness. (A sync-worker recompute runs in a separate process, so its changes
-surface on the next TTL expiry — at most ``TTL_SECONDS`` later.)
+requests. The TTL bounds how stale the coverage baked into a layer can be;
+``clear()`` is also called after a manual spatial recompute. (A sync-worker
+recompute runs in a separate process, so its changes surface on the next TTL
+expiry — at most ``TTL_SECONDS`` later.)
 """
 import hashlib
 import json
 import os
 import time
 from collections import OrderedDict
-from typing import Any, Optional, Tuple
+from typing import Any, Awaitable, Callable, Optional, Tuple
+
+from starlette.requests import Request
+from starlette.responses import Response
 
 TTL_SECONDS = int(os.environ.get("BOUNDARY_CACHE_TTL", "300"))
 MAX_ENTRIES = int(os.environ.get("BOUNDARY_CACHE_MAX_ENTRIES", "48"))
@@ -65,3 +69,23 @@ def put(key: str, obj: Any) -> Tuple[bytes, str]:
 
 def clear() -> None:
     _store.clear()
+
+
+async def respond(
+    request: Request,
+    cache_key: str,
+    producer: Callable[[], Awaitable[dict]],
+) -> Response:
+    """Serve a GeoJSON layer from cache (generating on a miss), with an ETag +
+    private Cache-Control so the browser/app caches it too. Honours
+    If-None-Match with a 304 (no body). GZip middleware compresses the body."""
+    cached = get(cache_key)
+    if cached is None:
+        data = await producer()
+        body, etag = put(cache_key, data)
+    else:
+        body, etag = cached
+    headers = {"Cache-Control": f"private, max-age={TTL_SECONDS}", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/json", headers=headers)

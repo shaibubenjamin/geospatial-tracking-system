@@ -17,7 +17,7 @@ active project via ``resolve_pid`` — so the app works for *any* state/round.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ from app.routes.mda import (
 )
 from app.routes import mda as mda_route
 from app.services.spatial_engine import get_points_geojson
+from app.services import geo_cache
 
 router = APIRouter(prefix="/app", tags=["app"])
 
@@ -255,6 +256,7 @@ async def _boundary_pid(pid: int, db: AsyncSession) -> int:
 
 @router.get("/geo/wards")
 async def app_geo_wards(
+    request: Request,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: User = Depends(get_current_user),
@@ -267,58 +269,67 @@ async def app_geo_wards(
     round-stable ``wardcode``. Ward granularity keeps the payload phone-sized
     (~hundreds of features) — settlement granularity stays server-side and is
     reached point-by-point via /api/app/near.
-    """
-    bpid = await _boundary_pid(pid, db)
-    params: dict = {"pid": pid, "bpid": bpid}
-    lga_sql = mda_route._lga_and(mda_route.allowed_lgas_of(_u), "w.lga_name", params)
-    res = await db.execute(
-        text(
-            f"""
-            WITH cov AS (
-              SELECT wardcode,
-                     -- visitation = share of settlements with >=1 GPS point.
-                     AVG(CASE WHEN COALESCE(point_count, 0) > 0 THEN 1.0 ELSE 0.0 END) AS visit_frac,
-                     COUNT(*) AS settlements,
-                     COUNT(*) FILTER (WHERE COALESCE(point_count, 0) > 0) AS settlements_visited
-              FROM settlement_analytics
-              WHERE project_id = :pid
-              GROUP BY wardcode
-            )
-            SELECT w.ward_name, w.lga_name, w.wardcode,
-                   ST_AsGeoJSON(ST_SimplifyPreserveTopology(w.geom, 0.0005)) AS geom,
-                   COALESCE(cov.visit_frac, 0)::float   AS visit_frac,
-                   COALESCE(cov.settlements, 0)         AS settlements,
-                   COALESCE(cov.settlements_visited, 0) AS settlements_visited
-            FROM wards w
-            LEFT JOIN cov ON cov.wardcode = w.wardcode
-            WHERE w.project_id = :bpid{lga_sql}
-            """
-        ),
-        params,
-    )
-    import json as _json
 
-    features = []
-    for r in res.fetchall():
-        if not r.geom:
-            continue
-        vfrac = float(r.visit_frac or 0)
-        features.append(
-            {
-                "type": "Feature",
-                "geometry": _json.loads(r.geom),
-                "properties": {
-                    "ward_name": r.ward_name,
-                    "lga_name": r.lga_name,
-                    "wardcode": r.wardcode,
-                    "visitation_pct": round(100.0 * vfrac, 1),
-                    "settlements": int(r.settlements or 0),
-                    "settlements_visited": int(r.settlements_visited or 0),
-                    "is_at_target": vfrac >= 0.7,
-                },
-            }
+    Cached per (project, LGA scope) so repeated map loads during a campaign
+    don't re-run the aggregation; served via the shared geo_cache (ETag + 304).
+    """
+    scope = mda_route.allowed_lgas_of(_u)
+
+    async def _produce() -> dict:
+        bpid = await _boundary_pid(pid, db)
+        params: dict = {"pid": pid, "bpid": bpid}
+        lga_sql = mda_route._lga_and(scope, "w.lga_name", params)
+        res = await db.execute(
+            text(
+                f"""
+                WITH cov AS (
+                  SELECT wardcode,
+                         -- visitation = share of settlements with >=1 GPS point.
+                         AVG(CASE WHEN COALESCE(point_count, 0) > 0 THEN 1.0 ELSE 0.0 END) AS visit_frac,
+                         COUNT(*) AS settlements,
+                         COUNT(*) FILTER (WHERE COALESCE(point_count, 0) > 0) AS settlements_visited
+                  FROM settlement_analytics
+                  WHERE project_id = :pid
+                  GROUP BY wardcode
+                )
+                SELECT w.ward_name, w.lga_name, w.wardcode,
+                       ST_AsGeoJSON(ST_SimplifyPreserveTopology(w.geom, 0.0005)) AS geom,
+                       COALESCE(cov.visit_frac, 0)::float   AS visit_frac,
+                       COALESCE(cov.settlements, 0)         AS settlements,
+                       COALESCE(cov.settlements_visited, 0) AS settlements_visited
+                FROM wards w
+                LEFT JOIN cov ON cov.wardcode = w.wardcode
+                WHERE w.project_id = :bpid{lga_sql}
+                """
+            ),
+            params,
         )
-    return {"type": "FeatureCollection", "project_id": pid, "features": features}
+        import json as _json
+
+        features = []
+        for r in res.fetchall():
+            if not r.geom:
+                continue
+            vfrac = float(r.visit_frac or 0)
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": _json.loads(r.geom),
+                    "properties": {
+                        "ward_name": r.ward_name,
+                        "lga_name": r.lga_name,
+                        "wardcode": r.wardcode,
+                        "visitation_pct": round(100.0 * vfrac, 1),
+                        "settlements": int(r.settlements or 0),
+                        "settlements_visited": int(r.settlements_visited or 0),
+                        "is_at_target": vfrac >= 0.7,
+                    },
+                }
+            )
+        return {"type": "FeatureCollection", "project_id": pid, "features": features}
+
+    key = geo_cache.make_key("app_wards", pid, scope)
+    return await geo_cache.respond(request, key, _produce)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -328,21 +339,29 @@ async def app_geo_wards(
 # ─────────────────────────────────────────────────────────────────────────────
 @router.get("/geo/lgas")
 async def app_geo_lgas(
+    request: Request,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return await geo_lgas_coverage(pid=pid, db=db, _u=user)
+    scope = mda_route.allowed_lgas_of(user)
+    key = geo_cache.make_key("app_lgas", pid, scope)
+    return await geo_cache.respond(request, key, lambda: geo_lgas_coverage(pid=pid, db=db, _u=user))
 
 
 @router.get("/geo/settlements")
 async def app_geo_settlements(
+    request: Request,
     lgacode: _Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return await geo_settlements_coverage(lgacode=lgacode, pid=pid, db=db, _u=user)
+    scope = mda_route.allowed_lgas_of(user)
+    key = geo_cache.make_key("app_settlements", pid, scope, lgacode=lgacode)
+    return await geo_cache.respond(
+        request, key, lambda: geo_settlements_coverage(lgacode=lgacode, pid=pid, db=db, _u=user)
+    )
 
 
 @router.get("/geo/points")
