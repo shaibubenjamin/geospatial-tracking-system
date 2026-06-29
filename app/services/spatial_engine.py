@@ -3,9 +3,19 @@ spatial_engine.py
 All PostGIS spatial operations for the geospatial tracker.
 """
 import json
+import os
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+
+# ── GeoJSON payload tuning ────────────────────────────────────────────────────
+# The settlement layer is the heavy one (thousands of full-resolution polygons,
+# ~22 MB). Two cheap, big cuts for the web map: drop coordinate precision to
+# ~0.1 m (6 decimals — the default 9 is nanometre-level and wasted on a web map)
+# and Douglas-Peucker simplify each polygon. ST_SimplifyPreserveTopology keeps
+# valid, non-collapsing geometry. Both tunable via env without a code change.
+GEOJSON_PRECISION = int(os.environ.get("GEOJSON_PRECISION", "6"))
+SETTLEMENT_SIMPLIFY_TOLERANCE = float(os.environ.get("SETTLEMENT_SIMPLIFY_TOLERANCE", "0.0003"))
 
 
 async def _resolve_boundary_pid(project_id: int, db: AsyncSession) -> int:
@@ -184,7 +194,11 @@ async def get_settlement_geojson(
     ``allowed_lgas`` further restricts the result to an LGA-scoped account.
     """
     boundary_pid = await _resolve_boundary_pid(project_id, db)
-    params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
+    params: Dict[str, Any] = {
+        "boundary_pid": boundary_pid,
+        "mda_pid": project_id,
+        "simplify_tol": SETTLEMENT_SIMPLIFY_TOLERANCE,
+    }
     filters = []
     if lgacode:
         filters.append("s.lgacode = :lgacode")
@@ -206,7 +220,10 @@ async def get_settlement_geojson(
                 s.settlement_name,
                 s.lga_name,
                 s.ward_name,
-                ST_AsGeoJSON(s.geom)::json AS geometry,
+                ST_AsGeoJSON(
+                    ST_SimplifyPreserveTopology(s.geom, :simplify_tol),
+                    {GEOJSON_PRECISION}
+                )::json AS geometry,
                 COALESCE(sa.total_grids, 0) AS total_grids,
                 COALESCE(sa.visited_grids, 0) AS visited_grids,
                 -- Capped completeness: ≥70 % rounds up to 100 % for display.
