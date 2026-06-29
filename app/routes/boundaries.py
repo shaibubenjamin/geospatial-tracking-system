@@ -3,8 +3,8 @@ import io
 import os
 import tempfile
 import zipfile
-from typing import Awaitable, Callable, Optional
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Form
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -269,30 +269,6 @@ async def recompute_spatial(
 
 # ─── GeoJSON endpoints ────────────────────────────────────────────────────────
 
-async def _serve_cached_geojson(
-    request: Request,
-    cache_key: str,
-    producer: Callable[[], Awaitable[dict]],
-) -> Response:
-    """Serve a boundary GeoJSON layer from the in-process cache, generating it on
-    a miss. Adds an ETag + private Cache-Control so the browser also caches it,
-    and honours If-None-Match with a 304 (no body). The GZip middleware
-    compresses the body on the way out."""
-    cached = geo_cache.get(cache_key)
-    if cached is None:
-        data = await producer()
-        body, etag = geo_cache.put(cache_key, data)
-    else:
-        body, etag = cached
-    headers = {
-        "Cache-Control": f"private, max-age={geo_cache.TTL_SECONDS}",
-        "ETag": etag,
-    }
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=headers)
-    return Response(content=body, media_type="application/json", headers=headers)
-
-
 @router.get("/lga/geojson")
 async def lga_geojson(
     project_id: int,
@@ -304,7 +280,7 @@ async def lga_geojson(
     # LGA(s), not the whole state. None (admin/public/state-only) = no filter.
     scope = allowed_lgas_of(_u)
     key = geo_cache.make_key("lga", project_id, scope)
-    return await _serve_cached_geojson(
+    return await geo_cache.respond(
         request, key, lambda: get_lga_geojson(project_id, db, allowed_lgas=scope)
     )
 
@@ -319,7 +295,7 @@ async def ward_geojson(
 ):
     scope = allowed_lgas_of(_u)
     key = geo_cache.make_key("ward", project_id, scope, lgacode=lgacode)
-    return await _serve_cached_geojson(
+    return await geo_cache.respond(
         request, key, lambda: get_ward_geojson(project_id, db, lgacode=lgacode, allowed_lgas=scope)
     )
 
@@ -335,7 +311,7 @@ async def settlement_geojson(
 ):
     scope = allowed_lgas_of(_u)
     key = geo_cache.make_key("settlement", project_id, scope, lgacode=lgacode, wardcode=wardcode)
-    return await _serve_cached_geojson(
+    return await geo_cache.respond(
         request,
         key,
         lambda: get_settlement_geojson(
