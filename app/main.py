@@ -37,6 +37,7 @@ _root_logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import select, text
@@ -410,6 +411,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+
+# Compress large responses. The boundary GeoJSON layers are highly compressible
+# text (the settlement layer is ~22 MB raw); gzip cuts the wire payload ~10-20x.
+# Only kicks in when the client sends Accept-Encoding: gzip and the body exceeds
+# the threshold, so small JSON/HTML responses are unaffected.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 # Tag every request with a correlation ID so logs can be threaded.
