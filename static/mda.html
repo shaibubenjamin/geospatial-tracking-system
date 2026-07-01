@@ -53,6 +53,11 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 body.public-mode .auth-only,
 body.public-mode .chart-dl,
 body.public-mode .nav-item[data-view="reports"],
+body.public-mode .nav-item[data-view="quality"],
+body.public-mode .nav-item[data-view="teams"],
+body.public-mode .nav-item[data-view="trends"],
+body.public-mode .nav-item[data-view="lga"],
+body.public-mode .nav-item[data-view="supervisor"],
 body.public-mode #admin-nav-link,
 body.public-mode #download-settlement-btn { display: none !important; }
 body.public-mode #public-portal-link { display: inline-flex !important; }
@@ -76,6 +81,9 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
 .icon-btn .dot{position:absolute;top:6px;right:7px;width:7px;height:7px;background:var(--bad);border-radius:50%;border:2px solid #fff}
 
 .page{flex:1;overflow-y:auto;padding:16px 22px 60px}
+.dashboard-disclaimer{margin-top:28px;padding:11px 16px;background:var(--pale);border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:11.5px;font-style:italic;line-height:1.55;display:flex;align-items:center;gap:9px;text-align:center;justify-content:center;flex-wrap:wrap}
+.dashboard-disclaimer i{color:var(--blue);font-size:13px;flex-shrink:0;font-style:normal}
+.dashboard-disclaimer b{font-style:normal;color:var(--deep);font-weight:700}
 /* Geo view - page gets less bottom padding */
 .page.geo-active{padding-bottom:8px}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;gap:16px;flex-wrap:wrap}
@@ -97,6 +105,18 @@ body.public-mode #public-portal-link { display: inline-flex !important; }
 .geo-dl-btn{display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer;color:var(--deep);font-size:11px;font-weight:600;line-height:1.25;transition:border-color .15s, transform .1s;white-space:nowrap;text-align:center;min-width:96px}
 .geo-dl-btn:hover{transform:translateY(-1px)}
 .geo-dl-btn:active{transform:translateY(0)}
+/* ── Single consolidated download menu (Geographic View page-head) ── */
+.geo-dl-menu{position:relative;display:inline-block}
+.geo-dl-trigger{cursor:pointer}
+.geo-dl-list{display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:300;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:6px;min-width:280px;animation:dpFade .12s ease-out}
+.geo-dl-list.open{display:block}
+.geo-dl-list .geo-dl-item{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--ink);text-decoration:none;line-height:1.35;transition:background .12s}
+.geo-dl-list .geo-dl-item:hover{background:var(--mist)}
+.geo-dl-list .geo-dl-item i{color:#16A34A;font-size:16px;flex-shrink:0;width:18px;text-align:center}
+.geo-dl-list .geo-dl-item .geo-dl-item-sub{font-size:11px;color:var(--muted);margin-top:1px;display:block}
+.geo-dl-list .geo-dl-divider{height:1px;background:var(--line);margin:5px 4px;opacity:.6}
+.geo-dl-list .geo-dl-section{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:700;color:var(--muted);padding:5px 11px 3px}
+@keyframes dpFade{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 
 /* Filters */
 .filters{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
@@ -267,13 +287,17 @@ tbody tr:hover{background:var(--pale)}
 .chip.over{background:var(--good-bg);color:var(--good)}   /* > 100% — exceeded target; same weight as on-target */
 
 /* QC tiles — 3×3 grid so the 9 metrics sit in 3 logical groups
-   (form-integrity / spatial / timing+outcome) with no orphan row. */
+   (form-integrity / spatial / timing+outcome) with no orphan row.
+   Inner layout: icon and value share row 1 (icon left, value right of it);
+   label + description flow underneath. The two-column CSS grid handles this
+   without any HTML restructuring of the existing markup. */
 .qc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
-.qc-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
-.qc-icon{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;font-size:15px;margin-bottom:10px}
-.qc-val{font-size:26px;font-weight:700;color:var(--navy)}
-.qc-lbl{font-size:12.5px;font-weight:600;margin-top:3px}
-.qc-desc{font-size:11px;color:var(--muted);margin-top:3px}
+.qc-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:4px;align-items:start;transition:box-shadow .15s,transform .15s}
+.qc-tile:hover{box-shadow:0 4px 14px rgba(0,0,0,.06);transform:translateY(-1px)}
+.qc-icon{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-size:17px;grid-row:1;grid-column:1;align-self:center;margin-bottom:0}
+.qc-val{font-size:24px;font-weight:700;color:var(--navy);line-height:1.1;grid-row:1;grid-column:2;align-self:center}
+.qc-lbl{font-size:12.5px;font-weight:600;margin-top:6px;grid-column:1/-1}
+.qc-desc{font-size:11px;color:var(--muted);margin-top:0;grid-column:1/-1;line-height:1.5}
 
 /* Team rows */
 .team-row{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
@@ -298,10 +322,25 @@ tbody tr:hover{background:var(--pale)}
 .view.active{display:block}
 
 /* Geo view */
-.geo-wrap{display:grid;grid-template-columns:300px 1fr;gap:14px;height:calc(100vh - 155px);margin-bottom:0}
+/* Geographic View: top-row KPIs + page-head are small, so .geo-wrap claims
+   almost the whole viewport. Map fills the card via flex:1 and the inner
+   #geo-map drops its rigid min-height (used to be 900px → overflowed shorter
+   screens). A 420px fallback keeps the map sane on very small viewports. */
+.geo-wrap{display:grid;grid-template-columns:280px 1fr;gap:14px;height:calc(100vh - 40px);min-height:560px;margin-bottom:0}
 .geo-left{display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding-right:2px}
-.geo-map-card{overflow:hidden;display:flex;flex-direction:column;margin-bottom:0;min-height:0}
-#geo-map{flex:1;min-height:500px;border-radius:0 0 12px 12px}
+.geo-map-card{overflow:hidden;display:flex;flex-direction:column;margin-bottom:0;min-height:0;position:relative}
+#geo-map{flex:1 1 auto;min-height:420px;border-radius:0 0 12px 12px}
+/* ── Map legend ── floating overlay at bottom-left of the map ── */
+.geo-legend{position:absolute;left:14px;bottom:18px;z-index:5;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.12);padding:10px 12px;font-size:11px;color:var(--ink);max-width:230px;backdrop-filter:blur(2px)}
+.geo-legend-hdr{display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-weight:700;color:var(--navy);font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;user-select:none}
+.geo-legend-hdr i{transition:transform .2s;color:var(--muted);font-size:10px}
+.geo-legend.collapsed .geo-legend-body{display:none}
+.geo-legend.collapsed .geo-legend-hdr i{transform:rotate(-90deg)}
+.geo-legend-section{margin-top:8px}
+.geo-legend-section-title{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.geo-legend-row{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:11.5px;line-height:1.35}
+.geo-legend-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,.08)}
+.geo-legend-swatch.circle{border-radius:50%;width:11px;height:11px}
 .geo-layer-row{display:flex;align-items:center;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--line);font-size:12.5px}
 .geo-layer-row:last-of-type{border-bottom:none}
 .geo-layer-row:hover{background:var(--pale);margin:0 -16px;padding:8px 16px}
@@ -318,10 +357,16 @@ tbody tr:hover{background:var(--pale)}
 /* ===== CHATBOT ===== */
 .chatbot-fab{position:fixed;bottom:28px;right:28px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#fff;border:none;cursor:pointer;display:grid;place-items:center;font-size:22px;box-shadow:0 6px 24px rgba(0,107,46,.4);z-index:2000;transition:transform .2s,box-shadow .2s}
 .chatbot-fab:hover{transform:scale(1.1);box-shadow:0 8px 28px rgba(0,107,46,.5)}
+/* "Report a Concern" floating button — sits above the chat FAB, same right edge */
+.report-fab{position:fixed;bottom:92px;right:28px;width:48px;height:48px;border-radius:50%;background:#fff;color:#005225;border:1.5px solid #C3E8CE;cursor:pointer;display:grid;place-items:center;font-size:18px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:2000;transition:transform .2s,box-shadow .2s}
+.report-fab:hover{transform:scale(1.08);box-shadow:0 6px 22px rgba(0,107,46,.25);color:#003D1A;border-color:#005225}
+.report-fab .report-fab-tip{position:absolute;right:60px;top:50%;transform:translateY(-50%);background:var(--navy);color:#fff;padding:6px 11px;border-radius:7px;font-size:11.5px;font-weight:600;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s}
+.report-fab:hover .report-fab-tip{opacity:1}
 .chatbot-panel{position:fixed;bottom:96px;right:28px;width:370px;height:520px;background:#fff;border-radius:18px;box-shadow:0 12px 50px rgba(0,0,0,.18);z-index:2000;display:flex;flex-direction:column;overflow:hidden;transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .25s;border:1px solid var(--line)}
 .chatbot-panel.hidden{transform:translateY(24px) scale(.97);opacity:0;pointer-events:none}
 .chatbot-hdr{background:linear-gradient(135deg,var(--navy),var(--deep));color:#fff;padding:16px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0}
-.chatbot-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--cyan));display:grid;place-items:center;font-size:16px;flex-shrink:0}
+.chatbot-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--cyan));display:grid;place-items:center;font-size:16px;color:#fff;flex-shrink:0}
+.chatbot-avatar i{font-size:15px}
 .chatbot-hdr-name{font-weight:700;font-size:14px}
 .chatbot-hdr-sub{font-size:10.5px;opacity:.7;margin-top:1px}
 .chatbot-hdr-close{margin-left:auto;cursor:pointer;background:none;border:none;color:rgba(255,255,255,.7);font-size:18px;padding:2px;line-height:1;transition:color .15s}
@@ -619,7 +664,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="card-head">
             <div>
               <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted per LGA</div>
-              <div class="card-sub">How many household forms have been submitted from each Local Government Area. Click a bar to filter the entire dashboard to that LGA.</div>
+              <div class="card-sub">How many household forms have been submitted from each Local Government Area. <strong>Click any LGA bar to drill down to its wards</strong>; click a ward bar to drill further to settlements. Click the LGA again to return to the all-LGA view.</div>
             </div>
             <div class="card-head-right">
               <button class="chart-dl" onclick="dlChart('c_lgaBar','submissions_by_lga')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
@@ -962,7 +1007,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             <div class="kpi-icon-strip"><i class="fa-solid fa-clock"></i></div>
             <div class="lbl">Timing Anomalies</div>
             <div class="val" id="qc-kpi-timing">&mdash;</div>
-            <div class="sub">Forms submitted outside working hours, completed in under 5 minutes, or that took more than an hour</div>
+            <div class="sub">Forms submitted outside working hours, completed in under 3 minutes, or that took more than an hour</div>
           </div>
         </div>
 
@@ -979,12 +1024,15 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-arrows-left-right-to-line"></i></div><div class="qc-val" id="qc-drift">&mdash;</div><div class="qc-lbl">Form ↔ Repeat-Group Drift</div><div class="qc-desc" id="qc-drift-desc">Households where the “number of children treated” the team typed at the top of the form doesn’t match the number of treated child rows in the repeat group below. A consistent gap suggests under-filled forms — repeat-group rows being skipped after the summary count is entered.</div></div>
           <!-- Row 2: Timing patterns -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-moon"></i></div><div class="qc-val" id="qc-after-hours">&mdash;</div><div class="qc-lbl">After-Hours Submissions</div><div class="qc-desc">Forms started outside 6:00 am – 7:00 pm local time — possible data back-entry or device clock error</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-bolt"></i></div><div class="qc-val" id="qc-fast-forms">&mdash;</div><div class="qc-lbl">Very Fast Forms (&lt;5 min)</div><div class="qc-desc">Completed in under 5 minutes — a full household visit typically takes longer; may indicate skipping questions or rushed entry</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-bolt"></i></div><div class="qc-val" id="qc-fast-forms">&mdash;</div><div class="qc-lbl">Very Fast Forms (&lt;3 min)</div><div class="qc-desc">Completed in under 3 minutes — a full household visit cannot credibly be done that fast; strong signal of skipped questions or rushed entry</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-hourglass-half"></i></div><div class="qc-val" id="qc-slow-forms">&mdash;</div><div class="qc-lbl">Very Slow Forms (&gt;60 min)</div><div class="qc-desc">Took over 1 hour — may indicate poor connectivity, form abandonment, or the device being left idle</div></div>
           <!-- Row 3: Location + outcome -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-location-crosshairs"></i></div><div class="qc-val" id="qc-outside-lga">&mdash;</div><div class="qc-lbl">GPS Outside Stated LGA</div><div class="qc-desc">GPS coordinates fall outside the boundary of the LGA the team reported being in</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">&mdash;</div><div class="qc-lbl">Weak GPS Signal (&gt;20 m)</div><div class="qc-desc">GPS accuracy radius wider than 20 m — the recorded location may sit outside the settlement grid the team was actually inside, so spatial joins become unreliable</div></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-ban"></i></div><div class="qc-val" id="qc-refusal-rate">&mdash;</div><div class="qc-lbl">Treatment Refusal Rate</div><div class="qc-desc" id="qc-refusal-count">% of households that declined treatment — social mobilisation may be needed in high-refusal LGAs</div></div>
+          <!-- Avg form completion time: end - start, averaged across all in-scope forms.
+               Sub-line shows median and p90 so users see both the typical visit and the long-tail signal. -->
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-stopwatch"></i></div><div class="qc-val" id="qc-avg-duration">&mdash;</div><div class="qc-lbl">Avg Form Completion Time</div><div class="qc-desc" id="qc-avg-duration-desc">Average duration from start to submit per form. A defensible visit is typically 5&ndash;20 min; very low or very high values are flagged below.</div></div>
         </div>
 
         <div class="grid-2">
@@ -1001,13 +1049,28 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="card" style="margin-bottom:0">
             <div class="card-head">
               <div>
-                <div class="card-title"><i class="fa-solid fa-stopwatch"></i> Unusually Fast (&lt;5 min) &amp; Slow (&gt;60 min) Forms by LGA</div>
-                <div class="card-sub">Forms completed in under 5 minutes may be rushed. Forms over 60 minutes may indicate connectivity problems or data entry issues.</div>
+                <div class="card-title"><i class="fa-solid fa-stopwatch"></i> Unusually Fast (&lt;3 min) &amp; Slow (&gt;60 min) Forms by LGA</div>
+                <div class="card-sub">Forms completed in under 3 minutes may be rushed. Forms over 60 minutes may indicate connectivity problems or data entry issues.</div>
               </div>
               <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_duration','duration_by_lga')" title="Download"><i class="fa-solid fa-download"></i></button></div>
             </div>
             <div class="chart-wrap"><canvas id="c_duration"></canvas></div>
           </div>
+        </div>
+
+        <!-- Bell curve / histogram of form completion time across all in-scope forms.
+             1-min bins from 0 → 60 min; green band marks mean ± 2σ ("normal range"),
+             red bars are outliers outside that band. Operators read the shape to
+             spot rushed (left-tail) or stalled (right-tail) submissions. -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-chart-area"></i> How Long Does a Form Take? &mdash; Pattern &amp; Unusual Cases</div>
+              <div class="card-sub" id="qc-bell-sub">How many forms finished in each duration window. Each green bar is a typical duration; red bars are unusually quick or unusually slow forms that may be worth reviewing. The dark line traces the overall shape of the pattern.</div>
+            </div>
+            <div class="card-head-right"><button class="chart-dl" onclick="dlChart('c_durationBell','duration_bell_curve')" title="Download CSV"><i class="fa-solid fa-download"></i></button></div>
+          </div>
+          <div class="chart-wrap tall"><canvas id="c_durationBell"></canvas></div>
         </div>
 
         <!-- Quality Checks by Team -->
@@ -1030,7 +1093,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_forms')">Dup Forms <span id="qcts-dup_forms"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('gps_issues')">GPS Issues <span id="qcts-gps_issues"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('after_hours')">After Hours <span id="qcts-after_hours"></span></th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast (&lt;5 min) <span id="qcts-fast_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast (&lt;3 min) <span id="qcts-fast_forms"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('sync_lag')" title="Form sync delay &gt; 48h">Sync Lag <span id="qcts-sync_lag"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('refusals')" title="Campaign outcome, not a data-quality error">Refusals <span id="qcts-refusals"></span></th>
                 </tr>
@@ -1051,14 +1114,47 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             <div class="page-sub">Boundary drill-down — LGA &rarr; Ward &rarr; Settlement &bull; Green = ≥1 GPS point inside &bull; Red = no GPS point yet</div>
           </div>
           <div class="actions">
+            <!-- Single consolidated download menu — every existing geo export
+                 lives behind this one button. Admin-only items get hidden when
+                 the user lacks the right role (see initGeoDlMenu below). -->
+            <div class="geo-dl-menu" id="geo-dl-menu">
+              <button class="btn btn-ghost btn-sm geo-dl-trigger" onclick="toggleGeoDlMenu(event)" title="Download geographic data">
+                <i class="fa-solid fa-download"></i> Download <i class="fa-solid fa-chevron-down" style="font-size:9px;margin-left:2px"></i>
+              </button>
+              <div class="geo-dl-list" id="geo-dl-list">
+                <div class="geo-dl-section">Coverage Summary</div>
+                <div class="geo-dl-item" onclick="_dlMenu(dlGeoLgaCoverageCSV)">
+                  <i class="fa-solid fa-file-csv"></i>
+                  <div>Per-LGA Visitation &amp; Completeness<span class="geo-dl-item-sub">CSV &middot; available to all users</span></div>
+                </div>
+                <div class="geo-dl-divider geo-dl-admin-only"></div>
+                <div class="geo-dl-section geo-dl-admin-only">Detailed Exports (Excel)</div>
+                <div class="geo-dl-item geo-dl-admin-only" onclick="_dlMenu(()=>downloadGeoExport('lgas','LGAs'))">
+                  <i class="fa-solid fa-file-excel"></i>
+                  <div>LGAs Coverage<span class="geo-dl-item-sub">Baseline · forms · treated · coverage % per LGA</span></div>
+                </div>
+                <div class="geo-dl-item geo-dl-admin-only" onclick="_dlMenu(()=>downloadGeoExport('wards','Wards'))">
+                  <i class="fa-solid fa-file-excel"></i>
+                  <div>Wards Coverage<span class="geo-dl-item-sub">Per-ward forms, treated &amp; coverage %</span></div>
+                </div>
+                <div class="geo-dl-item geo-dl-admin-only" onclick="_dlMenu(()=>downloadGeoExport('settlements','Settlements'))">
+                  <i class="fa-solid fa-file-excel"></i>
+                  <div>Settlements Detail<span class="geo-dl-item-sub">Visit status · completeness · grids · GPS points</span></div>
+                </div>
+                <div class="geo-dl-item geo-dl-admin-only" onclick="_dlMenu(downloadSettlementStatus)">
+                  <i class="fa-solid fa-file-excel"></i>
+                  <div>Settlement Visitation Status<span class="geo-dl-item-sub">Visited / not visited per settlement</span></div>
+                </div>
+              </div>
+            </div>
             <button class="btn btn-ghost btn-sm" onclick="geoResetView()"><i class="fa-solid fa-arrows-to-dot"></i> Reset</button>
           </div>
         </div>
 
-        <!-- Geo top row: 3 KPIs on the left, 2x2 download tiles on the right.
-             For non-admins the download grid stays hidden and the KPI grid
-             stretches to use the full width via CSS Grid auto-fit. -->
-        <div class="geo-top-row" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;margin-bottom:10px;align-items:stretch">
+        <!-- KPI strip — was previously a 2-column geo-top-row with a 2×2 download
+             grid on the right; downloads are now consolidated into the page-head
+             menu above, so the KPI strip uses the full width. -->
+        <div class="geo-top-row" style="display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:10px;align-items:stretch">
           <!-- KPI strip — 3 × 2 grid keeps six equal-height tiles fitted.
                Top row: aggregate ratios (Total · Visitation · Completeness).
                Bottom row: status breakdown (Not Visited · Partial · Full).
@@ -1111,33 +1207,6 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <span id="geo-ward-active-count" style="display:none"></span>
           <span id="geo-ward-total-count" style="display:none"></span>
 
-          <!-- 2x2 download grid — admin/superadmin only. Hidden in public view. -->
-          <div id="geo-downloads" style="display:none;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:1fr 1fr;gap:8px;align-self:stretch">
-            <button onclick="downloadGeoExport('lgas','LGAs')" title="Download per-LGA coverage as Excel"
-              class="geo-dl-btn"
-              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
-              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
-              Download<br>LGAs
-            </button>
-            <button onclick="downloadGeoExport('wards','Wards')" title="Download per-Ward coverage as Excel"
-              class="geo-dl-btn"
-              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
-              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
-              Download<br>Wards
-            </button>
-            <button onclick="downloadGeoExport('settlements','Settlements')" title="Download settlement detail as Excel"
-              class="geo-dl-btn"
-              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
-              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
-              Download<br>Settlements
-            </button>
-            <button onclick="downloadSettlementStatus()" title="Download settlement visit status as Excel"
-              class="geo-dl-btn"
-              onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--line)'">
-              <i class="fa-solid fa-file-excel" style="font-size:18px;color:#16A34A"></i>
-              Download<br>Visitation Status
-            </button>
-          </div>
         </div>
 
         <div class="geo-wrap">
@@ -1206,35 +1275,90 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block"></span>GPS in grid</span>
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#dc2626;border-radius:50%;display:inline-block"></span>GPS outside</span>
             </div>
-            <!-- QC overlay controls + Team Movement -->
+            <!-- QC overlay + Team Movement controls. All overlays now live inside
+                 a single dropdown — operators pick one (or layer multiple) without
+                 the strip wrapping over multiple lines on narrow viewports. The
+                 Team-Movement selectors (team / date) only appear once that
+                 overlay is active, surfacing inline next to the trigger. -->
             <div class="geo-ctrl-strip">
-              <button class="geo-ctrl-btn" id="geo-btn-hm-all" onclick="geoHeatmap('all',this)" title="All QC anomalies heatmap">
-                <i class="fa-solid fa-fire"></i> QC Heatmap
-              </button>
-              <button class="geo-ctrl-btn" id="geo-btn-hm-dup" onclick="geoHeatmap('duplicate',this)" title="Duplicate GPS heatmap">
-                <i class="fa-solid fa-copy"></i> Duplicate GPS
-              </button>
-              <button class="geo-ctrl-btn" id="geo-btn-hm-lga" onclick="geoHeatmap('outside_lga',this)" title="Points outside LGA">
-                <i class="fa-solid fa-location-crosshairs"></i> Outside LGA
-              </button>
-              <button class="geo-ctrl-btn" id="geo-btn-hm-ward" onclick="geoHeatmap('outside_ward',this)" title="Points outside ward">
-                <i class="fa-solid fa-crosshairs"></i> Outside Ward
-              </button>
-              <div class="geo-ctrl-sep"></div>
-              <button class="geo-ctrl-btn" id="geo-btn-movement" onclick="geoToggleMovement(this)" title="Show team movement paths">
-                <i class="fa-solid fa-route"></i> Team Movement
-              </button>
+              <div class="geo-dl-menu" id="geo-overlay-menu">
+                <button class="geo-ctrl-btn geo-dl-trigger" onclick="toggleGeoOverlayMenu(event)" title="Show QC heatmap / movement overlays">
+                  <i class="fa-solid fa-layer-group"></i> Map Overlays <i class="fa-solid fa-chevron-down" style="font-size:9px;margin-left:2px"></i>
+                </button>
+                <div class="geo-dl-list" id="geo-overlay-list">
+                  <div class="geo-dl-section">QC Heatmaps</div>
+                  <div class="geo-dl-item" id="geo-ovl-hm-all" onclick="_geoOvl(()=>geoHeatmap('all', document.getElementById('geo-ovl-hm-all')))">
+                    <i class="fa-solid fa-fire" style="color:#dc2626"></i>
+                    <div>All QC Anomalies<span class="geo-dl-item-sub">Heatmap of every flagged GPS point</span></div>
+                  </div>
+                  <div class="geo-dl-item" id="geo-ovl-hm-dup" onclick="_geoOvl(()=>geoHeatmap('duplicate', document.getElementById('geo-ovl-hm-dup')))">
+                    <i class="fa-solid fa-copy" style="color:#d97706"></i>
+                    <div>Duplicate GPS<span class="geo-dl-item-sub">Points sharing the same coordinates</span></div>
+                  </div>
+                  <div class="geo-dl-item" id="geo-ovl-hm-lga" onclick="_geoOvl(()=>geoHeatmap('outside_lga', document.getElementById('geo-ovl-hm-lga')))">
+                    <i class="fa-solid fa-location-crosshairs" style="color:#dc2626"></i>
+                    <div>Points Outside LGA<span class="geo-dl-item-sub">GPS falls outside the reported LGA polygon</span></div>
+                  </div>
+                  <div class="geo-dl-item" id="geo-ovl-hm-ward" onclick="_geoOvl(()=>geoHeatmap('outside_ward', document.getElementById('geo-ovl-hm-ward')))">
+                    <i class="fa-solid fa-crosshairs" style="color:#dc2626"></i>
+                    <div>Points Outside Ward<span class="geo-dl-item-sub">GPS falls outside the reported ward</span></div>
+                  </div>
+                  <div class="geo-dl-divider"></div>
+                  <div class="geo-dl-section">Team Activity</div>
+                  <div class="geo-dl-item" id="geo-ovl-movement" onclick="_geoOvl(()=>geoToggleMovement(document.getElementById('geo-ovl-movement')))">
+                    <i class="fa-solid fa-route" style="color:#005225"></i>
+                    <div>Team Movement Paths<span class="geo-dl-item-sub">Per-team GPS breadcrumbs with date filter</span></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Inline secondary controls — only relevant once Team Movement is on. -->
               <select id="geo-team-select" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter to a specific team">
                 <option value="">All Teams</option>
               </select>
               <select id="geo-movement-date" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter by date">
                 <option value="">All Dates</option>
               </select>
+              <!-- Hidden compat IDs so the existing geoHeatmap/geoToggleMovement
+                   bodies that toggle .active classes by ID still find a node. -->
+              <span id="geo-btn-hm-all" style="display:none"></span>
+              <span id="geo-btn-hm-dup" style="display:none"></span>
+              <span id="geo-btn-hm-lga" style="display:none"></span>
+              <span id="geo-btn-hm-ward" style="display:none"></span>
+              <span id="geo-btn-movement" style="display:none"></span>
               <button class="geo-ctrl-btn" id="geo-btn-clear" onclick="geoClearOverlays()" title="Clear all overlays" style="margin-left:auto;color:var(--muted)">
                 <i class="fa-solid fa-eraser"></i> Clear
               </button>
             </div>
             <div id="geo-map"></div>
+            <!-- Map legend — sibling of #geo-map (NOT inside it) so MapLibre's
+                 canvas init doesn't wipe it. Positioned absolutely against the
+                 .geo-map-card (which is position:relative). Collapsible to free
+                 up the bottom-left corner. Colours/thresholds mirror the actual
+                 paint expressions in addLayer() so they don't drift out of sync. -->
+            <div class="geo-legend" id="geo-legend">
+              <div class="geo-legend-hdr" onclick="this.parentElement.classList.toggle('collapsed')" title="Click to collapse / expand">
+                <span>Map Legend</span><i class="fa-solid fa-chevron-down"></i>
+              </div>
+              <div class="geo-legend-body">
+                <div class="geo-legend-section">
+                  <div class="geo-legend-section-title">LGA Visitation Coverage</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch" style="background:#16a34a"></span>Strong &mdash; &ge; 70 % settlements visited</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch" style="background:#f59e0b"></span>Moderate &mdash; 40 &ndash; 69 %</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch" style="background:#dc2626"></span>Weak &mdash; 1 &ndash; 39 %</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch" style="background:#E5E7EB"></span>No data yet</div>
+                </div>
+                <div class="geo-legend-section">
+                  <div class="geo-legend-section-title">Settlements / Grids</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch" style="background:#16a34a;opacity:.6"></span>Visited &mdash; &ge; 1 GPS point inside</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch" style="background:#dc2626;opacity:.6"></span>Not visited &mdash; no GPS point yet</div>
+                </div>
+                <div class="geo-legend-section">
+                  <div class="geo-legend-section-title">GPS Points</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch circle" style="background:#16a34a"></span>Inside the assigned LGA</div>
+                  <div class="geo-legend-row"><span class="geo-legend-swatch circle" style="background:#dc2626"></span>Outside &mdash; flagged for review</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1651,19 +1775,31 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         </style>
       </section>
 
+      <!-- Shared disclaimer — sits inside .page so it appears at the bottom of every view
+           (Overview, Coverage, QC, Geographic, Teams, Reports) without duplication. -->
+      <div class="dashboard-disclaimer" role="note" aria-label="Dashboard disclaimer">
+        <i class="fa-solid fa-circle-info"></i>
+        <span><b>Kindly Note:</b> This dashboard is for monitoring purposes &mdash; figures are subject to change after data cleanup is completed.</span>
+      </div>
+
     </div>
   </div>
 
-  <!-- ============ CHATBOT ============ -->
-  <button class="chatbot-fab" onclick="toggleChatbot()" title="Ask the Data Assistant">
-    <i class="fa-solid fa-comments" id="chatbot-fab-icon"></i>
+  <!-- ============ REPORT A CONCERN ============ -->
+  <button class="report-fab" onclick="openReportModal()" title="Report a concern, bug, or question">
+    <i class="fa-solid fa-flag"></i>
+    <span class="report-fab-tip">Report a concern</span>
+  </button>
+  <!-- ============ QUICK INSIGHTS PANEL ============ -->
+  <button class="chatbot-fab" onclick="toggleChatbot()" title="Quick campaign data lookup">
+    <i class="fa-solid fa-magnifying-glass-chart" id="chatbot-fab-icon"></i>
   </button>
   <div class="chatbot-panel hidden" id="chatbot-panel">
     <div class="chatbot-hdr">
-      <div class="chatbot-avatar">🤖</div>
+      <div class="chatbot-avatar"><i class="fa-solid fa-chart-line"></i></div>
       <div>
-        <div class="chatbot-hdr-name">MDA Data Assistant</div>
-        <div class="chatbot-hdr-sub">Powered by campaign data &bull; Always available</div>
+        <div class="chatbot-hdr-name">MDA Campaign Insights</div>
+        <div class="chatbot-hdr-sub">Direct lookups from campaign data &bull; Always available</div>
       </div>
       <button class="chatbot-hdr-close" onclick="toggleChatbot()"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -1708,6 +1844,20 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   const isAdmin      = localStorage.getItem('is_admin') === 'true';
   const isSuperadmin = localStorage.getItem('is_superadmin') === 'true';
 
+  // Hard-refresh / direct-link gate: an unauthenticated visitor who hasn't
+  // explicitly chosen "View Dashboard (public)" on the landing page is bounced
+  // to / so they see the public-vs-admin choice first. The Android app
+  // pre-seeds 'public_dashboard_accepted' when it loads the WebView, so app
+  // users skip this naturally. (Per operator request 2026-06-26.)
+  if (PUBLIC_MODE
+      && localStorage.getItem('public_dashboard_accepted') !== 'true'
+      && !location.search.includes('app=1')
+      && !location.hash.includes('token=')) {
+    window.location.replace('/');
+    // Stop the rest of the script from running while the browser navigates.
+    throw new Error('Redirecting to landing page');
+  }
+
   if (PUBLIC_MODE) {
     document.body.classList.add('public-mode');
   } else if (isAdmin) {
@@ -1716,19 +1866,62 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (adminLink) adminLink.style.display = 'block';
   }
 
-  // Geospatial bulk-download buttons are gated to admin/superadmin only —
-  // viewers/analysts and the public dashboard don't see them.
-  if (!PUBLIC_MODE && (isAdmin || isSuperadmin)) {
-    document.addEventListener('DOMContentLoaded', () => {
-      const dl = document.getElementById('geo-downloads');
-      if (dl) dl.style.display = 'grid';
-    });
-  }
+  // Geospatial detailed Excel exports are gated to admin/superadmin only —
+  // viewers/analysts and the public dashboard only see the per-LGA CSV item
+  // inside the consolidated Download menu.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!(!PUBLIC_MODE && (isAdmin || isSuperadmin))) {
+      document.querySelectorAll('.geo-dl-admin-only').forEach(el => { el.style.display = 'none'; });
+    }
+  });
 
-  function handleLogout() { localStorage.clear(); window.location.href = '/login'; }
+  // ── Consolidated geo download dropdown — toggle + close-on-outside-click ──
+  window.toggleGeoDlMenu = function(ev) {
+    if (ev) ev.stopPropagation();
+    const list = document.getElementById('geo-dl-list');
+    if (!list) return;
+    list.classList.toggle('open');
+  };
+  window._dlMenu = function(fn) {
+    const list = document.getElementById('geo-dl-list');
+    if (list) list.classList.remove('open');
+    try { fn(); } catch (e) { console.error('Download failed:', e); }
+  };
+  // ── Consolidated geo overlay dropdown (QC heatmaps + Team Movement) ──
+  window.toggleGeoOverlayMenu = function(ev) {
+    if (ev) ev.stopPropagation();
+    const list = document.getElementById('geo-overlay-list');
+    if (!list) return;
+    list.classList.toggle('open');
+  };
+  window._geoOvl = function(fn) {
+    const list = document.getElementById('geo-overlay-list');
+    if (list) list.classList.remove('open');
+    try { fn(); } catch (e) { console.error('Overlay toggle failed:', e); }
+  };
+  document.addEventListener('click', (e) => {
+    ['geo-dl-list', 'geo-overlay-list'].forEach(id => {
+      const list = document.getElementById(id);
+      if (!list || !list.classList.contains('open')) return;
+      const wrapId = id === 'geo-dl-list' ? '#geo-dl-menu' : '#geo-overlay-menu';
+      if (e.target.closest(wrapId)) return;
+      list.classList.remove('open');
+    });
+  });
+
+  // Logout always returns the user to the home/landing page where they can
+  // pick between "View Dashboard (public)" and "Admin Portal" — not directly
+  // to the bare login form, per operator request 2026-06-26.
+  function handleLogout() { localStorage.clear(); window.location.href = '/'; }
 
   /* ── PROJECT SCOPE (state + round) ── */
   // The selector value is the project_id the user is viewing. null = use server-side active default.
+  // For public visitors we intentionally clear any stored selection — the
+  // backend already routes anonymous traffic to the only is_public=TRUE project
+  // (Sokoto R5), and the projects-list endpoint also returns only R5 to them,
+  // so picker code naturally lands on it. We just don't want a stale localStorage
+  // value (e.g. from an admin who logged out) overriding that.
+  if (PUBLIC_MODE) { localStorage.removeItem('selected_project_id'); }
   let SELECTED_PID = (function() {
     const stored = localStorage.getItem('selected_project_id');
     return stored && /^\d+$/.test(stored) ? parseInt(stored, 10) : null;
@@ -2913,13 +3106,15 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (qcDt) params.push('date_to='   + encodeURIComponent(qcDt));
     const qs = params.length ? '?' + params.join('&') : '';
 
-    const [summary, refusals, durations, teamQC] = await Promise.all([
+    const [summary, refusals, durations, teamQC, durHist] = await Promise.all([
       api('/api/mda/qc/summary' + qs),
       api('/api/mda/qc/refusals-by-lga' + qs),
       api('/api/mda/qc/duration-by-lga' + qs),
       api('/api/mda/qc/teams-summary' + qs),
+      api('/api/mda/qc/duration-histogram' + qs),
     ]);
     if (!summary) return;
+    if (durHist) _buildDurationBellChart(durHist);
 
     const fmtN = n => (n || 0).toLocaleString();
     setEl('qc-total-forms', fmtN(summary.total_forms));
@@ -2932,6 +3127,17 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const refPct = summary.refusal_pct != null ? summary.refusal_pct.toFixed(1) + '%' : '0%';
     setEl('qc-refusal-rate', refPct);
     setEl('qc-refusal-count', '(' + fmtN(summary.refusals) + ' households)');
+    // Avg form completion time card — main value shows the average duration in
+    // minutes; sub-text shows median + p90 so reviewers see typical + tail.
+    const avg = summary.avg_form_duration_min;
+    const med = summary.median_form_duration_min;
+    const p90 = summary.p90_form_duration_min;
+    setEl('qc-avg-duration', avg != null ? avg.toFixed(1) + ' min' : '—');
+    const parts = [];
+    if (med != null) parts.push('Median: ' + med.toFixed(1) + ' min');
+    if (p90 != null) parts.push('P90: ' + p90.toFixed(1) + ' min');
+    parts.push('Sample: ' + fmtN(summary.duration_sample_size) + ' forms');
+    setEl('qc-avg-duration-desc', parts.join(' · '));
 
     // Use the server-side rollups so Overview, QC page, and Round-over-Round
     // all read the same numbers. Refusals are NOT counted as data-quality
@@ -3027,7 +3233,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           // gold segment with a thin dark border + dedicated end-of-bar label
           // so the small count never disappears.
           datasets: [
-            { label: 'Fast <5 min',  data: sortedDur.map(r => r.fast_count || 0),
+            { label: 'Fast <3 min',  data: sortedDur.map(r => r.fast_count || 0),
               backgroundColor: '#006B2E', hoverBackgroundColor: '#005225',
               borderRadius: 0, maxBarThickness: 22, stack: 'dur',
               borderWidth: 0 },
@@ -3086,6 +3292,132 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         gps_issues: (r.gps_outside_lga||0) + (r.poor_gps||0) + (r.dup_gps||0)
       }));
       renderQCTeamsTable();
+    }
+  }
+
+  // Bell curve / histogram of form-completion duration. Outliers = bars whose
+  // bin midpoint sits outside mean ± 2σ; rendered red so reviewers can spot
+  // the tails (rushed entry on the left, stalled / device-left-open on the right).
+  // Bar-only "outlier" highlight isn't very legible on its own, so we layer a
+  // smoothed line (5-point centered moving average of bin counts) on top —
+  // it traces the overall shape of the duration pattern at a glance.
+  function _buildDurationBellChart(h) {
+    const el = document.getElementById('c_durationBell');
+    if (!el) return;
+    const existing = Chart.getChart(el); if (existing) existing.destroy();
+    const subEl = document.getElementById('qc-bell-sub');
+    if (!h || !h.bins || !h.bins.length) {
+      if (subEl) subEl.textContent = 'No form-duration samples in scope for the current filters.';
+      return;
+    }
+    const lower = h.lower_band, upper = h.upper_band;
+    const labels = h.bins.map(b => b.low === 60 ? '60+' : (b.low + '–' + b.high));
+    const counts = h.bins.map(b => b.count);
+    // 5-point centered moving average so the line follows the rough shape of
+    // the histogram instead of every single-bin spike. Edges use whatever
+    // window is available so the line still reaches the ends of the chart.
+    const smoothed = counts.map((_, i) => {
+      const s = Math.max(0, i - 2);
+      const e = Math.min(counts.length, i + 3);
+      const slice = counts.slice(s, e);
+      return slice.reduce((a, b) => a + b, 0) / slice.length;
+    });
+    const colours = h.bins.map(b => {
+      const mid = (b.low + b.high) / 2;
+      return (mid < lower || mid > upper) ? '#dc2626' : '#16a34a';
+    });
+    new Chart(el, {
+      data: {
+        labels,
+        datasets: [
+          {
+            type: 'bar',
+            label: 'Forms',
+            data: counts,
+            backgroundColor: colours,
+            hoverBackgroundColor: colours.map(c => c === '#16a34a' ? '#15803d' : '#b91c1c'),
+            borderRadius: 3,
+            maxBarThickness: 28,
+            order: 2,   // draw bars behind the trend line
+          },
+          {
+            type: 'line',
+            label: 'Pattern (trend)',
+            data: smoothed,
+            borderColor: '#0c1e10',
+            backgroundColor: 'rgba(12,30,16,0.06)',
+            borderWidth: 2.2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: '#0c1e10',
+            tension: 0.45,
+            fill: true,
+            order: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: { font: { size: 11 }, boxWidth: 14, padding: 14 },
+          },
+          datalabels: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => labels[ctx[0].dataIndex] + ' min',
+              label: ctx => {
+                if (ctx.dataset.type === 'line') {
+                  return ' Pattern (smoothed): ~' + Math.round(ctx.raw).toLocaleString() + ' forms';
+                }
+                return ' ' + ctx.raw.toLocaleString() + ' forms in this window';
+              },
+              afterLabel: ctx => {
+                if (ctx.datasetIndex !== 0) return '';
+                const b = h.bins[ctx.dataIndex]; if (!b) return '';
+                const mid = (b.low + b.high) / 2;
+                return (mid < lower || mid > upper)
+                  ? '⚠ Unusual — worth a closer look'
+                  : 'Typical duration';
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 10 } },
+            title: { display: true, text: 'How long the form took (minutes)', font: { size: 11 }, color: '#5b6b82' },
+          },
+          y: {
+            grid: { color: '#f1f5f9' },
+            ticks: { font: { size: 10.5 }, callback: v => v.toLocaleString() },
+            title: { display: true, text: 'How many forms', font: { size: 11 }, color: '#5b6b82' },
+          },
+        },
+      },
+    });
+
+    if (subEl) {
+      // Plain-English description — no σ, no "outliers", no jargon. Spell out
+      // what the average and the typical-half ("median") mean, and describe the
+      // green/red colouring without invoking standard deviations.
+      var avg = h.mean.toFixed(1);
+      var med = h.median.toFixed(1);
+      var upperRound = Math.round(upper);
+      var total = h.total.toLocaleString();
+      subEl.innerHTML =
+        'On average, a form takes <b>' + avg + ' minutes</b> to fill. ' +
+        'Half of all forms are done in under <b>' + med + ' minutes</b>. ' +
+        'Most forms finish within about <b>' + upperRound + ' minutes</b> &mdash; ' +
+        'anything noticeably faster or slower is shown in <b style="color:#dc2626">red</b> ' +
+        'and is worth a quick review. ' +
+        'The dark curve shows the overall pattern. ' +
+        'Based on <b>' + total + '</b> forms.';
     }
   }
 
@@ -4137,7 +4469,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   window.toggleChatbot = toggleChatbot;
 
   function initChatbot() {
-    addBotMsg('Hello! I\'m your MDA Campaign Assistant. I can answer questions about coverage, teams, QC flags, and more. What would you like to know?');
+    addBotMsg('Welcome! Quick lookups on coverage, teams, QC flags, and campaign progress — pick a chip below or type a question.');
     const chips = ['Overall coverage?','Which LGA is lowest?','How many forms?','Top performing team?','QC flags summary'];
     const row = document.getElementById('chatbot-chips');
     row.innerHTML = '';
@@ -4214,7 +4546,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       return `**${fmt(overviewData.teams_active)} active teams** — ${mt} meeting ≥80 forms/day target.\n${top ? 'Top team: **' + top.hq_user + '** (' + top.avg_per_day.toFixed(0) + ' avg/day)' : ''}`;
     }
     if (m.includes('qc') || m.includes('flag') || m.includes('error') || m.includes('quality')) {
-      return `**${fmt(overviewData.total_qc_flags)} QC flags** recorded.\n• GPS outside LGA: ${fmt(overviewData.gps_outside_lga)}\n• Duplicate GPS: ${fmt(overviewData.duplicate_gps)}\n• Fast forms (<5 min): ${fmt(overviewData.fast_forms)}\n• After-hours: ${fmt(overviewData.after_hours)}\n\nSee the **Quality Checks** tab for details.`;
+      return `**${fmt(overviewData.total_qc_flags)} QC flags** recorded.\n• GPS outside LGA: ${fmt(overviewData.gps_outside_lga)}\n• Duplicate GPS: ${fmt(overviewData.duplicate_gps)}\n• Fast forms (<3 min): ${fmt(overviewData.fast_forms)}\n• After-hours: ${fmt(overviewData.after_hours)}\n\nSee the **Quality Checks** tab for details.`;
     }
     if (m.includes('date') || m.includes('day') || m.includes('duration') || m.includes('campaign')) {
       return `Campaign running from **${overviewData.campaign_start || '—'}** to **${overviewData.campaign_end || '—'}** — **${overviewData.days_active || '—'} days** active.`;
@@ -4563,6 +4895,34 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     URL.revokeObjectURL(url);
   }
   window.dlTeamsPerLGACSV = dlTeamsPerLGACSV;
+
+  // Geographic View — per-LGA visitation & completeness coverage CSV.
+  // Format matches operator-requested layout: lganame, lgacode_,
+  // Visitation Coverage %, Completeness Coverage %. Reads the already-loaded
+  // geoNavData.lga (populated by loadGeoMetricsLGA) — no server roundtrip.
+  function dlGeoLgaCoverageCSV() {
+    const rows = (typeof geoNavData !== 'undefined' && Array.isArray(geoNavData.lga)) ? geoNavData.lga : [];
+    if (!rows.length) { alert('Geographic data not loaded yet — open the Geographic View first.'); return; }
+    const head = ['lganame','lgacode_','Visitation Coverage %','Completeness Coverage %'];
+    const lines = [head.join(',')];
+    [...rows]
+      .sort((a, b) => (a.lga_name || '').localeCompare(b.lga_name || ''))
+      .forEach(r => {
+        lines.push([
+          '"' + (r.lga_name || '').replace(/"/g, '""') + '"',
+          r.lgacode != null ? r.lgacode : '',
+          r.visitation_pct   != null ? Math.round(Number(r.visitation_pct))   : '',
+          r.completeness_pct != null ? Math.round(Number(r.completeness_pct)) : '',
+        ].join(','));
+      });
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lga_visitation_completeness_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  window.dlGeoLgaCoverageCSV = dlGeoLgaCoverageCSV;
 
   // LGAs per Team — Teams Performance page. One row per CommCare HQ user
   // showing where they worked (primary + LGAs touched) and a derived
@@ -5646,7 +6006,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (resetBtn) resetBtn.style.display = hasFilter ? 'inline-flex' : 'none';
     if (txt) txt.textContent = [qcFilterLGA, qcFilterWard, qcDf && ('From ' + qcDf), qcDt && ('To ' + qcDt)].filter(Boolean).join(' · ');
     // Destroy and reload QC charts with new params
-    ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
+    ['c_refusalBar','c_duration','c_durationBell'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
     delete built['quality'];
     buildCharts('quality');
   }
@@ -5660,7 +6020,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     dpReset('qc-dates');
     document.getElementById('qc-filter-label') && (document.getElementById('qc-filter-label').style.display = 'none');
     document.getElementById('qc-reset-btn')    && (document.getElementById('qc-reset-btn').style.display = 'none');
-    ['c_refusalBar','c_duration'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
+    ['c_refusalBar','c_duration','c_durationBell'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
     delete built['quality'];
     buildCharts('quality');
   }
@@ -5692,6 +6052,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     lga:'LGA Drug Tracker',supervisor:'Supervisor Forms',reports:'Reports & Export'
   };
   function switchView(view){
+    // Public mode: only Overview / Coverage / Geographic are allowed. If the user
+    // (or a deep-link) tries to reach a restricted view, silently route them to Overview.
+    if (document.body.classList.contains('public-mode')
+        && !['overview','coverage','geo'].includes(view)) {
+      view = 'overview';
+    }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
     document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+view));
     const crumb=document.getElementById('crumb-view');
@@ -5864,5 +6230,258 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 })();
 </script>
 <script src="/static/idle-logout.js?v=1"></script>
+
+<!-- ============ REPORT A CONCERN MODAL ============ -->
+<style>
+.rpt-backdrop{position:fixed;inset:0;background:rgba(12,30,16,.6);backdrop-filter:blur(2px);z-index:8000;display:none;align-items:center;justify-content:center;padding:18px}
+.rpt-backdrop.open{display:flex}
+.rpt-modal{background:#fff;border-radius:13px;max-width:520px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.32);overflow:hidden}
+.rpt-hdr{padding:15px 20px;background:linear-gradient(135deg,#005225,#008C3A);color:#fff;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.rpt-hdr-icon{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:15px;flex-shrink:0}
+.rpt-hdr-title{font-weight:700;font-size:14.5px}
+.rpt-hdr-sub{font-size:11px;opacity:.82;margin-top:1px}
+.rpt-hdr-close{margin-left:auto;cursor:pointer;background:none;border:none;color:rgba(255,255,255,.85);font-size:17px;padding:4px;line-height:1}
+.rpt-hdr-close:hover{color:#fff}
+.rpt-body{padding:16px 20px;overflow-y:auto;font-size:13px;color:var(--ink)}
+.rpt-row{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
+.rpt-row label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.rpt-row input,.rpt-row select,.rpt-row textarea{border:1.5px solid var(--line);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit;transition:border-color .15s;background:#fff;color:var(--ink)}
+.rpt-row input:focus,.rpt-row select:focus,.rpt-row textarea:focus{border-color:var(--blue)}
+.rpt-row textarea{min-height:96px;resize:vertical}
+.rpt-row-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rpt-foot{padding:11px 20px;border-top:1px solid var(--line);background:var(--pale);display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-shrink:0}
+.rpt-status{margin-right:auto;font-size:12px}
+.rpt-status.ok{color:var(--good)}
+.rpt-status.err{color:var(--bad)}
+.rpt-btn{padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;display:inline-flex;align-items:center;gap:6px}
+.rpt-btn-primary{background:var(--blue);color:#fff}
+.rpt-btn-primary:hover{background:var(--deep)}
+.rpt-btn-primary:disabled{opacity:.55;cursor:not-allowed}
+.rpt-btn-ghost{background:#fff;color:var(--deep);border-color:var(--line)}
+.rpt-btn-ghost:hover{background:var(--mist)}
+</style>
+<div class="rpt-backdrop" id="rpt-backdrop" role="dialog" aria-modal="true" aria-labelledby="rpt-title" onclick="if(event.target===this)closeReportModal()">
+  <div class="rpt-modal">
+    <div class="rpt-hdr">
+      <div class="rpt-hdr-icon"><i class="fa-solid fa-flag"></i></div>
+      <div>
+        <div class="rpt-hdr-title" id="rpt-title">Report a Concern</div>
+        <div class="rpt-hdr-sub">Tell us about a bug, data issue, or suggestion — we'll review it.</div>
+      </div>
+      <button class="rpt-hdr-close" onclick="closeReportModal()" title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="rpt-body">
+      <div class="rpt-row">
+        <label for="rpt-category">Category</label>
+        <select id="rpt-category">
+          <option value="bug">Bug / something's broken</option>
+          <option value="data-issue">Data discrepancy / wrong number</option>
+          <option value="feature">Feature request / suggestion</option>
+          <option value="general" selected>General feedback</option>
+        </select>
+      </div>
+      <div class="rpt-row">
+        <label for="rpt-subject">Subject <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(short summary)</span></label>
+        <input type="text" id="rpt-subject" maxlength="200" placeholder="e.g. Coverage % showing wrong value for Tureta LGA">
+      </div>
+      <div class="rpt-row">
+        <label for="rpt-message">Describe the issue <span style="color:var(--bad)">*</span></label>
+        <textarea id="rpt-message" maxlength="4000" placeholder="What did you notice, what page were you on, what did you expect to see vs what actually happened?" required></textarea>
+      </div>
+      <div class="rpt-row-two">
+        <div class="rpt-row">
+          <label for="rpt-name">Your name <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <input type="text" id="rpt-name" maxlength="100" placeholder="So we can follow up if needed">
+        </div>
+        <div class="rpt-row">
+          <label for="rpt-email">Your email <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <input type="email" id="rpt-email" maxlength="200" placeholder="Only if you'd like us to reply to you">
+        </div>
+      </div>
+      <p style="margin:8px 2px 0;font-size:11px;color:var(--muted);line-height:1.5"><i class="fa-solid fa-circle-info" style="color:var(--blue);margin-right:4px"></i>Your report is emailed to the SARMAAN programme team automatically &mdash; no mailing list to configure.</p>
+    </div>
+    <div class="rpt-foot">
+      <span class="rpt-status" id="rpt-status"></span>
+      <button class="rpt-btn rpt-btn-ghost" onclick="closeReportModal()">Cancel</button>
+      <button class="rpt-btn rpt-btn-primary" id="rpt-submit-btn" onclick="submitReport()"><i class="fa-solid fa-paper-plane"></i> Send</button>
+    </div>
+  </div>
+</div>
+<script>
+window.openReportModal = function() {
+  var bd = document.getElementById('rpt-backdrop');
+  if (!bd) return;
+  bd.classList.add('open');
+  var st = document.getElementById('rpt-status');
+  if (st) { st.textContent = ''; st.className = 'rpt-status'; }
+  setTimeout(function(){
+    var s = document.getElementById('rpt-subject');
+    if (s) s.focus();
+  }, 80);
+};
+window.closeReportModal = function() {
+  var bd = document.getElementById('rpt-backdrop');
+  if (bd) bd.classList.remove('open');
+};
+window.submitReport = async function() {
+  var msg = (document.getElementById('rpt-message') || {}).value || '';
+  var st  = document.getElementById('rpt-status');
+  var btn = document.getElementById('rpt-submit-btn');
+  if (msg.trim().length < 5) {
+    if (st) { st.className = 'rpt-status err'; st.textContent = 'Please describe the issue (at least 5 characters).'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…'; }
+  try {
+    var token = localStorage.getItem('token');
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    var res = await fetch('/api/reports', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        category:       (document.getElementById('rpt-category') || {}).value || 'general',
+        subject:        (document.getElementById('rpt-subject')  || {}).value || null,
+        message:        msg,
+        reporter_name:  (document.getElementById('rpt-name')     || {}).value || null,
+        reporter_email: (document.getElementById('rpt-email')    || {}).value || null,
+        page_url:       location.href,
+      }),
+    });
+    if (!res.ok) {
+      var detail = '';
+      try { detail = (await res.json()).detail || ''; } catch (_) {}
+      throw new Error(detail || ('HTTP ' + res.status));
+    }
+    if (st) { st.className = 'rpt-status ok'; st.textContent = '✓ Sent — thank you, an administrator will review.'; }
+    setTimeout(function() {
+      closeReportModal();
+      ['rpt-subject','rpt-message','rpt-name','rpt-email'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    }, 1400);
+  } catch (e) {
+    if (st) { st.className = 'rpt-status err'; st.textContent = 'Could not send: ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send'; }
+  }
+};
+// Press Esc to dismiss while modal is open
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    var bd = document.getElementById('rpt-backdrop');
+    if (bd && bd.classList.contains('open')) closeReportModal();
+  }
+});
+</script>
+
+<!-- ============ TERMS & CONDITIONS GATE ============ -->
+<!-- Shown on first visit to anyone who isn't an admin/superadmin (i.e. the
+     public dashboard + LGA-scoped viewers). Storage key is versioned so we
+     can re-prompt if the wording materially changes. -->
+<style>
+.tc-backdrop{position:fixed;inset:0;background:rgba(12,30,16,.72);backdrop-filter:blur(3px);z-index:9000;display:flex;align-items:center;justify-content:center;padding:18px}
+.tc-modal{background:#fff;border-radius:14px;max-width:680px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;font-family:'Inter','Segoe UI',system-ui,sans-serif}
+.tc-hdr{padding:18px 22px;background:linear-gradient(135deg,#003D1A,#005225);color:#fff;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.tc-hdr-icon{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.13);display:grid;place-items:center;font-size:17px;flex-shrink:0}
+.tc-hdr-title{font-weight:700;font-size:15.5px;line-height:1.25}
+.tc-hdr-sub{font-size:11.5px;opacity:.78;margin-top:2px}
+.tc-body{padding:18px 24px;overflow-y:auto;color:#0C1E10;font-size:13px;line-height:1.65}
+.tc-body h4{font-size:13px;font-weight:700;color:#003D1A;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.4px}
+.tc-body h4:first-child{margin-top:0}
+.tc-body p{margin:0 0 8px}
+.tc-body ul{margin:4px 0 10px 18px;padding:0}
+.tc-body li{margin:3px 0}
+.tc-body a{color:#005225;text-decoration:underline}
+.tc-foot{padding:13px 22px;border-top:1px solid #C3E8CE;background:#F4FBF6;display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-shrink:0;flex-wrap:wrap}
+.tc-foot-note{font-size:11px;color:#4A6852;margin-right:auto}
+.tc-btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.tc-btn-primary{background:#005225;color:#fff;box-shadow:0 2px 8px rgba(0,107,46,.25)}
+.tc-btn-primary:hover{background:#003D1A}
+.tc-btn-ghost{background:#fff;color:#005225;border-color:#C3E8CE}
+.tc-btn-ghost:hover{background:#E9F7EE}
+</style>
+<div class="tc-backdrop" id="tc-backdrop" style="display:none" role="dialog" aria-modal="true" aria-labelledby="tc-title">
+  <div class="tc-modal">
+    <div class="tc-hdr">
+      <div class="tc-hdr-icon"><i class="fa-solid fa-shield-halved"></i></div>
+      <div>
+        <div class="tc-hdr-title" id="tc-title">Terms of Use &amp; Data Privacy Notice</div>
+        <div class="tc-hdr-sub">SARMAAN MDA Monitoring Dashboard &middot; Sokoto State</div>
+      </div>
+    </div>
+    <div class="tc-body">
+      <h4>About this Dashboard</h4>
+      <p>This dashboard presents real-time monitoring information from the SARMAAN-supported Mass Drug Administration (MDA) programme, for the purpose of campaign oversight, coverage tracking, and data quality assurance.</p>
+
+      <h4>Purpose &amp; Limitation of Use</h4>
+      <ul>
+        <li>The figures shown are for <strong>monitoring purposes only</strong> and may change as field data is cleaned, validated, and reconciled.</li>
+        <li>This dashboard is <strong>not</strong> the official source of record. Final coverage and treatment figures are released through the appropriate programme channels after data cleanup is completed.</li>
+        <li>Information may not be used to make individual clinical, legal, or commercial decisions.</li>
+      </ul>
+
+      <h4>Data Privacy</h4>
+      <ul>
+        <li>No personally identifying information of treated individuals is displayed. All published figures are aggregated to the settlement, ward, or LGA level.</li>
+        <li>Geographic coordinates shown are tied to administrative boundaries and team activity, not to identifiable persons or households.</li>
+        <li>The platform processes personal data of authorised users (e.g. usernames, role, login activity) solely for access control and audit, in line with applicable Nigerian data-protection guidelines including the Nigeria Data Protection Act, 2023.</li>
+      </ul>
+
+      <h4>Acceptable Use</h4>
+      <ul>
+        <li>You agree to use the dashboard only for legitimate campaign oversight, public health, and research purposes.</li>
+        <li>You will not attempt to deanonymise data, scrape it at scale, share access credentials, or interfere with the platform's operation.</li>
+        <li>Where you re-share screenshots or extracts, please clearly mark the figures as <em>preliminary, monitoring data subject to change</em>.</li>
+      </ul>
+
+      <p style="margin-top:14px;font-size:11.5px;color:#4A6852">By clicking <strong>Accept &amp; Continue</strong>, you confirm that you have read and agree to these terms.</p>
+    </div>
+    <div class="tc-foot">
+      <span class="tc-foot-note"><i class="fa-solid fa-circle-info" style="color:#005225"></i> Your acceptance is remembered on this device.</span>
+      <button class="tc-btn tc-btn-ghost" id="tc-decline-btn">Decline</button>
+      <button class="tc-btn tc-btn-primary" id="tc-accept-btn"><i class="fa-solid fa-check"></i> Accept &amp; Continue</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  // Gate audience: anyone who is NOT a (super)admin — covers public visitors
+  // and LGA-scoped viewers per operator's request. Admins/superadmins are
+  // internal staff and don't need the consent prompt every time.
+  var isAdmin       = localStorage.getItem('is_admin')       === 'true';
+  var isSuperadmin  = localStorage.getItem('is_superadmin')  === 'true';
+  if (isAdmin || isSuperadmin) return;
+
+  // Versioned key — bump suffix if you materially change the wording so
+  // existing users get re-prompted.
+  var KEY = 'sarmaan_tc_accepted_v1';
+  if (localStorage.getItem(KEY) === 'true') return;
+
+  function show() {
+    var bd = document.getElementById('tc-backdrop');
+    if (!bd) return;
+    bd.style.display = 'flex';
+    // Lock background scroll so the underlying dashboard can't be operated
+    // until the user accepts. Restored on accept.
+    document.body.style.overflow = 'hidden';
+    var accept = document.getElementById('tc-accept-btn');
+    var decline = document.getElementById('tc-decline-btn');
+    if (accept) accept.onclick = function() {
+      localStorage.setItem(KEY, 'true');
+      localStorage.setItem(KEY + '_at', new Date().toISOString());
+      bd.style.display = 'none';
+      document.body.style.overflow = '';
+    };
+    if (decline) decline.onclick = function() {
+      // Decline → bounce the user away from the dashboard. Public visitors
+      // and LGA viewers are sent to the public landing page; if there isn't
+      // one configured we fall back to the login screen.
+      window.location.href = '/';
+    };
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show);
+  else show();
+})();
+</script>
+
 </body>
 </html>

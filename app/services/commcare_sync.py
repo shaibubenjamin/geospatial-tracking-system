@@ -253,9 +253,10 @@ def _map_household(row: Dict[str, Any], set_name: str) -> Dict[str, Any]:
         local_hour = (started + timedelta(hours=1)).hour
         out["flag_after_hours"] = local_hour < 6 or local_hour >= 19
     fdm = out["form_duration_min"]
-    # Fast-form threshold: 5 min (campaign-team agreed cutoff). Forms
-    # completed under 5 min are reviewed as potentially rushed.
-    out["flag_fast_form"] = bool(fdm is not None and fdm < 5)
+    # Fast-form threshold: 3 min (operator-tuned 5 → 2 → 3). 3 keeps a
+    # defensible signal of rushed entry without false-flagging quick honest
+    # visits the team observed in practice.
+    out["flag_fast_form"] = bool(fdm is not None and fdm < 3)
     out["flag_slow_form"] = bool(fdm is not None and fdm > 60)
     sl = out["sync_lag_hours"]
     out["flag_sync_lag"]  = bool(sl is not None and sl > 48)

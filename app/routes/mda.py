@@ -410,7 +410,7 @@ async def upload_mda(
             local_hour = (started_time + timedelta(hours=1)).hour
             flag_after_hours = local_hour < 6 or local_hour >= 19
 
-        flag_fast_form = bool(form_duration_min is not None and form_duration_min < 5)
+        flag_fast_form = bool(form_duration_min is not None and form_duration_min < 3)
         flag_slow_form = bool(form_duration_min is not None and form_duration_min > 60)
         flag_sync_lag  = bool(sync_lag_hours is not None and sync_lag_hours > 48)
         flag_refusal   = consent_trt == "0"
@@ -1176,7 +1176,20 @@ async def qc_summary(
           COUNT(DISTINCT lga) AS lgas_covered,
           COUNT(DISTINCT ra_key) AS ra_count,
           (SELECT COUNT(*) FROM mda_individuals WHERE project_id = :pid) AS total_individuals,
-          (SELECT MIN(uploaded_at) FROM mda_households WHERE project_id = :pid) AS data_as_of
+          (SELECT MIN(uploaded_at) FROM mda_households WHERE project_id = :pid) AS data_as_of,
+          -- Form-duration stats. completed_time and started_time are stored
+          -- timezone-aware (UTC); duration = completed - started in minutes,
+          -- already precomputed into form_duration_min at ingest. Filter
+          -- non-null + clip the long tail (>= 6 hours = device left open) so
+          -- the mean is dominated by real visits, not abandoned forms.
+          ROUND(AVG(form_duration_min) FILTER (WHERE form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360)::numeric, 2) AS avg_form_duration_min,
+          (SELECT ROUND(percentile_cont(0.5)  WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2)
+             FROM mda_households {where}
+              AND form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360) AS median_form_duration_min,
+          (SELECT ROUND(percentile_cont(0.9)  WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2)
+             FROM mda_households {where}
+              AND form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360) AS p90_form_duration_min,
+          COUNT(*) FILTER (WHERE form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360) AS duration_sample_size
         FROM mda_households {where}
     """), params)
     row = result.fetchone()
@@ -1190,6 +1203,8 @@ async def qc_summary(
             "total_qc_flags": 0,
             "days_active": 0, "lgas_covered": 0,
             "ra_count": 0, "total_individuals": 0, "data_as_of": None,
+            "avg_form_duration_min": None, "median_form_duration_min": None,
+            "p90_form_duration_min": None, "duration_sample_size": 0,
         }
     keys = [
         "total_forms", "duplicates", "duplicate_gps",
@@ -1199,12 +1214,29 @@ async def qc_summary(
         "refusals", "refusal_pct", "forms_with_error",
         "days_active", "lgas_covered", "ra_count",
         "total_individuals", "data_as_of",
+        "avg_form_duration_min", "median_form_duration_min",
+        "p90_form_duration_min", "duration_sample_size",
     ]
     data = dict(zip(keys, row))
     # Ensure numeric types are JSON-safe
-    for k in keys[:-1]:
-        if data[k] is not None:
-            data[k] = float(data[k]) if k == "refusal_pct" else int(data[k])
+    int_keys = {"total_forms", "duplicates", "duplicate_gps", "gps_outside_lga",
+                "gps_outside_ward", "gps_outside_state", "gps_poor_accuracy",
+                "gps_zero", "after_hours", "fast_forms", "slow_forms", "sync_lag",
+                "refusals", "forms_with_error", "days_active", "lgas_covered",
+                "ra_count", "total_individuals", "duration_sample_size"}
+    float_keys = {"refusal_pct", "avg_form_duration_min", "median_form_duration_min",
+                  "p90_form_duration_min"}
+    for k in keys:
+        if k == "data_as_of":
+            continue
+        if k in int_keys:
+            # Coalesce NULL → 0. SUM(CASE …) returns NULL when the row set is
+            # empty (fresh project, before any forms have synced) — we don't
+            # want that None cascading into arithmetic below or into the
+            # dashboard's KPI tiles as "None".
+            data[k] = int(data[k] or 0)
+        elif k in float_keys and data[k] is not None:
+            data[k] = float(data[k])
     if data["data_as_of"] is not None:
         data["data_as_of"] = str(data["data_as_of"])
     # Unified roll-ups so every page reads the same numbers.
@@ -1351,6 +1383,78 @@ async def qc_duration_by_lga(
         }
         for r in rows
     ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/qc/duration-histogram  — distribution of form completion time
+# Used by the bell-curve chart in Quality Checks to expose outliers visually.
+# Buckets: 1-min wide from 0 → 60 min; any form ≥ 60 min lumped into the
+# rightmost bin so the long tail doesn't squash the meaningful range.
+# Returns bins + mean + stddev + p10/p90 so the client can overlay the
+# "normal range" band on the histogram.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/qc/duration-histogram")
+async def qc_duration_histogram(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    params: dict = {}
+    filters: list = [
+        "form_duration_min IS NOT NULL",
+        "form_duration_min > 0",
+        # Hard cap at 6 hours — anything beyond is almost certainly a device
+        # left open / not a real form; including it would skew the mean and
+        # collapse the visible bell.
+        "form_duration_min < 360",
+    ]
+    if lga:  filters.append("lga = :lga");        params["lga"]  = lga
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
+
+    # 1-minute-wide bins from 0 → 60 min; >=60 lumped into bin 60 (the long tail).
+    result = await db.execute(text(f"""
+        SELECT
+          LEAST(FLOOR(form_duration_min)::int, 60) AS bin_min,
+          COUNT(*) AS n
+        FROM mda_households {where}
+        GROUP BY bin_min
+        ORDER BY bin_min
+    """), params)
+    bins = [{"low": int(r[0]), "high": int(r[0]) + 1, "count": int(r[1])} for r in result.fetchall()]
+
+    # Stats for the overlay (mean / median / stddev / percentiles).
+    s_result = await db.execute(text(f"""
+        SELECT
+          ROUND(AVG(form_duration_min)::numeric, 2)               AS mean_min,
+          ROUND(STDDEV_SAMP(form_duration_min)::numeric, 2)       AS stddev_min,
+          ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2) AS median_min,
+          ROUND(percentile_cont(0.1) WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2) AS p10_min,
+          ROUND(percentile_cont(0.9) WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2) AS p90_min,
+          COUNT(*)                                                AS total
+        FROM mda_households {where}
+    """), params)
+    s = s_result.fetchone()
+    mean   = float(s[0]) if s and s[0] is not None else 0.0
+    stddev = float(s[1]) if s and s[1] is not None else 0.0
+    return {
+        "bins": bins,
+        "mean":   mean,
+        "stddev": stddev,
+        "median": float(s[2]) if s and s[2] is not None else 0.0,
+        "p10":    float(s[3]) if s and s[3] is not None else 0.0,
+        "p90":    float(s[4]) if s and s[4] is not None else 0.0,
+        "lower_band": max(0.0, round(mean - 2 * stddev, 2)),
+        "upper_band": round(mean + 2 * stddev, 2),
+        "total":  int(s[5]) if s and s[5] is not None else 0,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
