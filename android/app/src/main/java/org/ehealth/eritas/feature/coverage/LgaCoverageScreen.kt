@@ -192,7 +192,7 @@ private fun BucketChip(label: String, bucket: GeoBucket?, modifier: Modifier = M
                 color = coverageColor(pct),
             )
             Text(
-                if (bucket == null) "—" else "${formatCount(bucket.atTarget)} of ${formatCount(bucket.total)}",
+                if (bucket == null) "-" else "${formatCount(bucket.atTarget)} of ${formatCount(bucket.total)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -286,7 +286,7 @@ private fun LgaRow(row: LgaCoverage, onViewMap: () -> Unit, onClick: () -> Unit)
                         fontWeight = FontWeight.Bold,
                     )
                     // Tapping the pin opens the Map tab on this LGA (doesn't
-                    // trigger the card's drill-to-wards — the button consumes it).
+                    // trigger the card's drill-to-wards - the button consumes it).
                     IconButton(onClick = onViewMap) {
                         Icon(
                             Icons.Filled.Place,
@@ -460,7 +460,7 @@ private fun SettlementCard(s: SettlementCoverage, onViewMap: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                // No more Visited/Not-visited badge — it contradicted the % (a
+                // No more Visited/Not-visited badge - it contradicted the % (a
                 // settlement could read 'Not visited' at 20%, or 'Visited' at 0%).
                 // The completeness % is the single source of truth now.
                 Text(
@@ -488,5 +488,5 @@ private fun SettlementCard(s: SettlementCoverage, onViewMap: () -> Unit) {
     }
 }
 
-/** Full numbers with thousands separators (e.g. 296,237) — no k/M abbreviation. */
+/** Full numbers with thousands separators (e.g. 296,237) - no k/M abbreviation. */
 private fun formatCount(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n.toLong())

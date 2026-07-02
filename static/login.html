@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ERITAS — SARMAAN MDA · Sign In</title>
+  <title>ERITAS - SARMAAN MDA · Sign In</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -384,16 +384,16 @@
         <div class="lbl">Wards in scope</div>
       </div>
       <div class="stat-card">
-        <div class="val" id="lp-treated">—</div>
+        <div class="val" id="lp-treated">-</div>
         <div class="lbl">Children treated this round</div>
       </div>
       <div class="stat-card">
-        <div class="val" id="lp-coverage">—</div>
+        <div class="val" id="lp-coverage">-</div>
         <div class="lbl">Coverage / 80% target</div>
       </div>
     </div>
 
-    <div class="lp-footer">ERITAS &mdash; SARMAAN MDA</div>
+    <div class="lp-footer">ERITAS - SARMAAN MDA</div>
     <div class="lp-footer" style="margin-top:4px;opacity:.7">Powered by <a href="https://ehealthafrica.org" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">eHealth Africa</a> &bull; &copy; 2026</div>
   </div>
 
@@ -402,7 +402,7 @@
     <div class="rp-inner">
       <div class="rp-logo"><i class="fa-solid fa-capsules"></i></div>
       <h2>Welcome back</h2>
-      <p class="subtitle">Sign in to ERITAS &mdash; the SARMAAN MDA monitoring platform</p>
+      <p class="subtitle">Sign in to ERITAS - the SARMAAN MDA monitoring platform</p>
 
       <div class="notice-box" id="idle-notice">
         <i class="fa-solid fa-clock"></i>
@@ -452,7 +452,7 @@
   <script>
     // Already-logged-in redirect always lands on the public dashboard, even
     // for superadmins. They can jump to the admin panel from the dashboard
-    // chrome — the dashboard is the home page, the admin panel is a tool.
+    // chrome - the dashboard is the home page, the admin panel is a tool.
     if (localStorage.getItem('token')) {
       window.location.href = '/dashboard';
     }
@@ -475,7 +475,7 @@
         const d = await res.json();
 
         setEl('lp-round-label', d.active_round_label
-            ? `${d.active_round_label} — live`
+            ? `${d.active_round_label} - live`
             : 'Campaign monitoring');
 
         // LGAs / Wards fall back to the static defaults if the boundary tables
@@ -498,9 +498,9 @@
         const cov = Number(d.coverage_pct || 0);
         setEl('lp-coverage', cov.toFixed(1) + '% / 80%');
       } catch (err) {
-        // Graceful degrade — keep the static placeholders if the API is down.
+        // Graceful degrade - keep the static placeholders if the API is down.
         setEl('lp-round-label', 'Campaign monitoring');
-        setEl('lp-treated', '—');
+        setEl('lp-treated', '-');
         setEl('lp-coverage', '80% target');
       }
     })();
@@ -546,12 +546,12 @@
         localStorage.setItem('username',      data.username);
         localStorage.setItem('is_admin',      data.is_admin);
         localStorage.setItem('is_superadmin', data.is_superadmin ? 'true' : 'false');
-        // Everyone — including superadmins — lands on the public dashboard
+        // Everyone - including superadmins - lands on the public dashboard
         // after sign-in. The admin panel is reachable from the dashboard
         // chrome; the dashboard is the home page, the admin panel is a tool.
         window.location.href = '/dashboard';
       } catch {
-        document.getElementById('error-msg').textContent = 'Network error — is the server running?';
+        document.getElementById('error-msg').textContent = 'Network error - is the server running?';
         errBox.classList.add('visible');
       } finally {
         btn.disabled = false;

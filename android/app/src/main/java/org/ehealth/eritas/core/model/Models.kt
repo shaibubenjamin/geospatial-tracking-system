@@ -2,7 +2,7 @@ package org.ehealth.eritas.core.model
 
 import com.squareup.moshi.Json
 
-/** Response of GET /version — drives the launch-time update check. */
+/** Response of GET /version - drives the launch-time update check. */
 data class VersionInfo(
     val min: Int,
     val latest: Int,
@@ -22,7 +22,7 @@ data class LoginResponse(
     @Json(name = "is_superadmin") val isSuperadmin: Boolean = false,
 )
 
-/** A campaign — one state + round. Source for the project selector. */
+/** A campaign - one state + round. Source for the project selector. */
 data class ProjectDto(
     val id: Int,
     val name: String,
@@ -63,7 +63,7 @@ data class TrendPoint(
     val teams: Int = 0,
 )
 
-/** One row of GET /api/app/coverage/lga — per-LGA coverage vs baseline. */
+/** One row of GET /api/app/coverage/lga - per-LGA coverage vs baseline. */
 data class LgaCoverage(
     val lga: String?,
     val forms: Int = 0,
@@ -74,7 +74,7 @@ data class LgaCoverage(
     @Json(name = "days_reported") val daysReported: Int = 0,
 )
 
-/** One row of GET /api/app/coverage/ward — per-ward coverage within an LGA. */
+/** One row of GET /api/app/coverage/ward - per-ward coverage within an LGA. */
 data class WardCoverage(
     @Json(name = "ward_name") val wardName: String?,
     val lga: String?,
@@ -85,7 +85,7 @@ data class WardCoverage(
     val teams: Int = 0,
 )
 
-/** One row of GET /api/app/coverage/settlement — a settlement within a ward. */
+/** One row of GET /api/app/coverage/settlement - a settlement within a ward. */
 data class SettlementCoverage(
     @Json(name = "settlement_name") val settlementName: String?,
     @Json(name = "ward_name") val wardName: String?,
@@ -95,7 +95,7 @@ data class SettlementCoverage(
     @Json(name = "point_count") val pointCount: Int = 0,
 )
 
-/** GET /api/app/geo/summary — headline numbers from the web Geographic View. */
+/** GET /api/app/geo/summary - headline numbers from the web Geographic View. */
 data class GeoSummary(
     val completeness: GeoCompleteness?,
     @Json(name = "coverage_summary") val coverageSummary: GeoCoverageSummary?,
@@ -122,7 +122,7 @@ data class GeoBucket(
     val pct: Double = 0.0,
 )
 
-/** Response of GET /api/app/near — the core field-coverage aid. */
+/** Response of GET /api/app/near - the core field-coverage aid. */
 data class NearResponse(
     @Json(name = "project_id") val projectId: Int,
     val current: NearCurrent?,

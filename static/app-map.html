@@ -19,7 +19,7 @@
     #err{top:50%;left:8px;right:8px;transform:translateY(-50%);text-align:center;color:#b91c1c;display:none}
     /* ── LGA → ward → settlement explorer: a draggable BOTTOM sheet. Its top &
        height are set in JS from window.innerHeight (the same reliable value the
-       map uses) — CSS bottom:0 is NOT reliable in this WebView. Drag/tap the
+       map uses) - CSS bottom:0 is NOT reliable in this WebView. Drag/tap the
        handle to bring it up or collapse it; tap a settlement to collapse and see
        the map. ── */
     #drill{position:absolute;left:0;right:0;z-index:1200;background:#fff;
@@ -74,14 +74,14 @@
     function get(u){ return fetch(u,{headers:{'Authorization':'Bearer '+token,'X-App-Version-Code':'999999'}})
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
     function visColor(p){ p=+p||0; return p>=70?'#16a34a':p>=40?'#f59e0b':'#dc2626'; }
-    function fpct(n){ return (n==null?'—':(+n).toFixed(0)+'%'); }
+    function fpct(n){ return (n==null?'-':(+n).toFixed(0)+'%'); }
     function feats(d){ return (d&&d.features?d.features:[]); }
     function err(m){ var e=document.getElementById('err'); e.textContent=m; e.style.display='block'; }
 
     // Zoom thresholds: wards appear @9, settlements @12, GPS points @14.
     var WARD_Z=9, SETT_Z=12, PT_Z=14;
 
-    // Size the map to the viewport (explicit px — WebView % height is unreliable).
+    // Size the map to the viewport (explicit px - WebView % height is unreliable).
     function sizeMap(){ var h=window.innerHeight||document.documentElement.clientHeight||600;
       document.getElementById('map').style.height=h+'px'; if(window._map) _map.invalidateSize();
       if(typeof placeDrill==='function') placeDrill(); }
@@ -109,20 +109,20 @@
     // them inherit the "blank" treatment instead of being graded red for 0%.
     var nonCampaignLgas=Object.create(null);
     function lgaOutOfCampaign(name){ return !!nonCampaignLgas[String(name==null?'':name).trim().toLowerCase()]; }
-    // Faint neutral fill + dashed border — shared by every level for an LGA
+    // Faint neutral fill + dashed border - shared by every level for an LGA
     // that isn't part of this round.
     function blankStyle(weight){ return {color:'#94a3b8',weight:weight,opacity:0.6,
       dashArray:'4 3',fillColor:'#cbd5e1',fillOpacity:0.12}; }
 
     function lgaStyle(f){ var p=f.properties||{};
-      // LGAs not part of this campaign (no settlement plan) are shown blank —
-      // a faint neutral fill + dashed border — never graded red for "0%".
+      // LGAs not part of this campaign (no settlement plan) are shown blank -
+      // a faint neutral fill + dashed border - never graded red for "0%".
       if(p.in_campaign===false) return blankStyle(1);
       return {color:'#1f2937',weight:1.5,opacity:0.85,
         fillColor:visColor(p.visitation_pct),fillOpacity:0.55}; }
     function wardStyle(f){ var p=f.properties||{};
       // A ward whose LGA isn't in this campaign stays blank, matching the LGA
-      // layer — the boundary table holds wards for every LGA, so without this
+      // layer - the boundary table holds wards for every LGA, so without this
       // they'd grade red for 0% once you zoom in.
       if(lgaOutOfCampaign(p.lga_name)) return blankStyle(0.8);
       return {color:'#374151',weight:0.8,opacity:0.7,
@@ -133,7 +133,7 @@
       return {color:'#ffffff',weight:0.4,opacity:0.5,fillColor:v?'#16a34a':'#dc2626',fillOpacity:0.6}; }
 
     function popupArea(kind){ return function(f,layer){ var p=f.properties||{};
-      var nm=p.ward_name||p.lga_name||'—';
+      var nm=p.ward_name||p.lga_name||'-';
       if(p.in_campaign===false){ layer.bindPopup('<b>'+nm+'</b><br><i>Not part of this campaign</i>'); return; }
       layer.bindPopup('<b>'+nm+'</b><br>'+kind+': <b style="color:'+visColor(p.visitation_pct)+'">'+fpct(p.visitation_pct)+' visited</b>'); }; }
 
@@ -149,7 +149,7 @@
       if(!lgaLayer) return;
       var z=map.getZoom(), b=map.getBounds();
       // Show LGA names at the state view; swap to ward names once zoomed in.
-      // Ward names only once zoomed into ~one LGA (z>=11) — far less busy than
+      // Ward names only once zoomed into ~one LGA (z>=11) - far less busy than
       // labelling every ward across the whole state at the ward-reveal zoom.
       map.getContainer().classList.toggle('zlbl-ward', z>=11);
 
@@ -161,10 +161,10 @@
         wardLayer.setStyle({fillOpacity: z<SETT_Z?0.45 : 0.1, opacity:0.7}); }
       else if(map.hasLayer(wardLayer)) map.removeLayer(wardLayer);
 
-      // Settlements appear at SETT_Z — lazy-load for each LGA in view.
+      // Settlements appear at SETT_Z - lazy-load for each LGA in view.
       if(z>=SETT_Z){ if(!map.hasLayer(settLayer)) settLayer.addTo(map);
         lgaItems.forEach(function(it){
-          // Skip LGAs that aren't part of this campaign — don't even fetch
+          // Skip LGAs that aren't part of this campaign - don't even fetch
           // their settlements (mirrors how a project without their analytics
           // behaves; keeps the map clean and the payload small on any project).
           if(!loadedSett[it.lgacode] && it.bounds.intersects(b) && !lgaOutOfCampaign(it.name)){
@@ -175,7 +175,7 @@
         });
       } else if(map.hasLayer(settLayer)) map.removeLayer(settLayer);
 
-      // GPS points appear at PT_Z — lazy-load per LGA in view.
+      // GPS points appear at PT_Z - lazy-load per LGA in view.
       if(z>=PT_Z){ if(!map.hasLayer(pointsLayer)) pointsLayer.addTo(map); pointsLayer.bringToFront();
         lgaItems.forEach(function(it){
           if(!loadedPts[it.lgacode] && it.bounds.intersects(b) && !lgaOutOfCampaign(it.name)){
@@ -210,7 +210,7 @@
     function fitFeat(f){ try{ map.fitBounds(boundsOf(f),{padding:[22,22],maxZoom: drill.level>=2?15:(drill.level===1?13:11)}); }catch(e){} }
     function drillRow(name,pct,drillable,onclick){
       var row=document.createElement('div'); row.className='drill-row';
-      row.innerHTML='<span class="nm">'+esc(name||'—')+'</span>'+
+      row.innerHTML='<span class="nm">'+esc(name||'-')+'</span>'+
         '<span class="pc" style="color:'+(pct==null?'#9ca3af':visColor(pct))+'">'+fpct(pct)+'</span>'+
         (drillable?'<span class="ch">&#8250;</span>':'');
       row.onclick=onclick; return row;
@@ -264,7 +264,7 @@
       var lgasFC=res[0], wardsFC=res[1];
       // Record which LGAs are outside this campaign BEFORE building the ward /
       // settlement layers, so the filter below can drop their geometry. This is
-      // what makes every project behave like Sokoto R5 — a greyed LGA shows
+      // what makes every project behave like Sokoto R5 - a greyed LGA shows
       // nothing on zoom-in instead of a wall of red wards (Kano's full-state
       // boundary otherwise renders ward polygons for non-campaign LGAs).
       feats(lgasFC).forEach(function(f){ var p=f.properties||{};
@@ -273,7 +273,7 @@
       lgaLayer=L.geoJSON(lgasFC,{style:lgaStyle,onEachFeature:onArea('Visitation','maplbl-lga','lga_name')}).addTo(map);
       wardLayer=L.geoJSON(wardsFC,{style:wardStyle,filter:inCampaignFeat,onEachFeature:onArea('Visitation','maplbl-ward','ward_name')});
       settLayer=L.geoJSON(null,{style:settStyle,filter:inCampaignFeat,onEachFeature:function(f,l){ var p=f.properties||{};
-        l.bindPopup('<b>'+(p.settlement_name||'—')+'</b><br>'+(p.is_visited?'Visited':'Not visited')); }});
+        l.bindPopup('<b>'+(p.settlement_name||'-')+'</b><br>'+(p.is_visited?'Visited':'Not visited')); }});
       pointsLayer=L.geoJSON(null,{pointToLayer:function(f,ll){ var ib=(f.properties||{}).in_bounds;
         return L.circleMarker(ll,{radius:3,fillColor:ib?'#16a34a':'#dc2626',color:'#fff',weight:0.6,fillOpacity:0.9}); }});
       feats(lgasFC).forEach(function(f){ if(f.geometry){ var p=f.properties||{}; lgaItems.push({lgacode:p.lgacode,name:(p.lga_name||p.lga||''),bounds:boundsOf(f)}); } });

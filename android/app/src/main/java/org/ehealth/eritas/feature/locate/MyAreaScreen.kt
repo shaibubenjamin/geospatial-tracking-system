@@ -46,7 +46,7 @@ import kotlin.math.roundToInt
 /**
  * The core field-coverage aid. Reads the device's GPS and asks the server
  * which settlement/ward the user is standing in, how covered it is, and the
- * nearest settlement still left to cover — for the selected project.
+ * nearest settlement still left to cover - for the selected project.
  */
 @Composable
 fun MyAreaScreen(projectId: Int?) {
@@ -142,15 +142,15 @@ fun MyAreaScreen(projectId: Int?) {
                             color = Color.White,
                         )
                         Text(
-                            "${cur.wardName ?: "—"} • ${cur.lgaName ?: "—"}",
+                            "${cur.wardName ?: "-"} • ${cur.lgaName ?: "-"}",
                             color = Color.White,
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
                             if (cur.isCovered) {
-                                "Covered — ${cur.completenessPct.roundToInt()}% complete"
+                                "Covered - ${cur.completenessPct.roundToInt()}% complete"
                             } else {
-                                "Not yet covered — ${cur.completenessPct.roundToInt()}% complete"
+                                "Not yet covered - ${cur.completenessPct.roundToInt()}% complete"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White,
@@ -168,7 +168,7 @@ fun MyAreaScreen(projectId: Int?) {
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        "Nearest settlements still needing coverage — tap one for directions.",
+                        "Nearest settlements still needing coverage - tap one for directions.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -195,7 +195,7 @@ fun MyAreaScreen(projectId: Int?) {
                                         style = MaterialTheme.typography.titleSmall,
                                     )
                                     Text(
-                                        "${next.wardName ?: "—"} • ${next.lgaName ?: "—"}",
+                                        "${next.wardName ?: "-"} • ${next.lgaName ?: "-"}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )

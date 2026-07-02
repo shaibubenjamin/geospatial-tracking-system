@@ -59,7 +59,7 @@ import org.ehealth.eritas.ui.EritasGreen
 import kotlin.math.roundToInt
 
 /**
- * Quality & performance — data-quality (QC) metrics, team metrics, and daily
+ * Quality & performance - data-quality (QC) metrics, team metrics, and daily
  * trends for the selected campaign. Built from /api/app/{overview,trends/daily,
  * coverage/lga}; no map, no WebView.
  */
@@ -97,7 +97,7 @@ fun QualityScreen(projectId: Int?) {
 
             SectionTitle("Data quality")
             Text(
-                "Automated checks on submitted forms. Lower is better — each flag " +
+                "Automated checks on submitted forms. Lower is better - each flag " +
                     "is a record worth a second look.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -229,7 +229,7 @@ private fun TeamsByLgaCard(lgas: List<LgaCoverage>) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        row.lga ?: "—",
+                        row.lga ?: "-",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.width(110.dp),
                         maxLines = 1,

@@ -87,8 +87,8 @@ fun DashboardScreen(projectId: Int?) {
 private fun DashboardContent(d: OverviewDto, projectId: Int?) {
     val day = d.currentCampaignDay?.let { cur ->
         d.plannedDurationDays?.let { tot -> "$cur / $tot" } ?: cur.toString()
-    } ?: "—"
-    val avgPerTeam = if (d.teamsActive > 0) (d.totalForms / d.teamsActive).toString() else "—"
+    } ?: "-"
+    val avgPerTeam = if (d.teamsActive > 0) (d.totalForms / d.teamsActive).toString() else "-"
     val stats = listOf(
         Stat("Children treated", formatCount(d.totalTreated), Icons.Filled.Favorite),
         Stat("Forms submitted", formatCount(d.totalForms), Icons.Filled.Description),
@@ -101,13 +101,13 @@ private fun DashboardContent(d: OverviewDto, projectId: Int?) {
         Stat("Avg forms/team", avgPerTeam, Icons.Filled.Groups),
         Stat("GPS outside LGA", formatCount(d.gpsOutsideLga), Icons.Filled.Place),
         Stat("Fast forms", formatCount(d.fastForms), Icons.Filled.Description),
-        // Campaign DURATION (planned window length, e.g. 5 days) — NOT the count
+        // Campaign DURATION (planned window length, e.g. 5 days) - NOT the count
         // of distinct submission days (11), which read as wrong for the 5-day R5
         // campaign. Mirrors the web, which drives this off the planned window.
         Stat(
             "Campaign duration",
             d.plannedDurationDays?.let { "$it days" }
-                ?: d.currentCampaignDay?.let { "$it days" } ?: "—",
+                ?: d.currentCampaignDay?.let { "$it days" } ?: "-",
             Icons.Filled.Event,
         ),
     )
@@ -164,7 +164,7 @@ private fun TrendCard(projectId: Int?, baseline: Int) {
                     cum.forEachIndexed { i, p -> drawCircle(EritasGreen, 3f, Offset(px(i), py(p.second))) }
                 }
                 // Daily date labels along the x-axis (sampled so they don't
-                // crowd on a phone — shows MM-DD, e.g. 05-19).
+                // crowd on a phone - shows MM-DD, e.g. 05-19).
                 val dates = cum.mapNotNull { it.first }
                 if (dates.isNotEmpty()) {
                     val step = ((dates.size + 5) / 6).coerceAtLeast(1)
@@ -263,5 +263,5 @@ private fun StatCard(stat: Stat, modifier: Modifier = Modifier) {
     }
 }
 
-/** Full numbers with thousands separators (e.g. 296,237) — no k/M abbreviation. */
+/** Full numbers with thousands separators (e.g. 296,237) - no k/M abbreviation. */
 private fun formatCount(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n.toLong())

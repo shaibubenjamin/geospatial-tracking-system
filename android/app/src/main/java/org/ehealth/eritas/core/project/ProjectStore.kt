@@ -20,7 +20,7 @@ class ProjectStore(context: Context) {
         get() = prefs.getString(KEY_LABEL, null)
         set(value) = prefs.edit().putString(KEY_LABEL, value).apply()
 
-    /** Forget the selected project — called on logout so the next user doesn't
+    /** Forget the selected project - called on logout so the next user doesn't
      *  inherit the previous account's round (e.g. an admin's Kano selection
      *  carrying into a Sokoto-only LGA login and erroring until manually
      *  switched). A fresh login then falls back to the server's default project
