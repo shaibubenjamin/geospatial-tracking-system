@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ERITAS — SARMAAN MDA</title>
+  <title>ERITAS - SARMAAN MDA</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -124,7 +124,7 @@
       position: relative;
       overflow: hidden;
     }
-    /* Decorative circles — green tones only */
+    /* Decorative circles - green tones only */
     .hero::before {
       content: '';
       position: absolute;
@@ -463,7 +463,7 @@
       <div class="topbar-logo"><i class="fa-solid fa-leaf"></i></div>
       <div>
         <div class="topbar-name">ERITAS</div>
-        <div class="topbar-sub" data-active-state-label>&mdash;</div>
+        <div class="topbar-sub" data-active-state-label>-</div>
       </div>
     </a>
     <div class="topbar-spacer"></div>
@@ -471,8 +471,8 @@
     <div class="topbar-user" id="auth-user-chip" style="display:none">
       <div class="topbar-avatar" id="user-avatar">?</div>
       <div>
-        <div class="topbar-username" id="user-name">—</div>
-        <div class="topbar-role" id="user-role">—</div>
+        <div class="topbar-username" id="user-name">-</div>
+        <div class="topbar-role" id="user-role">-</div>
       </div>
     </div>
     <button class="topbar-logout" id="auth-signout-btn" onclick="handleLogout()" style="display:none">
@@ -490,7 +490,7 @@
       <div class="welcome-greeting" id="welcome-greeting"><strong>Public view</strong> &nbsp;&middot;&nbsp; no sign-in required</div>
       <div class="hero-eyebrow">
         <i class="fa-solid fa-circle-dot" style="font-size:8px"></i>
-        Active Campaign &nbsp;·&nbsp; <span data-active-campaign-label>&mdash;</span>
+        Active Campaign &nbsp;·&nbsp; <span data-active-campaign-label>-</span>
       </div>
       <h1 class="hero-title">
         <span class="accent">ERITAS</span><br>
@@ -508,7 +508,7 @@
 
       <div class="action-cards">
         <!-- Public CTA: View Dashboard.
-             Clicking it sets the public_dashboard_accepted flag — the dashboard
+             Clicking it sets the public_dashboard_accepted flag - the dashboard
              checks for this flag and bounces unauthenticated visitors back here
              if they hit /dashboard directly without going through this choice. -->
         <a href="/dashboard" class="action-card action-card-primary" id="cta-view-dashboard"
@@ -520,7 +520,7 @@
           </div>
           <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.75"></i>
         </a>
-        <!-- Public CTA: Admin Portal (sign-in) — shown when not authenticated -->
+        <!-- Public CTA: Admin Portal (sign-in) - shown when not authenticated -->
         <a href="/login" class="action-card action-card-secondary" id="cta-admin-portal">
           <div class="action-card-icon"><i class="fa-solid fa-shield-halved"></i></div>
           <div class="action-card-text">
@@ -529,7 +529,7 @@
           </div>
           <i class="fa-solid fa-arrow-right" style="margin-left:8px;opacity:.75"></i>
         </a>
-        <!-- Authenticated CTA: Admin Panel — shown when signed-in user is admin -->
+        <!-- Authenticated CTA: Admin Panel - shown when signed-in user is admin -->
         <a href="/mda-admin" class="action-card action-card-secondary" id="admin-card" style="display:none">
           <div class="action-card-icon"><i class="fa-solid fa-screwdriver-wrench"></i></div>
           <div class="action-card-text">
@@ -551,16 +551,16 @@
       <span id="stats-loading" class="loading-dot"><span></span><span></span><span></span></span>
     </div>
     <div class="stats-strip">
-      <div class="stat-box"><span class="v" id="s-forms">—</span><span class="l">Household Forms</span></div>
-      <div class="stat-box"><span class="v" id="s-treated">—</span><span class="l">Children Treated</span></div>
-      <div class="stat-box" style="--accent:var(--good)"><span class="v" id="s-coverage" style="color:var(--good)">—</span><span class="l">Coverage %</span></div>
+      <div class="stat-box"><span class="v" id="s-forms">-</span><span class="l">Household Forms</span></div>
+      <div class="stat-box"><span class="v" id="s-treated">-</span><span class="l">Children Treated</span></div>
+      <div class="stat-box" style="--accent:var(--good)"><span class="v" id="s-coverage" style="color:var(--good)">-</span><span class="l">Coverage %</span></div>
       <div class="stat-box" id="s-teams-box">
-        <span class="v" id="s-teams" style="font-size:20px">—</span>
+        <span class="v" id="s-teams" style="font-size:20px">-</span>
         <span style="font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.3px" id="s-teams-pct"></span>
         <span class="l">Active Teams</span>
       </div>
-      <div class="stat-box"><span class="v" id="s-days">—</span><span class="l">Campaign Days</span></div>
-      <div class="stat-box" style="--accent:var(--warn)"><span class="v" id="s-flags" style="color:var(--warn)">—</span><span class="l">QC Flags</span></div>
+      <div class="stat-box"><span class="v" id="s-days">-</span><span class="l">Campaign Days</span></div>
+      <div class="stat-box" style="--accent:var(--warn)"><span class="v" id="s-flags" style="color:var(--warn)">-</span><span class="l">QC Flags</span></div>
     </div>
 
     <!-- About -->
@@ -569,15 +569,15 @@
       <div class="card">
         <div class="card-head">
           <div class="card-icon"><i class="fa-solid fa-circle-info"></i></div>
-          <div class="card-title">ERITAS &mdash; SARMAAN MDA</div>
+          <div class="card-title">ERITAS - SARMAAN MDA</div>
         </div>
         <div class="card-body">
           <div class="about-text">
             <p>
-              <strong>ERITAS</strong> &mdash; <strong>E</strong>vidence through
+              <strong>ERITAS</strong> - <strong>E</strong>vidence through
               <strong>R</strong>eal-time <strong>I</strong>ntelligence,
               <strong>T</strong>racking, and <strong>A</strong>ccountability
-              <strong>S</strong>ystems &mdash; is the monitoring platform built for the
+              <strong>S</strong>ystems - is the monitoring platform built for the
               <strong>SARMAAN MDA</strong> programme.
               It turns field data into real-time, accountable evidence that
               programme managers can act on.
@@ -586,14 +586,14 @@
               The <strong>SARMAAN MDA</strong> campaign delivers preventive
               treatment to eligible children across whole communities, round after
               round. During each round, field teams move from settlement to
-              settlement recording every child treated &mdash; and ERITAS tracks
+              settlement recording every child treated - and ERITAS tracks
               that effort live, measuring coverage against baseline targets,
               flagging data-quality issues, and surfacing team performance as the
               data arrives from the field.
             </p>
             <p>
-              ERITAS unifies the collection tools the programme already uses &mdash;
-              CommCare and others &mdash; into one place, validating and visualising
+              ERITAS unifies the collection tools the programme already uses -
+              CommCare and others - into one place, validating and visualising
               incoming data continuously. Each state's rounds run side by side,
               scoped by access so every user only ever sees the data they are
               permitted to.
@@ -680,7 +680,7 @@
   </div>
 
   <footer class="footer">
-    <strong>ERITAS &mdash; SARMAAN MDA</strong>
+    <strong>ERITAS - SARMAAN MDA</strong>
     <div style="margin-top:6px;opacity:.7;font-size:12px">Powered by <a href="https://ehealthafrica.org" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">eHealth Africa</a> &nbsp;·&nbsp; &copy; 2026</div>
   </footer>
 
@@ -707,7 +707,7 @@
       const greet = document.getElementById('welcome-greeting');
       if (greet) greet.innerHTML = 'Welcome back, <strong>' + (username || 'user') + '</strong>';
 
-      // Primary CTA goes to the dashboard (same route — JS auto-detects auth)
+      // Primary CTA goes to the dashboard (same route - JS auto-detects auth)
       const cta = document.getElementById('cta-view-dashboard');
       if (cta) cta.setAttribute('href', '/dashboard');
       const lbl = document.getElementById('cta-view-label');
@@ -727,11 +727,11 @@
         if (res.status === 401 && isAuthed) { handleLogout(); return; }
         if (!res.ok) return;
         const d   = await res.json();
-        const fmt = n => n == null ? '—' : Number(n).toLocaleString();
+        const fmt = n => n == null ? '-' : Number(n).toLocaleString();
         const TOTAL_TEAMS = 321;
         document.getElementById('s-forms').textContent    = fmt(d.total_forms);
         document.getElementById('s-treated').textContent  = fmt(d.total_treated);
-        document.getElementById('s-coverage').textContent = d.coverage_pct != null ? d.coverage_pct.toFixed(1) + '%' : '—';
+        document.getElementById('s-coverage').textContent = d.coverage_pct != null ? d.coverage_pct.toFixed(1) + '%' : '-';
         const activeTeams = d.teams_active || 0;
         document.getElementById('s-teams').textContent    = activeTeams + ' / ' + TOTAL_TEAMS;
         const teamPct = ((activeTeams / TOTAL_TEAMS) * 100).toFixed(0) + '% deployed';
@@ -759,7 +759,7 @@
         document.querySelectorAll('[data-active-campaign-label]').forEach(el => {
           el.textContent = round ? `${state} ${round} ${yr}` : `${state} ${yr}`;
         });
-        document.title = `ERITAS — ${state}`;
+        document.title = `ERITAS - ${state}`;
       } catch (_) {}
     }
 

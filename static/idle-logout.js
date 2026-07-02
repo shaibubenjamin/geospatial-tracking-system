@@ -1,4 +1,4 @@
-/* ERITAS — idle auto-logout.
+/* ERITAS - idle auto-logout.
  *
  * Signs a logged-in user out after IDLE_LIMIT_MS of no interaction, and
  * coordinates across tabs via localStorage. No-op for anonymous visitors
