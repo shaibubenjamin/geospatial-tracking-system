@@ -10,7 +10,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 /**
- * One-shot current-location read using the platform LocationManager — no
+ * One-shot current-location read using the platform LocationManager - no
  * Google Play Services dependency. Caller must already hold a location
  * permission. Returns null if no provider is enabled.
  */

@@ -30,7 +30,7 @@ import org.ehealth.eritas.ui.CoverageMid
 import kotlin.math.roundToInt
 
 /**
- * Geographic view — headline coverage numbers (from /api/app/geo/summary) above
+ * Geographic view - headline coverage numbers (from /api/app/geo/summary) above
  * the interactive Leaflet coverage map (/app/map in a WebView). The cards give
  * the at-a-glance % the map can't; the map gives the where.
  */
@@ -75,7 +75,7 @@ private fun GeoSummaryHeader(summary: GeoSummary?) {
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    if (comp == null) "—" else "${visitPct.roundToInt()}%",
+                    if (comp == null) "-" else "${visitPct.roundToInt()}%",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = covColor(visitPct),

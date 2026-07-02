@@ -13,11 +13,11 @@ import org.ehealth.eritas.core.net.ServiceLocator
 /**
  * Hosts a server-rendered app page (e.g. /app/dashboard, /app/map) in a WebView.
  *
- * Loads via loadUrl so it runs in a normal browsing context (CDN scripts —
- * Leaflet, Chart.js — work). The auth token rides in the URL fragment (#token=…)
+ * Loads via loadUrl so it runs in a normal browsing context (CDN scripts -
+ * Leaflet, Chart.js - work). The auth token rides in the URL fragment (#token=…)
  * so it's never sent to the server or logged, and the selected project is a
  * query param. Re-loads ONLY when the URL changes (project switch), not on every
- * recompose — reloading mid-render left the WebGL/canvas blank before.
+ * recompose - reloading mid-render left the WebGL/canvas blank before.
  */
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
@@ -31,7 +31,7 @@ fun AppWebScreen(
     // When set, appended as ?focus=<lga> so the map page zooms to that LGA.
     focusLga: String? = null,
     // When set, appended as &focus_settlement=<name> so the map zooms onto that
-    // settlement (URL-encoded — names have spaces/apostrophes).
+    // settlement (URL-encoded - names have spaces/apostrophes).
     focusSettlement: String? = null,
     // When true, append ?app=1 (the wrapped /mda reads this to switch to its
     // guarded mobile layout).

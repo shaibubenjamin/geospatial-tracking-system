@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ERITAS MDA Coverage · App Preview</title>
   <!-- The Map tab iframes the real /app/map page, so no map library is needed
-       here — the preview always shows whatever the live app map renders. -->
+       here - the preview always shows whatever the live app map renders. -->
   <style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif}
     body{background:#1f2933;display:flex;justify-content:center;padding:16px;min-height:100vh}
@@ -86,7 +86,7 @@
       document.getElementById('nav').style.display='flex';
       try{ projects=await api('/api/app/projects');
         const sel=document.getElementById('projSel');
-        sel.innerHTML=projects.map(p=>`<option value="${p.id}">${(p.state_name||p.name)} — R${p.round_number||''}${p.is_active?' (active)':''}</option>`).join('');
+        sel.innerHTML=projects.map(p=>`<option value="${p.id}">${(p.state_name||p.name)} - R${p.round_number||''}${p.is_active?' (active)':''}</option>`).join('');
         const active=projects.find(x=>x.is_active)||projects[0]; pid=active?active.id:null;
         if(pid) sel.value=pid;
       }catch(e){ if(String(e).includes('401')){token=null;loginView('Session expired');return;} }
@@ -117,14 +117,14 @@
     async function renderDash(q){
       const body=document.getElementById('body'); body.innerHTML='<div class="muted">Loading…</div>';
       try{ const d=await api('/api/app/overview'+q);
-        const day=d.current_campaign_day!=null?(d.current_campaign_day+(d.planned_duration_days?(' / '+d.planned_duration_days):'')):'—';
+        const day=d.current_campaign_day!=null?(d.current_campaign_day+(d.planned_duration_days?(' / '+d.planned_duration_days):'')):'-';
         body.innerHTML=`<div class="hero"><div style="font-size:12px;opacity:.9">Administrative coverage</div>
           <div class="pct">${Math.round(d.coverage_pct||0)}%</div></div>
           <div class="grid">
           ${[['Children treated',k(d.total_treated||0)],['Forms',k(d.total_forms||0)],['Teams active',k(d.teams_active||0)],
              ['LGAs covered',d.lgas_covered||0],['Campaign day',day],['QC flags',k(d.total_qc_flags||0)],
              ['Error rate',Math.round(d.error_rate_pct||0)+'%'],['Refusals',k(d.refusals||0)],
-             ['Avg forms/team',(d.teams_active>0?Math.round(d.total_forms/d.teams_active):'—')],
+             ['Avg forms/team',(d.teams_active>0?Math.round(d.total_forms/d.teams_active):'-')],
              ['GPS outside LGA',k(d.gps_outside_lga||0)],['Fast forms',k(d.fast_forms||0)],
              ['Days active',d.days_active||0]]
             .map(s=>`<div class="card"><div class="v">${s[1]}</div><div class="l">${s[0]}</div></div>`).join('')}
@@ -164,7 +164,7 @@
       try{ const rows=await api('/api/app/coverage/lga'+(pid?('?project_id='+pid):''));
         body.innerHTML='<div style="font-weight:700;margin-bottom:8px">Coverage by LGA · tap for wards</div>'+
           rows.map(r=>`<div class="row" onclick="openWards('${(r.lga||'').replace(/'/g,'')}')">
-            <div class="top"><span>${r.lga||'—'}</span><span style="color:${color(r.coverage_pct)}">${Math.round(r.coverage_pct)}%</span></div>
+            <div class="top"><span>${r.lga||'-'}</span><span style="color:${color(r.coverage_pct)}">${Math.round(r.coverage_pct)}%</span></div>
             <div class="barpct"><i style="width:${Math.min(100,r.coverage_pct)}%;background:${color(r.coverage_pct)}"></i></div>
             <div class="l" style="margin-top:6px;color:#9aa5b1;font-size:12px">${k(r.actual_treated)} / ${k(r.baseline_total)} target · ${r.teams} team(s)</div></div>`).join('');
       }catch(e){body.innerHTML=`<div class="err">LGA coverage: ${e}</div>`;}
@@ -174,7 +174,7 @@
       try{ const ws=await api('/api/app/coverage/ward?lga='+encodeURIComponent(lga)+(pid?('&project_id='+pid):''));
         body.innerHTML=`<button class="back" onclick="renderLgas()">← Back to LGAs</button>
           <div style="font-weight:700;margin-bottom:8px">${lga} · wards</div>`+
-          ws.map(w=>`<div class="row" style="cursor:default"><div class="top"><span>${w.ward_name||'—'}</span>
+          ws.map(w=>`<div class="row" style="cursor:default"><div class="top"><span>${w.ward_name||'-'}</span>
             <span style="color:${color(w.coverage_pct)}">${Math.round(w.coverage_pct)}%</span></div>
             <div class="barpct"><i style="width:${Math.min(100,w.coverage_pct)}%;background:${color(w.coverage_pct)}"></i></div></div>`).join('');
       }catch(e){body.innerHTML=`<div class="err">Wards: ${e}</div>`;}
@@ -209,13 +209,13 @@
           if(cur){ const bg=cur.is_covered?'#2E7D32':'#C62828';
             h+=`<div class="areacard" style="background:${bg};margin-top:12px"><div style="font-size:12px;opacity:.9">You are in</div>
               <div style="font-size:22px;font-weight:800">${cur.settlement_name||'Unknown'}</div>
-              <div>${cur.ward_name||'—'} · ${cur.lga_name||'—'}</div>
+              <div>${cur.ward_name||'-'} · ${cur.lga_name||'-'}</div>
               <div style="margin-top:6px;font-weight:700">${cur.is_covered?'Covered':'Not covered'} · ${Math.round(cur.completeness_pct)}%</div></div>`;
           } else { h+='<div class="card" style="margin-top:12px">Outside any mapped settlement for this campaign.</div>'; }
           if(recs.length){
             h+='<div style="font-weight:700;margin:14px 0 6px">Where to cover next</div>';
             recs.forEach(n=>{ h+=`<div class="row"><div class="top"><span>${n.settlement_name||'Unknown'}</span><span>${Math.round(n.completeness_pct)}%</span></div>
-              <div class="l">${n.ward_name||'—'} · ${n.lga_name||'—'} · ${dist(n.distance_m)} away</div></div>`; });
+              <div class="l">${n.ward_name||'-'} · ${n.lga_name||'-'} · ${dist(n.distance_m)} away</div></div>`; });
           }
           out.innerHTML=h;
         }catch(e){ out.innerHTML=`<div class="err">Lookup failed: ${e}</div>`; }
