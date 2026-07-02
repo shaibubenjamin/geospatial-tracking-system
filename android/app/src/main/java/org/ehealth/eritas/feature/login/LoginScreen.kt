@@ -80,7 +80,7 @@ fun LoginScreen(optionalUpdate: VersionInfo? = null, onLoggedIn: () -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "Track how far your campaign has reached — in real time, down to the " +
+            "Track how far your campaign has reached - in real time, down to the " +
                 "last settlement. See where the gaps are, check the quality of " +
                 "incoming data, and know where to head next.",
             style = MaterialTheme.typography.bodyMedium,

@@ -24,10 +24,10 @@ import androidx.compose.ui.unit.dp
 import org.ehealth.eritas.core.model.ProjectDto
 import org.ehealth.eritas.core.net.ServiceLocator
 
-/** A campaign label, e.g. "Sokoto — Round 5". */
+/** A campaign label, e.g. "Sokoto - Round 5". */
 fun projectLabel(p: ProjectDto): String {
     val state = p.stateName ?: p.name
-    val round = p.roundNumber?.let { " — Round $it" } ?: ""
+    val round = p.roundNumber?.let { " - Round $it" } ?: ""
     return "$state$round" + if (p.isActive) " (active)" else ""
 }
 

@@ -9,7 +9,7 @@ import org.ehealth.eritas.core.auth.UpdateRequiredState
 
 /**
  * Stamps every outgoing request with the installed app's versionCode. This is
- * what the server-side force-update gate compares against MIN_VERSION_CODE —
+ * what the server-side force-update gate compares against MIN_VERSION_CODE -
  * see app/main.py `enforce_app_version` and docs/apk-app-blueprint.md.
  */
 class VersionInterceptor : Interceptor {
@@ -39,7 +39,7 @@ class AuthInterceptor(private val tokenStore: TokenStore) : Interceptor {
 /**
  * Turns an expired/invalid token into a clean logout. On HTTP 401 the stored
  * token is cleared and [SessionManager] is tripped so the root composable
- * returns to the login screen — instead of every screen showing a raw
+ * returns to the login screen - instead of every screen showing a raw
  * "HTTP 401". (426 / force-update is handled separately by the update gate.)
  */
 class UnauthorizedInterceptor(private val tokenStore: TokenStore) : Interceptor {
