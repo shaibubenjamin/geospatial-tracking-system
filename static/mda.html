@@ -6124,7 +6124,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   async function populateProjectSelector() {
     const sel = document.getElementById('project-selector');
     if (!sel) return;
-    const projects = await api('/api/projects');
+    const projects = await api('/api/projects?dashboard=true');
     if (!Array.isArray(projects) || !projects.length) {
       sel.innerHTML = '<option value="">No projects</option>';
       sel.disabled = true;
@@ -6145,8 +6145,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // is currently selected. Falls back gracefully when state_name is null.
     const selectedProject = projects.find(p => p.id === SELECTED_PID) || active;
     applyProjectLabels(selectedProject);
+    const _today = new Date().toISOString().slice(0, 10);
     sel.innerHTML = projects.map(p => {
-      const status = p.is_active ? ' (live)' : '';
+      // "(live)" = the campaign is running (started, not yet ended) - not just
+      // the dashboard's default round.
+      const _running = p.campaign_start_date && p.campaign_start_date <= _today
+                       && (!p.campaign_end_date || p.campaign_end_date > _today);
+      const status = _running ? ' (live)' : '';
       // Use the user-set project NAME (e.g. "Kano Pilot") authoritatively.
       // Only fall back to a composed "State Round N" label when name is
       // missing - keeps the dropdown consistent with the admin Projects

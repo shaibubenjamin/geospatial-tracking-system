@@ -65,6 +65,7 @@ class ProjectCreate(BaseModel):
     round_number: Optional[int] = None
     campaign_start_date: Optional[date] = None
     campaign_end_date: Optional[date] = None
+    show_on_dashboard: Optional[bool] = False
 
 
 class ProjectUpdate(BaseModel):
@@ -72,6 +73,7 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     is_public: Optional[bool] = None   # public-dashboard opt-in (per state/round)
+    show_on_dashboard: Optional[bool] = None  # appears in the dashboard switcher
     state_name: Optional[str] = None
     round_number: Optional[int] = None
     campaign_start_date: Optional[date] = None
@@ -85,6 +87,7 @@ class ProjectOut(BaseModel):
     description: str
     is_active: bool
     is_public: bool = False
+    show_on_dashboard: bool = False
     state_name: Optional[str] = None
     round_number: Optional[int] = None
     campaign_start_date: Optional[date] = None

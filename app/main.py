@@ -132,12 +132,28 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_lgas TEXT",
             # Per-project public-dashboard opt-in (used by Phase 1b).
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE",
+            # Dashboard switcher multi-select. Nullable so the one-time backfill
+            # below only touches never-set rows (removed rows become FALSE, not NULL).
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS show_on_dashboard BOOLEAN",
         ]:
             try:
                 await db.execute(text(stmt))
             except Exception:
                 pass
         await db.commit()
+
+        # One-time backfill: seed show_on_dashboard from the current default
+        # round (is_active) so exactly the round that's live now stays shown.
+        # Only touches never-set (NULL) rows, so later Show/Remove toggles are
+        # never clobbered on restart.
+        try:
+            await db.execute(text(
+                "UPDATE geo_projects SET show_on_dashboard = COALESCE(is_active, FALSE) "
+                "WHERE show_on_dashboard IS NULL"
+            ))
+            await db.commit()
+        except Exception:
+            pass
 
     # Access-control backfill: scope existing non-superadmin accounts to the
     # currently-loaded state(s) so they keep working but DON'T silently gain
