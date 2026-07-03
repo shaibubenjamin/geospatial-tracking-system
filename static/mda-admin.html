@@ -2899,44 +2899,55 @@
       }
       const esc = s => String(s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
       const today = new Date().toISOString().slice(0, 10);
+      // Campaign lifecycle is derived from the start/end dates and is separate
+      // from "Show on dashboard" (view focus, is_active) and Public/Private.
       const statusChip = (p) => {
-        if (p.is_active) {
-          return '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px"></i> Active</span>';
-        }
-        // Inactive + has a campaign_end_date in the past → "Ended"
-        if (p.campaign_end_date && p.campaign_end_date <= today) {
-          return '<span class="chip" style="background:#fef3c7;color:#92400e"><i class="fa-solid fa-flag-checkered" style="font-size:9px;margin-right:4px"></i>Ended</span>';
-        }
-        return '<span class="chip" style="background:var(--mist);color:var(--muted)">Inactive</span>';
+        const s = p.campaign_start_date, e = p.campaign_end_date;
+        if (s && e && e <= today) return '<span class="chip" style="background:#fef3c7;color:#92400e"><i class="fa-solid fa-flag-checkered" style="font-size:9px;margin-right:4px"></i>Ended</span>';
+        if (s && s <= today)      return '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px"></i> Running</span>';
+        if (s && s > today)       return '<span class="chip" style="background:#e0f2fe;color:#075985"><i class="fa-solid fa-clock" style="font-size:9px;margin-right:4px"></i>Scheduled</span>';
+        return '<span class="chip" style="background:var(--mist);color:var(--muted)">Not started</span>';
       };
+      const fmtD = d => d ? new Date(d).toLocaleDateString() : '';
       let rows = projects.map(p => {
+        const s = p.campaign_start_date, e = p.campaign_end_date;
+        const running = s && s <= today && (!e || e > today);
+        const ended   = s && e && e <= today;
         const actions = [];
+        // 1) Dashboard focus - which round the dashboard shows. View-only; does
+        //    NOT start the campaign. Exactly one round is shown at a time.
         if (!p.is_active) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="setActiveProject(${p.id})" title="Make this the live round"><i class="fa-solid fa-toggle-on"></i> Set Active</button>`);
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="showOnDashboard(${p.id})" title="Show this round on the dashboard (view only - does not start the campaign)"><i class="fa-solid fa-display"></i> Show on dashboard</button>`);
+        }
+        // 2) Campaign lifecycle - Start / End (stamps the dates, drives auto-sync).
+        if (running) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="Close the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End Campaign</button>`);
         } else {
-          // Active campaign → offer "Mark Ended" so the round can be closed
-          // out. Stops auto-sync and shows the orange "Ended" badge.
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="markProjectEnded(${p.id},'${esc(p.name)}')" title="Close this round - stops auto-sync and stamps end date"><i class="fa-solid fa-flag-checkered"></i> Mark Ended</button>`);
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="Begin the campaign: stamps today as the start date, starts auto-sync, and shows it on the dashboard"><i class="fa-solid fa-play"></i> ${ended ? 'Restart Campaign' : 'Start Campaign'}</button>`);
         }
         actions.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
-        // Public-dashboard opt-in (superadmin only). Anonymous visitors to the
-        // public dashboard only see projects flagged public - toggle per round.
+        // 3) Visibility - who can see it (superadmin only).
         if (isSuperadmin) {
           actions.push(p.is_public
-            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Currently public - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Public</button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Make this round visible on the public dashboard"><i class="fa-solid fa-lock"></i> Private</button>`);
+            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Visible to anyone on the public dashboard - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Public</button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Only signed-in staff can see it - click to show on the public dashboard"><i class="fa-solid fa-lock"></i> Private</button>`);
         }
         if (!p.is_active) {
           actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
         }
+        const timeline = ended ? `ran ${fmtD(s)} to ${fmtD(e)}`
+                       : running ? `started ${fmtD(s)}`
+                       : (s && s > today) ? `starts ${fmtD(s)}`
+                       : 'not yet started';
         return `
         <tr>
           <td><b>${p.name}</b><br><small style="color:var(--muted)">${p.slug}</small></td>
           <td style="font-size:12px;color:var(--muted)">${p.description || '-'}</td>
           <td>
             ${statusChip(p)}
+            ${p.is_active ? '<br><span class="chip good" style="margin-top:4px"><i class="fa-solid fa-display" style="font-size:9px;margin-right:4px"></i>On dashboard</span>' : ''}
             ${p.is_public ? '<br><span class="chip good" style="margin-top:4px"><i class="fa-solid fa-globe" style="font-size:9px;margin-right:4px"></i>Public</span>' : ''}
-            ${p.campaign_end_date && !p.is_active ? `<br><small style="color:var(--muted)">ended ${new Date(p.campaign_end_date).toLocaleDateString()}</small>` : ''}
+            <br><small style="color:var(--muted)">${timeline}</small>
           </td>
           <td style="color:var(--muted);font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '-'}</td>
           <td>${actions.join(' ')}</td>
@@ -2984,7 +2995,9 @@
     }
   };
 
-  window.setActiveProject = async function(id) {
+  // Show on dashboard = which round the dashboard focuses on (view only).
+  // Does NOT start the campaign - that's Start Campaign.
+  window.showOnDashboard = async function(id) {
     try {
       const res = await api('/api/projects/' + id, {
         method: 'PATCH',
@@ -2993,6 +3006,7 @@
       if (res && res.ok) loadProjects();
     } catch(e) {}
   };
+  window.setActiveProject = window.showOnDashboard;  // back-compat alias
 
   window.setProjectPublic = async function(id, makePublic, name) {
     // Per-round public-dashboard opt-in. Making a project public exposes its
@@ -3019,31 +3033,46 @@
     } catch(e) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); }
   };
 
-  window.markProjectEnded = async function(id, name) {
-    // Closes the campaign: deactivates the project AND stamps today as the
-    // end date. The auto-sync scheduler joins on geo_projects.is_active so
-    // ending here also pauses periodic CommCare pulls - no more "days since
-    // last submission" creep after the round wraps up.
+  // Start Campaign: stamps today as the start date, starts auto-sync, and shows
+  // the round on the dashboard. Distinct from "Show on dashboard" (view only).
+  window.startCampaign = async function(id, name) {
     const ok = await confirmDialog({
-      title: 'End this campaign?',
-      message: `Mark "${name}" as ended? This deactivates the project, stops auto-sync, and stamps today as the campaign end date. You can re-activate it later if needed.`,
-      confirmLabel: 'Mark Ended',
+      title: 'Start this campaign?',
+      message: `Begin "${name}"? This stamps today as the start date, starts auto-sync from CommCare, and shows the round on the dashboard.`,
+      confirmLabel: 'Start Campaign',
     });
     if (!ok) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const res = await api('/api/projects/' + id, {
-      method: 'PATCH',
-      body: JSON.stringify({ is_active: false, campaign_end_date: today }),
-    });
+    const res = await api('/api/projects/' + id + '/start-campaign', { method: 'POST' });
     if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); return; }
     if (res.ok) {
-      await alertDialog({ title: 'Campaign ended', message: `"${name}" is now closed. Auto-sync has been paused.` });
+      await alertDialog({ title: 'Campaign started', message: `"${name}" is now running. Auto-sync is on and it's showing on the dashboard.` });
       loadProjects();
     } else {
       const d = await res.json().catch(() => ({}));
-      await alertDialog({ title: 'Update failed', message: d.detail || `HTTP ${res.status}`, danger: true });
+      await alertDialog({ title: 'Could not start', message: d.detail || `HTTP ${res.status}`, danger: true });
     }
   };
+
+  // End Campaign: stamps today as the end date and stops auto-sync. The round
+  // stays on the dashboard so results remain viewable.
+  window.endCampaign = async function(id, name) {
+    const ok = await confirmDialog({
+      title: 'End this campaign?',
+      message: `Close "${name}"? This stamps today as the end date and stops auto-sync. The round stays on the dashboard so you can still view results.`,
+      confirmLabel: 'End Campaign',
+    });
+    if (!ok) return;
+    const res = await api('/api/projects/' + id + '/end-campaign', { method: 'POST' });
+    if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); return; }
+    if (res.ok) {
+      await alertDialog({ title: 'Campaign ended', message: `"${name}" is now closed. Auto-sync has been stopped.` });
+      loadProjects();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      await alertDialog({ title: 'Could not end', message: d.detail || `HTTP ${res.status}`, danger: true });
+    }
+  };
+  window.markProjectEnded = window.endCampaign;  // back-compat alias
 
   window.editProject = async function(id, currentName, currentDesc) {
     // Custom modal-driven inline editor - keeps the UX consistent with the
