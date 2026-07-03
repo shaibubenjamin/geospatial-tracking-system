@@ -33,13 +33,16 @@ async def _unique_slug(base: str, db: AsyncSession) -> str:
 
 @router.get("", response_model=List[ProjectOut])
 async def list_projects(
+    dashboard: bool = False,
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
+    # ``?dashboard=true`` → only rounds flagged "Show on dashboard" (the
+    # dashboard project switcher). Without it, every project is returned (the
+    # admin Projects management table needs to see and manage all of them).
     # Active project first so default selections land on the live round.
     # Within the same state, newest round (highest round_number) before
-    # older ones. NULL round_numbers sort last. Frontend re-sorts the same
-    # way, but ordering here avoids a flash of mis-ordered options.
+    # older ones. NULL round_numbers sort last.
     result = await db.execute(
         select(GeoProject).order_by(
             GeoProject.is_active.desc(),
@@ -49,6 +52,8 @@ async def list_projects(
         )
     )
     projects = result.scalars().all()
+    if dashboard:
+        projects = [p for p in projects if bool(getattr(p, "show_on_dashboard", False))]
     if _user is None:
         # Anonymous (public dashboard) → only projects opted in as public.
         projects = [p for p in projects if bool(getattr(p, "is_public", False))]
@@ -82,6 +87,7 @@ async def create_project(
         round_number=data.round_number,
         campaign_start_date=data.campaign_start_date,
         campaign_end_date=data.campaign_end_date,
+        show_on_dashboard=bool(data.show_on_dashboard),
     )
     db.add(project)
     await db.commit()
@@ -137,6 +143,23 @@ async def update_project(
                 ).bindparams(pid=project_id)
             )
         project.is_active = data.is_active
+    if data.show_on_dashboard is not None:
+        # Additive: showing a round on the dashboard does NOT hide the others.
+        project.show_on_dashboard = data.show_on_dashboard
+        # If a round is removed from the dashboard while it's the default one
+        # the dashboard opens to (is_active), promote another shown round so
+        # there's still a sensible default.
+        if not data.show_on_dashboard and project.is_active:
+            project.is_active = False
+            other = (await db.execute(text(
+                "SELECT id FROM geo_projects "
+                "WHERE COALESCE(show_on_dashboard, FALSE) = TRUE AND id != :pid "
+                "ORDER BY round_number DESC NULLS LAST, id DESC LIMIT 1"
+            ).bindparams(pid=project_id))).fetchone()
+            if other:
+                await db.execute(text(
+                    "UPDATE geo_projects SET is_active = TRUE WHERE id = :oid"
+                ).bindparams(oid=other[0]))
 
     await db.commit()
     await db.refresh(project)
@@ -166,7 +189,10 @@ async def start_campaign(
     # Drop a stale/past end date so the round is Running, not Ended.
     if project.campaign_end_date is not None and project.campaign_end_date <= today:
         project.campaign_end_date = None
-    # Starting a campaign also focuses the dashboard on it (single active round).
+    # Starting a campaign shows it on the dashboard and focuses on it (the
+    # single default round the dashboard opens to). Showing it does not hide
+    # any other rounds already on the dashboard.
+    project.show_on_dashboard = True
     await db.execute(
         text("UPDATE geo_projects SET is_active = FALSE WHERE id != :pid").bindparams(pid=project_id)
     )

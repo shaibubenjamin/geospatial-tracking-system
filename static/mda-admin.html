@@ -2909,28 +2909,34 @@
         return '<span class="chip" style="background:var(--mist);color:var(--muted)">Not started</span>';
       };
       const fmtD = d => d ? new Date(d).toLocaleDateString() : '';
+      const dashCell = (p) => p.show_on_dashboard
+        ? `<span class="chip good"><i class="fa-solid fa-display" style="font-size:9px;margin-right:4px"></i>Shown</span>${p.is_active ? '<br><small style="color:var(--muted)">default round</small>' : ''}`
+        : '<span class="chip" style="background:var(--mist);color:var(--muted)">Hidden</span>';
+      const visCell = (p) => p.is_public
+        ? '<span class="chip good"><i class="fa-solid fa-globe" style="font-size:9px;margin-right:4px"></i>Public</span>'
+        : '<span class="chip" style="background:var(--mist);color:var(--muted)"><i class="fa-solid fa-lock" style="font-size:9px;margin-right:4px"></i>Private</span>';
       let rows = projects.map(p => {
         const s = p.campaign_start_date, e = p.campaign_end_date;
         const running = s && s <= today && (!e || e > today);
         const ended   = s && e && e <= today;
         const actions = [];
-        // 1) Dashboard focus - which round the dashboard shows. View-only; does
-        //    NOT start the campaign. Exactly one round is shown at a time.
-        if (!p.is_active) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="showOnDashboard(${p.id})" title="Show this round on the dashboard (view only - does not start the campaign)"><i class="fa-solid fa-display"></i> Show on dashboard</button>`);
+        // Dashboard visibility - additive: showing one does NOT hide the others.
+        if (p.show_on_dashboard) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="removeFromDashboard(${p.id},'${esc(p.name)}')" title="Hide this round from the dashboard switcher"><i class="fa-solid fa-eye-slash"></i> Remove from dashboard</button>`);
+        } else {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="showOnDashboard(${p.id})" title="Add this round to the dashboard switcher (does not hide others or start the campaign)"><i class="fa-solid fa-display"></i> Show on dashboard</button>`);
         }
-        // 2) Campaign lifecycle - Start / End (stamps the dates, drives auto-sync).
+        // Campaign lifecycle - Start / End (stamps the dates, drives auto-sync).
         if (running) {
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="Close the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End Campaign</button>`);
         } else {
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="Begin the campaign: stamps today as the start date, starts auto-sync, and shows it on the dashboard"><i class="fa-solid fa-play"></i> ${ended ? 'Restart Campaign' : 'Start Campaign'}</button>`);
         }
         actions.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
-        // 3) Visibility - who can see it (superadmin only).
         if (isSuperadmin) {
           actions.push(p.is_public
-            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Visible to anyone on the public dashboard - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Public</button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Only signed-in staff can see it - click to show on the public dashboard"><i class="fa-solid fa-lock"></i> Private</button>`);
+            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Visible to anyone on the public dashboard - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Make private</button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Only signed-in staff can see it - click to show on the public dashboard"><i class="fa-solid fa-lock"></i> Make public</button>`);
         }
         if (!p.is_active) {
           actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
@@ -2941,22 +2947,17 @@
                        : 'not yet started';
         return `
         <tr>
-          <td><b>${p.name}</b><br><small style="color:var(--muted)">${p.slug}</small></td>
-          <td style="font-size:12px;color:var(--muted)">${p.description || '-'}</td>
-          <td>
-            ${statusChip(p)}
-            ${p.is_active ? '<br><span class="chip good" style="margin-top:4px"><i class="fa-solid fa-display" style="font-size:9px;margin-right:4px"></i>On dashboard</span>' : ''}
-            ${p.is_public ? '<br><span class="chip good" style="margin-top:4px"><i class="fa-solid fa-globe" style="font-size:9px;margin-right:4px"></i>Public</span>' : ''}
-            <br><small style="color:var(--muted)">${timeline}</small>
-          </td>
-          <td style="color:var(--muted);font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '-'}</td>
+          <td><b>${p.name}</b><br><small style="color:var(--muted)">${p.slug}</small>${p.description ? `<br><small style="color:var(--muted)">${p.description}</small>` : ''}</td>
+          <td>${statusChip(p)}<br><small style="color:var(--muted)">${timeline}</small></td>
+          <td>${dashCell(p)}</td>
+          <td>${visCell(p)}</td>
           <td>${actions.join(' ')}</td>
         </tr>`;
       }).join('');
       container.innerHTML = `
         <div style="overflow-x:auto">
           <table>
-            <thead><tr><th>Name / Slug</th><th>Description</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name / Slug</th><th>Status</th><th>Dashboard</th><th>Visibility</th><th>Actions</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -2995,16 +2996,33 @@
     }
   };
 
-  // Show on dashboard = which round the dashboard focuses on (view only).
-  // Does NOT start the campaign - that's Start Campaign.
+  // Show on dashboard = add this round to the dashboard switcher. Additive
+  // (does NOT hide other shown rounds) and view-only (does NOT start the
+  // campaign - that's Start Campaign).
   window.showOnDashboard = async function(id) {
     try {
       const res = await api('/api/projects/' + id, {
         method: 'PATCH',
-        body: JSON.stringify({ is_active: true }),
+        body: JSON.stringify({ show_on_dashboard: true }),
       });
       if (res && res.ok) loadProjects();
     } catch(e) {}
+  };
+  // Remove from dashboard = hide it from the switcher. Data is untouched.
+  window.removeFromDashboard = async function(id, name) {
+    const ok = await confirmDialog({
+      title: 'Remove from dashboard?',
+      message: `Hide "${name}" from the dashboard switcher? It stays in this admin list and its data is untouched - you can show it again anytime.`,
+      confirmLabel: 'Remove',
+    });
+    if (!ok) return;
+    const res = await api('/api/projects/' + id, {
+      method: 'PATCH',
+      body: JSON.stringify({ show_on_dashboard: false }),
+    });
+    if (res && res.ok) { loadProjects(); }
+    else if (res) { const d = await res.json().catch(() => ({})); await alertDialog({ title: 'Update failed', message: d.detail || `HTTP ${res.status}`, danger: true }); }
+    else { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); }
   };
   window.setActiveProject = window.showOnDashboard;  // back-compat alias
 

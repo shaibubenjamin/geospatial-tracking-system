@@ -21,6 +21,10 @@ class GeoProject(Base):
     # Public-dashboard opt-in: when TRUE, this project (state+round) is viewable
     # without login; anonymous access to any non-public project is refused.
     is_public = Column(Boolean, default=False)
+    # Dashboard visibility: when TRUE, this round appears in the dashboard's
+    # project switcher. Multi-select (many rounds can be shown at once), unlike
+    # is_active which is the single default round the dashboard opens to.
+    show_on_dashboard = Column(Boolean, default=False)
     state_name = Column(Text)
     round_number = Column(Integer)
     # Official campaign start date. When set, every received_on-based query
