@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ERITAS — SARMAAN MDA · Admin Panel</title>
+  <title>ERITAS - SARMAAN MDA · Admin Panel</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><clipPath id='c'><rect x='3' y='10' width='26' height='12' rx='6'/></clipPath></defs><g clip-path='url(%23c)'><rect x='3' y='10' width='13' height='12' fill='%23006B2E'/><rect x='16' y='10' width='13' height='12' fill='%23C8A000'/></g><rect x='3' y='10' width='26' height='12' rx='6' fill='none' stroke='%23003D1A' stroke-width='1.5'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -275,7 +275,7 @@
     }
     .ms-panel[hidden] { display: none; }
     /* Scoped under .ms-root so the page's global `.form-group input` / `.form-group label`
-       styles (higher specificity) don't bleed in — that bleed removed the checkbox↔label
+       styles (higher specificity) don't bleed in - that bleed removed the checkbox↔label
        gap (labels looked joined) and forced a heavy border/bg on the search field. */
     .ms-root .ms-search { width: 100%; border: none; border-bottom: 1px solid var(--line); border-radius: 0; background: #fff; padding: 11px 14px; font-size: 13px; outline: none; font-family: inherit; color: var(--ink); }
     .ms-bulk { display: flex; gap: 14px; padding: 7px 13px; border-bottom: 1px solid var(--line); background: var(--pale); }
@@ -379,7 +379,7 @@
 
     /* The Add-User card holds the states/LGA multi-selects whose panels are
        absolutely-positioned. The base .card clips with overflow:hidden, which
-       cut off the open dropdown — let this card overflow so the panel shows. */
+       cut off the open dropdown - let this card overflow so the panel shows. */
     .add-user-card { overflow: visible; }
   </style>
 </head>
@@ -417,7 +417,7 @@
 
     <div class="sidebar-footer">
       <a href="/home"><i class="fa-solid fa-arrow-left"></i> Back to Home</a>
-      <div style="margin-top:6px;font-size:10.5px;color:#7ea9d4">ERITAS &mdash; SARMAAN MDA &middot; v1.0</div>
+      <div style="margin-top:6px;font-size:10.5px;color:#7ea9d4">ERITAS - SARMAAN MDA &middot; v1.0</div>
       <div style="margin-top:4px;font-size:10.5px;color:#7ea9d4;opacity:.85">Powered by <a href="https://ehealthafrica.org" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">eHealth Africa</a></div>
     </div>
   </aside>
@@ -519,7 +519,7 @@
           </div>
         </div>
 
-        <!-- Settlement Master List (MLOS) — universe of settlements expected
+        <!-- Settlement Master List (MLOS) - universe of settlements expected
              to be visited. Drives "Not Yet Visited" on the Geographic View.
              Uses the active round (resolve_pid). -->
         <div class="card" style="margin-bottom:18px">
@@ -547,7 +547,7 @@
           </div>
         </div>
 
-        <!-- Boundary Shapefiles — single ZIP containing all four levels:
+        <!-- Boundary Shapefiles - single ZIP containing all four levels:
              LGA, Ward, Settlement, Grid. Required once per state (shared
              across rounds in that state). The backend identifies each
              layer case-insensitively from the .shp basename inside the
@@ -575,9 +575,9 @@
               <i class="fa-solid fa-upload"></i> Upload Bundle
             </button>
 
-            <!-- Progress panel — hidden until upload starts. Two phases:
+            <!-- Progress panel - hidden until upload starts. Two phases:
                  1) bytes upload (real %),
-                 2) server-side import — we don't have streaming progress
+                 2) server-side import - we don't have streaming progress
                     from the endpoint, so each layer is shown as "pending →
                     working → done/failed" once the response comes back. While
                     the import is in flight we step the active marker through
@@ -613,14 +613,14 @@
                   <span class="bnd-name">Grid boundary</span>
                   <span class="bnd-eta">~ 4–10 minutes (~600k features)</span><span class="bnd-status">Pending</span></div>
               </div>
-              <!-- Inline explainer — answers the perennial "why is this so
+              <!-- Inline explainer - answers the perennial "why is this so
                    slow?" question without the operator having to ask. -->
               <div style="margin-top:12px;padding:10px 12px;background:#F1F6F3;border-left:3px solid var(--deep);border-radius:6px;font-size:11.5px;color:var(--ink);line-height:1.55">
                 <strong>Why it takes time:</strong> the server reads every polygon in your ZIP, re-projects it
                 to the dashboard's coordinate system (EPSG:4326), and writes one row per feature into PostgreSQL.
-                Grid is by far the largest layer (≈600k 30×30 m cells for a state) so it dominates the wall-time —
+                Grid is by far the largest layer (≈600k 30×30 m cells for a state) so it dominates the wall-time -
                 LGA and Ward finish almost instantly, Settlement takes a minute or two, and Grid runs in the
-                background for several more minutes. You can leave this tab open or come back later — the import
+                background for several more minutes. You can leave this tab open or come back later - the import
                 continues server-side and won't restart.
               </div>
             </div>
@@ -647,7 +647,7 @@
           @keyframes bndPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
         </style>
 
-        <!-- Recompute geographic analytics — needed after a boundary
+        <!-- Recompute geographic analytics - needed after a boundary
              import when household forms are already in place. Without this,
              the Geographic View shows 0% completeness everywhere because
              the spatial QC + settlement_analytics jobs that normally run at
@@ -660,7 +660,7 @@
             <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.55">
               Re-runs spatial QC and rebuilds the settlement completeness rollup
               for the selected project. Run this after uploading or re-uploading
-              boundaries when forms are already in the database — otherwise the
+              boundaries when forms are already in the database - otherwise the
               Geographic View will show 0% completeness and household forms will
               stay flagged as “GPS outside LGA” from a stale state.
               Idempotent and safe to re-run; takes 10–60 seconds depending on grid size.
@@ -745,11 +745,11 @@
                 <span id="onprem-mirror-status" style="font-size:12px;color:var(--muted)">Idle</span>
               </div>
               <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.55">
-                Pushes this project's MDA data to <code style="font-family:'SF Mono','Monaco',monospace;font-size:11px">10.11.52.96</code>. Watermark-based &mdash; only new rows are sent.
+                Pushes this project's MDA data to <code style="font-family:'SF Mono','Monaco',monospace;font-size:11px">10.11.52.96</code>. Watermark-based - only new rows are sent.
               </div>
               <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11.5px;color:var(--muted);margin-top:6px">
-                <span><strong style="color:var(--ink);font-weight:600">Last run:</strong> <span id="onprem-mirror-last-run">&mdash;</span></span>
-                <span><strong style="color:var(--ink);font-weight:600">High-water mark:</strong> <span id="onprem-mirror-watermark">&mdash;</span></span>
+                <span><strong style="color:var(--ink);font-weight:600">Last run:</strong> <span id="onprem-mirror-last-run">-</span></span>
+                <span><strong style="color:var(--ink);font-weight:600">High-water mark:</strong> <span id="onprem-mirror-watermark">-</span></span>
                 <span><strong style="color:var(--ink);font-weight:600">Rows last:</strong> <span id="onprem-mirror-rows">0</span></span>
               </div>
             </div>
@@ -757,7 +757,7 @@
               <i class="fa-solid fa-arrows-rotate"></i> Run mirror
             </button>
           </div>
-          <!-- Progress bar — only visible while a mirror run is in flight.
+          <!-- Progress bar - only visible while a mirror run is in flight.
                Step label + N of N counter + animated fill. Mirrors the
                CommCare-sync progress UX so they feel consistent. -->
           <div id="onprem-mirror-progress" style="display:none;margin-top:12px">
@@ -772,7 +772,7 @@
 
           <div id="onprem-mirror-err-wrap" style="display:none;background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;margin-top:10px">
             <div style="color:#7F1D1D;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;font-weight:600">Last error</div>
-            <div id="onprem-mirror-err" style="color:#B91C1C;font-size:12px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace">&mdash;</div>
+            <div id="onprem-mirror-err" style="color:#B91C1C;font-size:12px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace">-</div>
           </div>
         </div>
 
@@ -827,7 +827,7 @@
               </div>
               <div class="card-body">
                 <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.55">
-                  When enabled, the platform automatically pulls new rows from CommCare on a schedule. Skips if a sync is already queued or running, so back-to-back ticks can&rsquo;t pile up. Interval is measured from the last successful sync &mdash; manual runs reset the timer.
+                  When enabled, the platform automatically pulls new rows from CommCare on a schedule. Skips if a sync is already queued or running, so back-to-back ticks can&rsquo;t pile up. Interval is measured from the last successful sync - manual runs reset the timer.
                 </p>
                 <div class="form-row">
                   <div class="form-group" style="flex:1.2">
@@ -895,7 +895,7 @@
               </div>
             </div>
 
-            <!-- Sync History — moved under the Sync Log so it's visible
+            <!-- Sync History - moved under the Sync Log so it's visible
                  without scrolling past the (long) left-column config cards. -->
             <div class="card" style="margin-bottom:14px">
               <div class="card-head">
@@ -919,7 +919,7 @@
               </div>
               <div id="sync-last-err-wrap" style="display:none;background:var(--bad-bg);border-top:1px solid #FECACA;padding:10px 18px">
                 <div style="color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Latest error</div>
-                <div style="color:var(--bad);font-size:12.5px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace" id="sync-last-err">—</div>
+                <div style="color:var(--bad);font-size:12.5px;word-break:break-word;line-height:1.55;font-family:'SF Mono','Monaco',monospace" id="sync-last-err">-</div>
               </div>
             </div>
 
@@ -960,7 +960,7 @@
                 <label>Project Name</label>
                 <input type="text" id="proj-name" placeholder="e.g. Sokoto State 2026">
               </div>
-              <!-- Slug input removed — the server auto-generates a URL-safe
+              <!-- Slug input removed - the server auto-generates a URL-safe
                    slug from the name (lowercase, dash-separated, suffixed
                    with -2/-3 on clash). Power users can PATCH it later. -->
               <div class="form-row">
@@ -1041,7 +1041,7 @@
                 <div class="role-options" id="role-options">
                   <label class="role-opt sel">
                     <input type="radio" name="new-role" value="state" checked>
-                    <div><div class="ro-title">State user</div><div class="ro-desc">Scoped to assigned state(s) and, optionally, LGAs — web + app.</div></div>
+                    <div><div class="ro-title">State user</div><div class="ro-desc">Scoped to assigned state(s) and, optionally, LGAs - web + app.</div></div>
                   </label>
                   <label class="role-opt">
                     <input type="radio" name="new-role" value="admin">
@@ -1062,7 +1062,7 @@
               <div class="form-group" id="new-lgas-group">
                 <label>Allowed LGAs <span style="color:var(--muted);font-weight:400">(optional)</span></label>
                 <div id="new-lgas-ms"></div>
-                <div class="field-hint">Leave empty for the whole state. When set, the account only ever sees these LGAs' data — mainly in the app.</div>
+                <div class="field-hint">Leave empty for the whole state. When set, the account only ever sees these LGAs' data - mainly in the app.</div>
               </div>
               <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="createUser()">
                 <i class="fa-solid fa-user-plus"></i> Create User
@@ -1105,38 +1105,38 @@
         <!-- Health badge -->
         <div class="alert alert-ok" id="health-alert" style="margin-bottom:18px">
           <i class="fa-solid fa-circle-check"></i>
-          <div><strong>System Operational</strong> — All services responding normally.</div>
+          <div><strong>System Operational</strong> - All services responding normally.</div>
         </div>
 
         <div class="status-grid">
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-house-chimney-user"></i></div>
-            <div class="st-val" id="ss-households">—</div>
+            <div class="st-val" id="ss-households">-</div>
             <div class="st-lbl">Households</div>
           </div>
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-child"></i></div>
-            <div class="st-val" id="ss-individuals">—</div>
+            <div class="st-val" id="ss-individuals">-</div>
             <div class="st-lbl">Individual Records</div>
           </div>
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-database"></i></div>
-            <div class="st-val" id="ss-baseline">—</div>
+            <div class="st-val" id="ss-baseline">-</div>
             <div class="st-lbl">Baseline Records</div>
           </div>
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-map-location-dot"></i></div>
-            <div class="st-val" id="ss-lgas">—</div>
+            <div class="st-val" id="ss-lgas">-</div>
             <div class="st-lbl">LGAs Loaded</div>
           </div>
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-location-dot"></i></div>
-            <div class="st-val" id="ss-wards">—</div>
+            <div class="st-val" id="ss-wards">-</div>
             <div class="st-lbl">Wards Loaded</div>
           </div>
           <div class="status-tile">
             <div class="st-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-city"></i></div>
-            <div class="st-val" id="ss-settlements">—</div>
+            <div class="st-val" id="ss-settlements">-</div>
             <div class="st-lbl">Settlements Loaded</div>
           </div>
         </div>
@@ -1170,7 +1170,7 @@
         </div>
       </section>
 
-      <!-- ═══════════ ACCOUNT — CHANGE PASSWORD ═══════════ -->
+      <!-- ═══════════ ACCOUNT - CHANGE PASSWORD ═══════════ -->
       <section class="view" id="view-account">
         <div class="page-head">
           <div>
@@ -1541,7 +1541,7 @@
         [...inst.selected].forEach(v => { if (!present.has(v)) inst.selected.delete(v); });
       } else {
         // Never silently drop an assignment that isn't in the option list
-        // (e.g. a state with no boundaries loaded) — keep it as a chip.
+        // (e.g. a state with no boundaries loaded) - keep it as a chip.
         [...inst.selected].forEach(v => { if (!present.has(v)) inst.options.push({ value: v, label: v, group: '' }); });
       }
       render();
@@ -1660,7 +1660,7 @@
     }
   }
 
-  // (Initial-view loader trigger moved to the bottom of this IIFE — all
+  // (Initial-view loader trigger moved to the bottom of this IIFE - all
   //  `let` state vars (UPLOAD_PROJECT_ID, SYNC_PROJECT_ID, …) must finish
   //  initialising before any view-loader runs, otherwise TDZ blows up.)
 
@@ -1805,7 +1805,7 @@
       const d = await res.json();
       if (res.ok) {
         const msg = d.rows_inserted != null
-          ? `✓ Uploaded successfully — ${d.rows_inserted.toLocaleString()} rows processed`
+          ? `✓ Uploaded successfully - ${d.rows_inserted.toLocaleString()} rows processed`
           : '✓ ' + JSON.stringify(d);
         setFeedback(feedbackId, msg, 'ok');
         loadUploadHistory();
@@ -1834,7 +1834,7 @@
   // failed) from the server.
   const BND_LAYERS = ['lga', 'ward', 'settlement', 'grid'];
   // Rough seconds-per-layer for the import-phase animation. These don't
-  // change the actual work — they just pace the UI so the "active" pip
+  // change the actual work - they just pace the UI so the "active" pip
   // moves at a plausible rate. Tuned to roughly match what a Nigerian state
   // bundle takes (Grid is by far the slowest).
   const BND_LAYER_ETAS = { lga: 5, ward: 20, settlement: 90, grid: 360 };
@@ -1895,7 +1895,7 @@
       layerWalker = setInterval(() => {
         const cur = BND_LAYERS[lvlIdx];
         accSec += 1;
-        // Cap the import-phase progress bar at 95% — we don't *know* the
+        // Cap the import-phase progress bar at 95% - we don't *know* the
         // server is done until the response comes back; reaching 100% would
         // lie if Grid is still running.
         const totalEta = BND_LAYERS.reduce((s, l) => s + BND_LAYER_ETAS[l], 0);
@@ -1930,7 +1930,7 @@
           const uploadPct = Math.round((e.loaded / e.total) * 50);
           barEl.style.width = uploadPct + '%';
           pctEl.textContent = uploadPct + '%';
-          phaseEl.textContent = uploadPct < 50 ? 'Uploading ZIP…' : 'Upload complete — waiting for server…';
+          phaseEl.textContent = uploadPct < 50 ? 'Uploading ZIP…' : 'Upload complete - waiting for server…';
           if (e.loaded === e.total) {
             startLayerWalk();
           }
@@ -1941,12 +1941,12 @@
         };
         xhr.onerror = () => {
           stopAnimations();
-          reject(new Error('Network failure (possibly an ALB timeout or connection drop). The server may still be processing — check the boundary counts on the Geographic View before retrying.'));
+          reject(new Error('Network failure (possibly an ALB timeout or connection drop). The server may still be processing - check the boundary counts on the Geographic View before retrying.'));
         };
         xhr.send(fd);
       });
 
-      // Parse response defensively — a 502/504 from the ALB returns HTML,
+      // Parse response defensively - a 502/504 from the ALB returns HTML,
       // not JSON, and JSON.parse would otherwise throw "Unexpected token <"
       let d = null;
       if (result.type.includes('json')) {
@@ -1970,15 +1970,15 @@
         const failedArr  = [...failed];
         phaseEl.textContent = failedArr.length
           ? `Finished with errors on: ${failedArr.join(', ')}`
-          : `Done — imported ${okList}`;
+          : `Done - imported ${okList}`;
         let msg = `✓ Imported: ${okList}.`;
         if (missingArr.length) msg += ` Missing in ZIP: ${missingArr.join(', ')}.`;
-        if (failedArr.length)  msg += ` Failed: ${failedArr.join(', ')} — see server logs for the per-row error.`;
+        if (failedArr.length)  msg += ` Failed: ${failedArr.join(', ')} - see server logs for the per-row error.`;
         setFeedback(fb, msg, failedArr.length ? 'warn' : 'ok');
       } else if (result.status === 502 || result.status === 504 || !d) {
-        phaseEl.textContent = `Server didn't return cleanly (HTTP ${result.status || '?'}) — import may still be running`;
+        phaseEl.textContent = `Server didn't return cleanly (HTTP ${result.status || '?'}) - import may still be running`;
         setFeedback(fb,
-          `Server didn't return a clean response (HTTP ${result.status || '?'}). The import may have partially succeeded — refresh and check the Geographic View. Don't re-upload until you've verified what landed.`,
+          `Server didn't return a clean response (HTTP ${result.status || '?'}). The import may have partially succeeded - refresh and check the Geographic View. Don't re-upload until you've verified what landed.`,
           'warn');
       } else {
         const detail = d && d.detail ? d.detail : `HTTP ${result.status}`;
@@ -2005,7 +2005,7 @@
     const btn = document.getElementById('bnd-recompute-btn');
     if (!pid) { setFeedback(fb, 'Pick a target project at the top of the page first.', 'err'); return; }
     if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
-    setFeedback(fb, 'Running spatial QC and settlement-analytics rebuild — this can take 30–60 seconds for a state-sized grid…', 'info');
+    setFeedback(fb, 'Running spatial QC and settlement-analytics rebuild - this can take 30–60 seconds for a state-sized grid…', 'info');
     try {
       const res = await fetch('/api/projects/' + pid + '/boundaries/recompute', {
         method: 'POST',
@@ -2015,7 +2015,7 @@
       const body = ct.includes('json') ? await res.json() : null;
       if (res.ok && body) {
         setFeedback(fb,
-          `✓ Recompute complete — ${body.settlement_analytics.toLocaleString()} settlements analysed, ` +
+          `✓ Recompute complete - ${body.settlement_analytics.toLocaleString()} settlements analysed, ` +
           `${body.outside_lga_after_qc.toLocaleString()} households still flagged "GPS outside LGA" after rebuild ` +
           `(legitimate misplacements, not the stale-boundary artefact).`,
           'ok');
@@ -2036,14 +2036,14 @@
     try {
       const res = await api('/api/mda/upload-history');
       if (!res || !res.ok) {
-        // Endpoint may not exist yet — show placeholder
+        // Endpoint may not exist yet - show placeholder
         container.innerHTML = `
           <div style="overflow-x:auto">
             <table>
               <thead><tr><th>Filename</th><th>Type</th><th>Rows</th><th>Status</th><th>Uploaded At</th></tr></thead>
               <tbody>
                 <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">
-                  No upload history available — upload history endpoint not yet configured.
+                  No upload history available - upload history endpoint not yet configured.
                 </td></tr>
               </tbody>
             </table>
@@ -2057,11 +2057,11 @@
       }
       let rows = data.map(r => `
         <tr>
-          <td><b>${r.filename || '—'}</b></td>
+          <td><b>${r.filename || '-'}</b></td>
           <td>${r.data_type || 'MDA'}</td>
           <td>${(r.row_count || 0).toLocaleString()}</td>
-          <td><span class="chip ${r.status === 'ok' ? 'good' : 'warn'}">${r.status || '—'}</span></td>
-          <td style="color:var(--muted);font-size:12px">${r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
+          <td><span class="chip ${r.status === 'ok' ? 'good' : 'warn'}">${r.status || '-'}</span></td>
+          <td style="color:var(--muted);font-size:12px">${r.created_at ? new Date(r.created_at).toLocaleString() : '-'}</td>
         </tr>`).join('');
       container.innerHTML = `
         <div style="overflow-x:auto">
@@ -2341,7 +2341,7 @@
         const res = await api(`/api/sources/connections/${type}?project_id=${pid}`, { method:'PUT', body: JSON.stringify({ display_name: s.name, config, credentials }) });
         const d = res ? await res.json().catch(() => ({})) : {};
         if (res && res.ok){ close(); loadSourceConnections(); }
-        else setFeedback('source-modal-feedback', d.detail || `Save failed (HTTP ${res ? res.status : '—'})`, 'err');
+        else setFeedback('source-modal-feedback', d.detail || `Save failed (HTTP ${res ? res.status : '-'})`, 'err');
       } catch(_){ setFeedback('source-modal-feedback', 'Could not reach the server.', 'err'); }
       finally { saveBtn.disabled = false; }
     };
@@ -2359,7 +2359,7 @@
      active. The chip surfaces three states:
        worker_available + depth==0 → muted "Worker idle"
        worker_available + depth>0  → blue "N job(s) ahead"
-       !worker_available           → amber "Inline mode — API restart will kill"
+       !worker_available           → amber "Inline mode - API restart will kill"
      The same poll is rebumped (immediately + every 5 s) after Sync Now is
      clicked so the user sees their job land in the queue.                 */
   let _syncQueuePollHandle = null;
@@ -2382,7 +2382,7 @@
       if (!d.worker_available) {
         chip.style.background = '#FEF3C7';
         chip.style.color      = '#92400E';
-        chip.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Inline mode — API restart can interrupt sync';
+        chip.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Inline mode - API restart can interrupt sync';
       } else if ((d.depth || 0) === 0) {
         chip.style.background = 'var(--mist)';
         chip.style.color      = 'var(--muted)';
@@ -2400,9 +2400,9 @@
   // Data Sources view (see view-switch handler above).
 
   function _humanDuration(startISO, endISO) {
-    if (!startISO || !endISO) return '—';
+    if (!startISO || !endISO) return '-';
     const ms = new Date(endISO) - new Date(startISO);
-    if (!isFinite(ms) || ms < 0) return '—';
+    if (!isFinite(ms) || ms < 0) return '-';
     if (ms < 1000)   return ms + 'ms';
     if (ms < 60000)  return (ms / 1000).toFixed(1) + 's';
     return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
@@ -2429,8 +2429,8 @@
                  : r.status === 'cancelled' ? '<span class="chip info">Cancelled</span>'
                  : r.status === 'running'   ? '<span class="chip warn">Running…</span>'
                  : r.status === 'error'     ? '<span class="chip bad">Error</span>'
-                 : `<span class="chip info">${r.status || '—'}</span>`;
-      const when = r.started_at ? new Date(r.started_at).toLocaleString() : '—';
+                 : `<span class="chip info">${r.status || '-'}</span>`;
+      const when = r.started_at ? new Date(r.started_at).toLocaleString() : '-';
       // "Rows" column now shows the count of NEW rows actually written this
       // run, not raw rows fetched from CommCare. The fetched count is in
       // the tooltip for audit. This is the number that matters to the
@@ -2455,7 +2455,7 @@
     const ctr  = document.getElementById('sync-progress-counter');
     const stopBtn = document.getElementById('sync-stop-btn');
     const isRunning = cfg.last_status === 'running' && cfg.last_progress_total;
-    // Stop button mirrors running state — visible only when a sync is in
+    // Stop button mirrors running state - visible only when a sync is in
     // flight, hidden the moment it transitions to ok/partial/error/cancelled.
     if (stopBtn) stopBtn.style.display = cfg.last_status === 'running' ? '' : 'none';
     if (!isRunning) {
@@ -2512,9 +2512,9 @@
       // Detect the transition into a terminal state and log it once
       if (cfg.last_status !== 'running' && _lastPollStatus === 'running') {
         if (cfg.last_status === 'ok') {
-          appendLog('sync-log', `Sync complete — ${(cfg.last_row_count || 0).toLocaleString()} rows fetched.`, 'ok');
+          appendLog('sync-log', `Sync complete - ${(cfg.last_row_count || 0).toLocaleString()} rows fetched.`, 'ok');
         } else if (cfg.last_status === 'partial') {
-          appendLog('sync-log', `Sync PARTIAL — ${(cfg.last_row_count || 0).toLocaleString()} rows fetched, but some sets failed: ${cfg.last_error || ''}`, 'warn');
+          appendLog('sync-log', `Sync PARTIAL - ${(cfg.last_row_count || 0).toLocaleString()} rows fetched, but some sets failed: ${cfg.last_error || ''}`, 'warn');
         } else if (cfg.last_status === 'error') {
           appendLog('sync-log', 'Sync FAILED: ' + (cfg.last_error || 'unknown error'), 'err');
         }
@@ -2541,10 +2541,10 @@
     document.getElementById('cc-app-slug').value = cfg.commcare_app_slug || '';
     document.getElementById('cc-username').value = cfg.commcare_username || '';
     const pw = document.getElementById('cc-password');
-    pw.value = ''; pw.placeholder = cfg.has_password ? '•••••••• (saved — leave blank to keep)' : 'CommCare password';
+    pw.value = ''; pw.placeholder = cfg.has_password ? '•••••••• (saved - leave blank to keep)' : 'CommCare password';
     renderFormIdRows(cfg.form_ids || []);
 
-    // Auto-sync card (superadmin-only — the inputs exist in DOM only for them)
+    // Auto-sync card (superadmin-only - the inputs exist in DOM only for them)
     const autoChk = document.getElementById('auto-sync-enabled');
     const autoInt = document.getElementById('auto-sync-interval');
     const autoSt  = document.getElementById('auto-sync-status');
@@ -2572,7 +2572,7 @@
     const errWrap = document.getElementById('sync-last-err-wrap');
     const errEl   = document.getElementById('sync-last-err');
     if (cfg.last_error) { errEl.textContent = cfg.last_error; errWrap.style.display = 'block'; }
-    else                { errEl.textContent = '—'; errWrap.style.display = 'none'; }
+    else                { errEl.textContent = '-'; errWrap.style.display = 'none'; }
 
     // History rows
     await loadSyncHistory();
@@ -2603,7 +2603,7 @@
     });
     if (res && res.ok) {
       setFeedback('auto-sync-feedback', enabled
-        ? `✓ Auto-sync enabled — every ${interval} min.`
+        ? `✓ Auto-sync enabled - every ${interval} min.`
         : '✓ Auto-sync disabled.',
         'ok');
       appendLog('sync-log', enabled
@@ -2683,7 +2683,7 @@
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.ok) {
       setFeedback('sync-config-feedback', `✓ Connected (HTTP ${data.status}). Sample fetched: ${data.sample_rows}`, 'ok');
-      appendLog('sync-log', `Test OK — HTTP ${data.status}, sample_rows=${data.sample_rows}`, 'ok');
+      appendLog('sync-log', `Test OK - HTTP ${data.status}, sample_rows=${data.sample_rows}`, 'ok');
     } else {
       const msg = data.detail || data.status || 'Unknown error';
       setFeedback('sync-config-feedback', 'Connection failed: ' + msg, 'err');
@@ -2711,7 +2711,7 @@
     }
     const data = await res.json().catch(() => ({}));
     if (res.status === 409) {
-      appendLog('sync-log', 'A sync is already in progress — watching that one instead.', 'info');
+      appendLog('sync-log', 'A sync is already in progress - watching that one instead.', 'info');
       startProgressPolling();
       return;
     }
@@ -2725,8 +2725,8 @@
     // (Redis was down). Bump the queue-depth chip immediately rather than
     // waiting for the next 5 s poll tick.
     const modeNote = data.mode === 'inline'
-      ? ' — running inline (Redis unreachable; API restart will kill it)'
-      : ' — queued for the sync worker';
+      ? ' - running inline (Redis unreachable; API restart will kill it)'
+      : ' - queued for the sync worker';
     appendLog('sync-log', `Sync ${data.mode === 'inline' ? 'started' : 'queued'} at ${new Date().toLocaleTimeString()}${modeNote}. Watch the progress bar.`, 'ok');
     pollSyncQueueDepth();
     startProgressPolling();
@@ -2742,7 +2742,7 @@
   let _onpremLastStatus = null;
 
   function _fmtTs(iso) {
-    return iso ? new Date(iso).toLocaleString() : '—';
+    return iso ? new Date(iso).toLocaleString() : '-';
   }
 
   async function loadOnpremMirrorState() {
@@ -2777,7 +2777,7 @@
     // surface a clear message so users know to run from the dev stack.
     if (s.runs_local === false) {
       btn.disabled = true;
-      btn.title = 'Disabled on this deployment — run from your VPN-connected dev stack';
+      btn.title = 'Disabled on this deployment - run from your VPN-connected dev stack';
       btn.innerHTML = '<i class="fa-solid fa-laptop"></i> Local-only';
       statusEl.innerHTML = '<span class="chip info" style="background:#DBEAFE;color:#1E3A8A">Local-only feature</span>';
       // Add an inline notice under the row if we haven't already
@@ -2794,7 +2794,7 @@
     document.getElementById('onprem-mirror-watermark').textContent = _fmtTs(s.last_mirror_at);
     document.getElementById('onprem-mirror-rows').textContent      = (s.last_row_count || 0).toLocaleString();
 
-    // Live progress bar — visible only while a run is in flight. Mirrors the
+    // Live progress bar - visible only while a run is in flight. Mirrors the
     // CommCare-sync progress UX: step label + N/N counter + animated fill.
     const prog    = document.getElementById('onprem-mirror-progress');
     const progBar = document.getElementById('onprem-mirror-progress-bar');
@@ -2825,14 +2825,14 @@
       errEl.textContent = s.last_error;
       errWrap.style.display = 'block';
     } else {
-      errEl.textContent = '—';
+      errEl.textContent = '-';
       errWrap.style.display = 'none';
     }
 
     // Detect transition out of 'running' and log it
     if (s.last_status !== 'running' && _onpremLastStatus === 'running') {
       if (s.last_status === 'ok') {
-        appendLog('sync-log', `Mirror complete — ${(s.last_row_count || 0).toLocaleString()} rows pushed to on-prem.`, 'ok');
+        appendLog('sync-log', `Mirror complete - ${(s.last_row_count || 0).toLocaleString()} rows pushed to on-prem.`, 'ok');
       } else if (s.last_status === 'error') {
         appendLog('sync-log', 'Mirror FAILED: ' + (s.last_error || 'unknown error'), 'err');
       }
@@ -2849,7 +2849,7 @@
 
   function startOnpremMirrorPolling() {
     stopOnpremMirrorPolling();
-    // 1.5 s cadence — matches the CommCare-sync progress polling so the
+    // 1.5 s cadence - matches the CommCare-sync progress polling so the
     // step label feels equally responsive.
     _onpremPollTimer = setInterval(loadOnpremMirrorState, 1500);
   }
@@ -2871,7 +2871,7 @@
     if (!res) { appendLog('sync-log', 'Network error', 'err'); return; }
     const data = await res.json().catch(() => ({}));
     if (res.status === 409) {
-      appendLog('sync-log', 'A mirror is already in progress — watching that one instead.', 'info');
+      appendLog('sync-log', 'A mirror is already in progress - watching that one instead.', 'info');
       _onpremLastStatus = 'running';
       startOnpremMirrorPolling();
       return;
@@ -2880,7 +2880,7 @@
       appendLog('sync-log', 'Mirror queue failed: ' + (data.detail || `HTTP ${res.status}`), 'err');
       return;
     }
-    appendLog('sync-log', `Mirror queued at ${new Date().toLocaleTimeString()} — pushing to on-prem in the background.`, 'ok');
+    appendLog('sync-log', `Mirror queued at ${new Date().toLocaleTimeString()} - pushing to on-prem in the background.`, 'ok');
     _onpremLastStatus = 'running';
     await loadOnpremMirrorState();   // immediately reflect 'running' in the card
     startOnpremMirrorPolling();
@@ -2916,29 +2916,29 @@
         } else {
           // Active campaign → offer "Mark Ended" so the round can be closed
           // out. Stops auto-sync and shows the orange "Ended" badge.
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="markProjectEnded(${p.id},'${esc(p.name)}')" title="Close this round — stops auto-sync and stamps end date"><i class="fa-solid fa-flag-checkered"></i> Mark Ended</button>`);
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="markProjectEnded(${p.id},'${esc(p.name)}')" title="Close this round - stops auto-sync and stamps end date"><i class="fa-solid fa-flag-checkered"></i> Mark Ended</button>`);
         }
         actions.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
         // Public-dashboard opt-in (superadmin only). Anonymous visitors to the
-        // public dashboard only see projects flagged public — toggle per round.
+        // public dashboard only see projects flagged public - toggle per round.
         if (isSuperadmin) {
           actions.push(p.is_public
-            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Currently public — click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Public</button>`
+            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Currently public - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Public</button>`
             : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Make this round visible on the public dashboard"><i class="fa-solid fa-lock"></i> Private</button>`);
         }
         if (!p.is_active) {
-          actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project — irreversible"><i class="fa-solid fa-trash"></i></button>`);
+          actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
         }
         return `
         <tr>
           <td><b>${p.name}</b><br><small style="color:var(--muted)">${p.slug}</small></td>
-          <td style="font-size:12px;color:var(--muted)">${p.description || '—'}</td>
+          <td style="font-size:12px;color:var(--muted)">${p.description || '-'}</td>
           <td>
             ${statusChip(p)}
             ${p.is_public ? '<br><span class="chip good" style="margin-top:4px"><i class="fa-solid fa-globe" style="font-size:9px;margin-right:4px"></i>Public</span>' : ''}
             ${p.campaign_end_date && !p.is_active ? `<br><small style="color:var(--muted)">ended ${new Date(p.campaign_end_date).toLocaleDateString()}</small>` : ''}
           </td>
-          <td style="color:var(--muted);font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
+          <td style="color:var(--muted);font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '-'}</td>
           <td>${actions.join(' ')}</td>
         </tr>`;
       }).join('');
@@ -3001,7 +3001,7 @@
     if (makePublic) {
       const ok = await confirmDialog({
         title:        'Publish to public dashboard?',
-        message:      `"${name}" will be visible to anyone on the public dashboard (no login). Only aggregate coverage is shown — no personal data. Continue?`,
+        message:      `"${name}" will be visible to anyone on the public dashboard (no login). Only aggregate coverage is shown - no personal data. Continue?`,
         confirmLabel: 'Make public',
       });
       if (!ok) return;
@@ -3022,7 +3022,7 @@
   window.markProjectEnded = async function(id, name) {
     // Closes the campaign: deactivates the project AND stamps today as the
     // end date. The auto-sync scheduler joins on geo_projects.is_active so
-    // ending here also pauses periodic CommCare pulls — no more "days since
+    // ending here also pauses periodic CommCare pulls - no more "days since
     // last submission" creep after the round wraps up.
     const ok = await confirmDialog({
       title: 'End this campaign?',
@@ -3046,7 +3046,7 @@
   };
 
   window.editProject = async function(id, currentName, currentDesc) {
-    // Custom modal-driven inline editor — keeps the UX consistent with the
+    // Custom modal-driven inline editor - keeps the UX consistent with the
     // rest of the admin panel (no browser-chrome "site says" dialogs).
     const newName = await promptDialog({
       title:        'Edit project name',
@@ -3059,7 +3059,7 @@
     if (!newName.trim()) { await alertDialog({ title: 'Validation', message: 'Project name cannot be empty.' }); return; }
     const newDesc = await promptDialog({
       title:        'Edit description',
-      message:      'Optional — a short note about this project (state, round, scope).',
+      message:      'Optional - a short note about this project (state, round, scope).',
       promptValue:  currentDesc || '',
       promptPlaceholder: 'Optional description',
       confirmLabel: 'Save',
@@ -3185,16 +3185,16 @@
       // Superadmin-only: reset another user's password (own row uses Account page).
       if (isSuperadmin && u.username !== username) acts.push(`<button class="act-btn" onclick="resetUserPassword(${u.id},'${unameEsc}')" title="Reset password"><i class="fa-solid fa-key"></i></button>`);
       if (u.username !== 'admin' && u.username !== username && (isSuperadmin || !u.is_superadmin)) acts.push(`<button class="act-btn danger" onclick="deleteUser(${u.id},'${unameEsc}')" title="Delete user"><i class="fa-solid fa-trash"></i></button>`);
-      const actsHtml = acts.length ? `<div class="row-actions">${acts.join('')}</div>` : '<span style="color:var(--muted);font-size:11px">—</span>';
+      const actsHtml = acts.length ? `<div class="row-actions">${acts.join('')}</div>` : '<span style="color:var(--muted);font-size:11px">-</span>';
 
       return `
       <tr>
         <td><div class="u-cell"><div class="u-avatar" style="${avatarStyle(u.username)}">${escHtml((u.username||'?').charAt(0).toUpperCase())}</div><span class="u-name">${escHtml(u.username)}</span></div></td>
-        <td style="color:var(--muted);font-size:12.5px">${escHtml(u.email || '—')}</td>
+        <td style="color:var(--muted);font-size:12.5px">${escHtml(u.email || '-')}</td>
         <td>${role}</td>
         <td>${scope}</td>
         <td><span class="status-dot ${u.is_active !== false ? 'on' : 'off'}">${u.is_active !== false ? 'Active' : 'Inactive'}</span></td>
-        <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+        <td style="color:var(--muted);font-size:12px">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</td>
         <td>${actsHtml}</td>
       </tr>`;
     }).join('');
@@ -3276,7 +3276,7 @@
   }
 
   // Show the "Allowed states/LGAs" fields only for scoped (non-admin)
-  // accounts — admins/superadmins always see every state.
+  // accounts - admins/superadmins always see every state.
   window.onRoleChange = function() {
     document.querySelectorAll('#role-options .role-opt').forEach(l => {
       const inp = l.querySelector('input'); l.classList.toggle('sel', !!(inp && inp.checked));
@@ -3370,7 +3370,7 @@
       _scopeInit = true;
     }
 
-    document.getElementById('scope-modal-title').textContent = `Access scope — ${uname}`;
+    document.getElementById('scope-modal-title').textContent = `Access scope - ${uname}`;
     clearFieldError('scope-fg-states', 'scope-err-states');
     // Preload current scope, mapping stored CSV onto canonical option casing.
     _scopeStatesMS.setOptions(SCOPE_OPTS.states);
@@ -3392,7 +3392,7 @@
       const states = _scopeStatesMS.getValues();
       const lgas   = _scopeLgasMS.getValues();
       // Only a superadmin may strip a user of all state access (server enforces
-      // this too — we just give a friendlier, inline heads-up first).
+      // this too - we just give a friendlier, inline heads-up first).
       if (!states.length && !isSuperadmin) {
         setFieldError('scope-fg-states', 'scope-err-states', 'Only a superadmin can remove all state access.');
         return;
@@ -3409,7 +3409,7 @@
         if (res && res.ok) { close(); loadUsers(); }
         else {
           const d = res ? await res.json().catch(() => ({})) : {};
-          setFieldError('scope-fg-states', 'scope-err-states', d.detail || `Update failed (HTTP ${res ? res.status : '—'}).`);
+          setFieldError('scope-fg-states', 'scope-err-states', d.detail || `Update failed (HTTP ${res ? res.status : '-'}).`);
         }
       } catch(e) {
         setFieldError('scope-fg-states', 'scope-err-states', 'Could not reach the server.');
@@ -3479,7 +3479,7 @@
   };
 
   window.resetUserPassword = async function(id, uname) {
-    // Superadmin override — bypasses the current-password check.
+    // Superadmin override - bypasses the current-password check.
     const newPw = await promptDialog({
       title:             `Reset password for "${uname}"`,
       message:           "They'll need to use this on their next sign-in. Minimum 8 characters.",
@@ -3524,7 +3524,7 @@
         <tr>
           <td><b>API Server</b></td>
           <td><span class="chip ${res.ok ? 'good' : 'bad'}">${res.ok ? 'Online' : 'Offline'}</span></td>
-          <td style="font-size:12px;color:var(--muted)">${d.service || 'geospatial-tracker'} — HTTP ${res.status}</td>
+          <td style="font-size:12px;color:var(--muted)">${d.service || 'geospatial-tracker'} - HTTP ${res.status}</td>
         </tr>
         <tr>
           <td><b>Database</b></td>
@@ -3541,7 +3541,7 @@
         '<tr><td colspan="3" style="text-align:center;color:var(--bad);padding:14px">API unreachable</td></tr>';
     }
 
-    // All six count tiles — single round-trip to /system/counts.
+    // All six count tiles - single round-trip to /system/counts.
     try {
       const res = await api('/api/mda/system/counts');
       if (res && res.ok) {
@@ -3567,7 +3567,7 @@
           ['GPS Poor Accuracy',    s.gps_poor_accuracy  || 0],
           ['Duplicate Form ID',    s.duplicates          || 0],
           ['Duplicate GPS',        s.duplicate_gps       || 0],
-          ['Fast Forms (<5 min)',  s.fast_forms          || 0],
+          ['Fast Forms (<3 min)',  s.fast_forms          || 0],
           ['Slow Forms (>60 min)', s.slow_forms          || 0],
           ['After-Hours',          s.after_hours         || 0],
           ['Refusals',             s.refusals            || 0],
@@ -3576,7 +3576,7 @@
           <tr>
             <td>${lbl}</td>
             <td><b>${cnt.toLocaleString()}</b></td>
-            <td style="color:var(--muted)">${tf > 0 ? (cnt/tf*100).toFixed(1) + '%' : '—'}</td>
+            <td style="color:var(--muted)">${tf > 0 ? (cnt/tf*100).toFixed(1) + '%' : '-'}</td>
           </tr>`).join('');
       }
     } catch(e) {}

@@ -4,7 +4,7 @@ import os
 import tempfile
 import zipfile
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -24,6 +24,7 @@ from app.services.spatial_engine import (
     get_settlement_geojson,
     get_grid_geojson,
 )
+from app.services import geo_cache
 
 router = APIRouter(prefix="/projects/{project_id}/boundaries", tags=["boundaries"])
 
@@ -260,6 +261,9 @@ async def recompute_spatial(
         result = await asyncio.to_thread(recompute_spatial_for_project, project_id)
     except Exception as e:  # noqa: BLE001 — surface SQL/connect errors to the operator
         raise HTTPException(500, f"Spatial recompute failed: {e}")
+    # Boundaries/coverage just changed — drop cached GeoJSON so the map reflects
+    # the new numbers immediately instead of waiting out the TTL.
+    geo_cache.clear()
     return {"message": "Spatial recompute completed", **result}
 
 
@@ -268,33 +272,52 @@ async def recompute_spatial(
 @router.get("/lga/geojson")
 async def lga_geojson(
     project_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     # LGA-scope the boundaries so an LGA-restricted login's map shows only their
     # LGA(s), not the whole state. None (admin/public/state-only) = no filter.
-    return await get_lga_geojson(project_id, db, allowed_lgas=allowed_lgas_of(_u))
+    scope = allowed_lgas_of(_u)
+    key = geo_cache.make_key("lga", project_id, scope)
+    return await geo_cache.respond(
+        request, key, lambda: get_lga_geojson(project_id, db, allowed_lgas=scope)
+    )
 
 
 @router.get("/ward/geojson")
 async def ward_geojson(
     project_id: int,
+    request: Request,
     lgacode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_ward_geojson(project_id, db, lgacode=lgacode, allowed_lgas=allowed_lgas_of(_u))
+    scope = allowed_lgas_of(_u)
+    key = geo_cache.make_key("ward", project_id, scope, lgacode=lgacode)
+    return await geo_cache.respond(
+        request, key, lambda: get_ward_geojson(project_id, db, lgacode=lgacode, allowed_lgas=scope)
+    )
 
 
 @router.get("/settlement/geojson")
 async def settlement_geojson(
     project_id: int,
+    request: Request,
     lgacode: Optional[str] = None,
     wardcode: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    return await get_settlement_geojson(project_id, db, lgacode=lgacode, wardcode=wardcode, allowed_lgas=allowed_lgas_of(_u))
+    scope = allowed_lgas_of(_u)
+    key = geo_cache.make_key("settlement", project_id, scope, lgacode=lgacode, wardcode=wardcode)
+    return await geo_cache.respond(
+        request,
+        key,
+        lambda: get_settlement_geojson(
+            project_id, db, lgacode=lgacode, wardcode=wardcode, allowed_lgas=scope
+        ),
+    )
 
 
 @router.get("/grid/geojson")

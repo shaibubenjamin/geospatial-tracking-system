@@ -37,6 +37,7 @@ _root_logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import select, text
@@ -49,7 +50,7 @@ from app.config import (
     MIN_VERSION_CODE, LATEST_VERSION_CODE, LATEST_VERSION_NAME, UPDATE_URL,
     APP_API_PREFIX, APK_DIR, APK_FILENAME,
 )
-from app.routes import auth, projects, boundaries, ingestion, analytics, qc, sync, sources
+from app.routes import auth, projects, boundaries, ingestion, analytics, qc, sync, sources, reports
 from app.routes import mda as mda_route
 from app.routes import app_api
 
@@ -201,22 +202,25 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("GPS poor-accuracy backfill skipped: %s", e)
 
-    # One-time backfill: flag_fast_form threshold restored to <5 min.
-    # Active project only; R4 history stays at its original threshold.
+    # One-time backfill: flag_fast_form threshold currently set to <3 min.
+    # History of the threshold: 5 → 2 → 3 (operator-tuned over time as the
+    # team observed the actual visit-time distribution; 3 keeps a defensible
+    # signal of rushed entry without false-flagging quick honest visits).
+    # Active project only; historical rounds keep their original threshold.
     async with AsyncSessionLocal() as db:
         try:
             res = await db.execute(text("""
                 UPDATE mda_households h
-                SET flag_fast_form = (h.form_duration_min < 5)
+                SET flag_fast_form = (h.form_duration_min < 3)
                 WHERE h.project_id IN (
                         SELECT id FROM geo_projects WHERE is_active = TRUE
                       )
                   AND h.form_duration_min IS NOT NULL
-                  AND h.flag_fast_form IS DISTINCT FROM (h.form_duration_min < 5)
+                  AND h.flag_fast_form IS DISTINCT FROM (h.form_duration_min < 3)
             """))
             await db.commit()
             if res.rowcount:
-                logger.info("Fast-form (<2 min) backfill: %d row(s) updated on active project", res.rowcount)
+                logger.info("Fast-form (<3 min) backfill: %d row(s) updated on active project", res.rowcount)
         except Exception as e:
             logger.warning("Fast-form backfill skipped: %s", e)
 
@@ -411,6 +415,12 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
+# Compress large responses. The boundary GeoJSON layers are highly compressible
+# text (the settlement layer is ~22 MB raw); gzip cuts the wire payload ~10-20x.
+# Only kicks in when the client sends Accept-Encoding: gzip and the body exceeds
+# the threshold, so small JSON/HTML responses are unaffected.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 
 # Tag every request with a correlation ID so logs can be threaded.
 @app.middleware("http")
@@ -526,6 +536,7 @@ _PUBLIC_GET_PATHS: set[str] = {
     "/api/mda/qc/summary",
     "/api/mda/qc/refusals-by-lga",
     "/api/mda/qc/duration-by-lga",
+    "/api/mda/qc/duration-histogram",
     "/api/mda/qc/teams-summary",
     # Geo summaries (aggregate; heatmap GeoJSON and movement tracks stay gated)
     "/api/mda/geo/coverage-summary",
@@ -561,6 +572,11 @@ _PUBLIC_GET_PATTERNS: list[re.Pattern[str]] = [
 _PUBLIC_ANY_METHOD: set[str] = {
     "/api/auth/login",
     "/api/health",
+    # User-submitted concerns / issue reports. Public visitors must be able to
+    # POST a report without logging in. The GET (admin triage list) is still
+    # protected — it's enforced at the route level via require_admin, and the
+    # path-based gate only governs whether a token is required at all.
+    "/api/reports",
 }
 
 
@@ -702,6 +718,7 @@ app.include_router(qc.router, prefix="/api")
 app.include_router(mda_route.router, prefix="/api")
 app.include_router(sync.router, prefix="/api")
 app.include_router(sources.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
 app.include_router(app_api.router, prefix="/api")
 
 # Serve static files

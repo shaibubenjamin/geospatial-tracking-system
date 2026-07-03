@@ -410,7 +410,7 @@ async def upload_mda(
             local_hour = (started_time + timedelta(hours=1)).hour
             flag_after_hours = local_hour < 6 or local_hour >= 19
 
-        flag_fast_form = bool(form_duration_min is not None and form_duration_min < 5)
+        flag_fast_form = bool(form_duration_min is not None and form_duration_min < 3)
         flag_slow_form = bool(form_duration_min is not None and form_duration_min > 60)
         flag_sync_lag  = bool(sync_lag_hours is not None and sync_lag_hours > 48)
         flag_refusal   = consent_trt == "0"
@@ -1176,7 +1176,20 @@ async def qc_summary(
           COUNT(DISTINCT lga) AS lgas_covered,
           COUNT(DISTINCT ra_key) AS ra_count,
           (SELECT COUNT(*) FROM mda_individuals WHERE project_id = :pid) AS total_individuals,
-          (SELECT MIN(uploaded_at) FROM mda_households WHERE project_id = :pid) AS data_as_of
+          (SELECT MIN(uploaded_at) FROM mda_households WHERE project_id = :pid) AS data_as_of,
+          -- Form-duration stats. completed_time and started_time are stored
+          -- timezone-aware (UTC); duration = completed - started in minutes,
+          -- already precomputed into form_duration_min at ingest. Filter
+          -- non-null + clip the long tail (>= 6 hours = device left open) so
+          -- the mean is dominated by real visits, not abandoned forms.
+          ROUND(AVG(form_duration_min) FILTER (WHERE form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360)::numeric, 2) AS avg_form_duration_min,
+          (SELECT ROUND(percentile_cont(0.5)  WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2)
+             FROM mda_households {where}
+              AND form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360) AS median_form_duration_min,
+          (SELECT ROUND(percentile_cont(0.9)  WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2)
+             FROM mda_households {where}
+              AND form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360) AS p90_form_duration_min,
+          COUNT(*) FILTER (WHERE form_duration_min IS NOT NULL AND form_duration_min > 0 AND form_duration_min < 360) AS duration_sample_size
         FROM mda_households {where}
     """), params)
     row = result.fetchone()
@@ -1190,6 +1203,8 @@ async def qc_summary(
             "total_qc_flags": 0,
             "days_active": 0, "lgas_covered": 0,
             "ra_count": 0, "total_individuals": 0, "data_as_of": None,
+            "avg_form_duration_min": None, "median_form_duration_min": None,
+            "p90_form_duration_min": None, "duration_sample_size": 0,
         }
     keys = [
         "total_forms", "duplicates", "duplicate_gps",
@@ -1199,12 +1214,29 @@ async def qc_summary(
         "refusals", "refusal_pct", "forms_with_error",
         "days_active", "lgas_covered", "ra_count",
         "total_individuals", "data_as_of",
+        "avg_form_duration_min", "median_form_duration_min",
+        "p90_form_duration_min", "duration_sample_size",
     ]
     data = dict(zip(keys, row))
     # Ensure numeric types are JSON-safe
-    for k in keys[:-1]:
-        if data[k] is not None:
-            data[k] = float(data[k]) if k == "refusal_pct" else int(data[k])
+    int_keys = {"total_forms", "duplicates", "duplicate_gps", "gps_outside_lga",
+                "gps_outside_ward", "gps_outside_state", "gps_poor_accuracy",
+                "gps_zero", "after_hours", "fast_forms", "slow_forms", "sync_lag",
+                "refusals", "forms_with_error", "days_active", "lgas_covered",
+                "ra_count", "total_individuals", "duration_sample_size"}
+    float_keys = {"refusal_pct", "avg_form_duration_min", "median_form_duration_min",
+                  "p90_form_duration_min"}
+    for k in keys:
+        if k == "data_as_of":
+            continue
+        if k in int_keys:
+            # Coalesce NULL → 0. SUM(CASE …) returns NULL when the row set is
+            # empty (fresh project, before any forms have synced) — we don't
+            # want that None cascading into arithmetic below or into the
+            # dashboard's KPI tiles as "None".
+            data[k] = int(data[k] or 0)
+        elif k in float_keys and data[k] is not None:
+            data[k] = float(data[k])
     if data["data_as_of"] is not None:
         data["data_as_of"] = str(data["data_as_of"])
     # Unified roll-ups so every page reads the same numbers.
@@ -1354,6 +1386,78 @@ async def qc_duration_by_lga(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/qc/duration-histogram  — distribution of form completion time
+# Used by the bell-curve chart in Quality Checks to expose outliers visually.
+# Buckets: 1-min wide from 0 → 60 min; any form ≥ 60 min lumped into the
+# rightmost bin so the long tail doesn't squash the meaningful range.
+# Returns bins + mean + stddev + p10/p90 so the client can overlay the
+# "normal range" band on the histogram.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/qc/duration-histogram")
+async def qc_duration_histogram(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    params: dict = {}
+    filters: list = [
+        "form_duration_min IS NOT NULL",
+        "form_duration_min > 0",
+        # Hard cap at 6 hours — anything beyond is almost certainly a device
+        # left open / not a real form; including it would skew the mean and
+        # collapse the visible bell.
+        "form_duration_min < 360",
+    ]
+    if lga:  filters.append("lga = :lga");        params["lga"]  = lga
+    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = date_from
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = date_to
+    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
+
+    # 1-minute-wide bins from 0 → 60 min; >=60 lumped into bin 60 (the long tail).
+    result = await db.execute(text(f"""
+        SELECT
+          LEAST(FLOOR(form_duration_min)::int, 60) AS bin_min,
+          COUNT(*) AS n
+        FROM mda_households {where}
+        GROUP BY bin_min
+        ORDER BY bin_min
+    """), params)
+    bins = [{"low": int(r[0]), "high": int(r[0]) + 1, "count": int(r[1])} for r in result.fetchall()]
+
+    # Stats for the overlay (mean / median / stddev / percentiles).
+    s_result = await db.execute(text(f"""
+        SELECT
+          ROUND(AVG(form_duration_min)::numeric, 2)               AS mean_min,
+          ROUND(STDDEV_SAMP(form_duration_min)::numeric, 2)       AS stddev_min,
+          ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2) AS median_min,
+          ROUND(percentile_cont(0.1) WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2) AS p10_min,
+          ROUND(percentile_cont(0.9) WITHIN GROUP (ORDER BY form_duration_min)::numeric, 2) AS p90_min,
+          COUNT(*)                                                AS total
+        FROM mda_households {where}
+    """), params)
+    s = s_result.fetchone()
+    mean   = float(s[0]) if s and s[0] is not None else 0.0
+    stddev = float(s[1]) if s and s[1] is not None else 0.0
+    return {
+        "bins": bins,
+        "mean":   mean,
+        "stddev": stddev,
+        "median": float(s[2]) if s and s[2] is not None else 0.0,
+        "p10":    float(s[3]) if s and s[3] is not None else 0.0,
+        "p90":    float(s[4]) if s and s[4] is not None else 0.0,
+        "lower_band": max(0.0, round(mean - 2 * stddev, 2)),
+        "upper_band": round(mean + 2 * stddev, 2),
+        "total":  int(s[5]) if s and s[5] is not None else 0,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/submissions/ward  — ward-level drill-down for charts
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1431,7 +1535,15 @@ async def qc_teams_summary(
           SUM(CASE WHEN flag_fast_form         THEN 1 ELSE 0 END)        AS fast_forms,
           SUM(CASE WHEN flag_slow_form         THEN 1 ELSE 0 END)        AS slow_forms,
           SUM(CASE WHEN flag_sync_lag          THEN 1 ELSE 0 END)        AS sync_lag,
-          SUM(CASE WHEN flag_refusal           THEN 1 ELSE 0 END)        AS refusals
+          SUM(CASE WHEN flag_refusal           THEN 1 ELSE 0 END)        AS refusals,
+          -- Per-team average form completion time. Same clipping window as
+          -- /qc/summary and /qc/duration-histogram (>0 and <360 min) so a
+          -- device-left-open outlier can't blow up one team's average.
+          ROUND(AVG(form_duration_min) FILTER (
+              WHERE form_duration_min IS NOT NULL
+                AND form_duration_min > 0
+                AND form_duration_min < 360
+          )::numeric, 2)                                                 AS avg_duration_min
         FROM mda_households {where}
         GROUP BY hq_user, lga
         ORDER BY forms_with_error DESC, total_forms DESC
@@ -1441,12 +1553,15 @@ async def qc_teams_summary(
         "hq_user","lga","total_forms","forms_with_error",
         "dup_forms","dup_gps","gps_outside_lga","poor_gps",
         "after_hours","fast_forms","slow_forms","sync_lag","refusals",
+        "avg_duration_min",
     ]
     out = []
     for row in rows:
         d = dict(zip(keys, row))
-        for k in keys[2:]:
+        # int-coerce the count columns (skip the float duration column)
+        for k in keys[2:-1]:
             d[k] = int(d[k] or 0)
+        d["avg_duration_min"] = float(d["avg_duration_min"]) if d["avg_duration_min"] is not None else None
         d["error_rate"] = round(100.0 * d["forms_with_error"] / d["total_forms"], 1) if d["total_forms"] else 0
         out.append(d)
     return out
@@ -1782,14 +1897,24 @@ async def mda_coverage_lga(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Coverage per LGA. The universe of LGAs is the union of
-    baseline-targeted LGAs and LGAs that have submitted at least one form.
+    """Coverage per LGA. The universe of LGAs is the union of:
+      - baseline-targeted LGAs
+      - LGAs that have submitted at least one form
+      - the project's in-scope LGA list (see app.services.project_scope) —
+        pulled from the boundary table so a data-collection LGA appears
+        even before any target is uploaded or any form is synced.
 
-    Why a union: pre-rollout (no baseline yet) a state still wants the LGA
-    bar chart to show the forms it's already syncing. Post-baseline a
-    targeted LGA must still appear even if zero forms have arrived (so the
-    "below 60% → mop-up" lens is honest about coverage gaps).
+    Why a union of all three: pre-rollout (no baseline yet) a state still
+    wants the LGA bar chart to show the forms it's already syncing. Post-
+    baseline a targeted LGA must still appear even if zero forms have
+    arrived. And a scope-registered LGA (Kano R3's 36) must appear even if
+    it has neither a baseline row nor any household forms yet — otherwise
+    the operator's "36 collection LGAs" get collapsed to whatever subset
+    the baseline sheet happened to cover.
     """
+    from app.services.project_scope import in_scope_lgas_for  # local — avoids circular
+    from app.services.spatial_engine import _resolve_boundary_pid
+
     # Filters that apply on the household side (date/ward). pid is added
     # separately because it gates the household subquery directly.
     hh_filters: list = ["h.project_id = :pid"]
@@ -1817,6 +1942,44 @@ async def mda_coverage_lga(
     lga_filter_baseline += _lga_and(lgas, "lga", params)
     lga_filter_hh += _lga_and(lgas, "h.lga", params)
 
+    # Look up whether this project has a registered "in-scope LGA" list
+    # (currently only Kano R3). If yes, we'll pull that LGA set from the
+    # boundary table as a third contributor to the universe CTE below.
+    scope_names_lower: Optional[list[str]] = None
+    p_row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :pid"),
+        {"pid": pid},
+    )).fetchone()
+    if p_row:
+        scope_set = in_scope_lgas_for(p_row[0], p_row[1])
+        if scope_set:
+            scope_names_lower = [n.strip().lower() for n in scope_set]
+
+    # Conditionally add a `scope_lgas` CTE + UNION arm. Kept out of the SQL
+    # entirely when scope_names_lower is None so Sokoto R4/R5/Kano Pilot see
+    # exactly the same query they've always seen.
+    scope_cte      = ""
+    scope_union    = ""
+    if scope_names_lower is not None:
+        boundary_pid = await _resolve_boundary_pid(pid, db)
+        params["boundary_pid"]     = boundary_pid
+        params["scope_names_lower"] = scope_names_lower
+        # LGA-scoped user restriction (allowed_lgas) also applied here so an
+        # LGA-scoped account never widens its view via the scope path.
+        scope_lga_and = _lga_and(lgas, "l.lga_name", params)
+        scope_cte = f"""
+          scope_lgas AS (
+            SELECT
+              INITCAP(LOWER(TRIM(l.lga_name))) AS lga,
+              UPPER(TRIM(l.lga_name))          AS lga_key
+            FROM lgas l
+            WHERE l.project_id = :boundary_pid
+              AND LOWER(TRIM(l.lga_name)) = ANY(:scope_names_lower)
+              {scope_lga_and}
+          ),
+        """
+        scope_union = "UNION SELECT lga_key, lga FROM scope_lgas"
+
     result = await db.execute(text(f"""
         WITH baseline AS (
           SELECT
@@ -1841,10 +2004,12 @@ async def mda_coverage_lga(
             AND h.lga IS NOT NULL AND TRIM(h.lga) <> ''
           GROUP BY 1, 2
         ),
+        {scope_cte}
         universe AS (
           SELECT lga_key, lga FROM baseline
           UNION
           SELECT lga_key, lga FROM hh
+          {scope_union}
         )
         SELECT
           u.lga,

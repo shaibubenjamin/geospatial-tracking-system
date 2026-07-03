@@ -32,10 +32,33 @@ async def get_lga_metrics(
       (campaign-team rule: "near-complete is complete").
     * LGA-level **completeness** is the *average* of the per-settlement capped
       values, not a grid-weighted ratio — every settlement counts equally.
+
+    Sidebar-scope filter: when the project has an in-scope LGA list registered
+    (see ``app.services.project_scope``), only those LGAs appear in the result
+    — matching case-insensitively on lga_name. Boundaries + map rendering are
+    unaffected; this is a sidebar-only trim.
     """
+    from app.services.project_scope import in_scope_lgas_for  # local import — avoids circular
     boundary_pid = await _resolve_boundary_pid(project_id, db)
+
+    # Resolve the project's (state, round) so we can look up the scope filter.
+    p_row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :id"),
+        {"id": project_id},
+    )).fetchone()
+    scope = in_scope_lgas_for(p_row[0], p_row[1]) if p_row else None
+
+    params: Dict[str, Any] = {"boundary_pid": boundary_pid, "mda_pid": project_id}
+    scope_sql = ""
+    if scope:
+        # Case-insensitive membership check — matches how project_scope
+        # normalisation works. Passing a list to ANY(:...) binds cleanly
+        # through asyncpg without needing dynamic string interpolation.
+        scope_sql = "AND LOWER(TRIM(l.lga_name)) = ANY(:scope_lgas)"
+        params["scope_lgas"] = [n.strip().lower() for n in scope]
+
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT
                 l.lgacode,
                 l.lga_name,
@@ -56,11 +79,11 @@ async def get_lga_metrics(
             LEFT JOIN settlements s ON s.lgacode = l.lgacode AND s.project_id = l.project_id
             LEFT JOIN settlement_analytics sa
                    ON sa.settlement_id = s.id AND sa.project_id = :mda_pid
-            WHERE l.project_id = :boundary_pid
+            WHERE l.project_id = :boundary_pid {scope_sql}
             GROUP BY l.lgacode, l.lga_name
             ORDER BY l.lga_name
         """),
-        {"boundary_pid": boundary_pid, "mda_pid": project_id},
+        params,
     )
     return [dict(row._mapping) for row in result.fetchall()]
 
