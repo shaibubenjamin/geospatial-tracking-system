@@ -2016,12 +2016,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 
   /* ── COVERAGE BY AGE CATEGORY (per LGA) ── */
   let _covByAgeChart = null;
-  async function renderCoverageByAge() {
+  async function renderCoverageByAge(lga, ward) {
     const el = document.getElementById('c_covByAge');
     const summaryEl = document.getElementById('cov-age-summary');
     if (!el) return;
     let data;
-    try { data = await api('/api/mda/coverage/lga-by-age'); }
+    try { data = await api('/api/mda/coverage/lga-by-age' + _filterQS(lga || '', ward || '')); }
     catch (e) { data = null; }
     if (!Array.isArray(data) || data.length === 0) {
       if (summaryEl) summaryEl.innerHTML = '<div class="kpi" style="padding:10px 14px"><div class="sub">No age-band targets in this project’s baseline yet - upload a baseline target file with per-LGA 1–11 / 12–59 month targets under Admin → Data Uploads to enable this view.</div></div>';
@@ -2830,6 +2830,21 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         }
       });
     }
+    // Re-scope the rest of the Coverage Analysis page to the same filter, so a
+    // drill-down / dropdown flows through to the KPI cards and the age chart -
+    // not just the LGA table and the by-LGA bar.
+    const covGood  = filtered.filter(l => parseFloat(l.coverage_pct) >= 80).length;
+    const covBelow = filtered.filter(l => parseFloat(l.coverage_pct) <  60).length;
+    const covBase  = filtered.reduce((s, l) => s + (parseFloat(l.baseline_total) || 0), 0);
+    const covTreat = filtered.reduce((s, l) => s + (parseFloat(l.actual_treated) || 0), 0);
+    const covPct   = covBase > 0 ? (covTreat / covBase * 100) : 0;
+    setEl('cov-kpi-baseline', fmt(covBase));
+    setEl('cov-kpi-treated',  fmt(covTreat));
+    setEl('cov-kpi-pct',      covPct.toFixed(1) + '%');
+    setEl('cov-kpi-good',     covGood + ' / ' + filtered.length);
+    setEl('cov-kpi-below',    covBelow + ' / ' + filtered.length);
+    // Age-band coverage re-scopes by LGA + ward (the endpoint supports both).
+    renderCoverageByAge(COV_FILTER.lga, COV_FILTER.ward);
   }
 
   function resetCovFilter() {
