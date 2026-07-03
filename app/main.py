@@ -62,6 +62,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Startup: create tables, seed default admin user and Sokoto project."""
     logger.info("Starting up — creating database tables...")
+    # Surface a missing sync key at boot (in health/logs) instead of only when a
+    # user hits "Run Sync". CommCare credentials can't be encrypted/decrypted
+    # without it, so sync silently fails until the env is refreshed.
+    if not (os.getenv("SYNC_ENCRYPTION_KEY") or "").strip():
+        logger.warning(
+            "SYNC_ENCRYPTION_KEY is not set — CommCare sync will fail until the "
+            "environment is refreshed (run refresh-env.sh / redeploy)."
+        )
     await create_all_tables()
 
     # Idempotent column additions for MDA tables (new flags added post-launch)
