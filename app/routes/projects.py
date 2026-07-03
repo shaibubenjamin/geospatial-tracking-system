@@ -1,8 +1,9 @@
 import re
+from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.database import get_db
 from app.models import GeoProject, User
@@ -137,6 +138,61 @@ async def update_project(
             )
         project.is_active = data.is_active
 
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+@router.post("/{project_id}/start-campaign", response_model=ProjectOut)
+async def start_campaign(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_superadmin),
+):
+    """Start a round's campaign.
+
+    Stamps today as the start date, clears any stale end date (so a round that
+    was mis-stamped as ended reads Running again), and shows the round on the
+    dashboard. Auto-sync picks it up automatically because it now falls inside
+    the running window. This is separate from "Show on dashboard" (view focus)
+    and from Public/Private (visibility).
+    """
+    result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    today = date.today()
+    project.campaign_start_date = today
+    # Drop a stale/past end date so the round is Running, not Ended.
+    if project.campaign_end_date is not None and project.campaign_end_date <= today:
+        project.campaign_end_date = None
+    # Starting a campaign also focuses the dashboard on it (single active round).
+    await db.execute(
+        text("UPDATE geo_projects SET is_active = FALSE WHERE id != :pid").bindparams(pid=project_id)
+    )
+    project.is_active = True
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+@router.post("/{project_id}/end-campaign", response_model=ProjectOut)
+async def end_campaign(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_superadmin),
+):
+    """End a round's campaign.
+
+    Stamps today as the end date. Auto-sync stops because the round is no longer
+    in the running window. The round stays on the dashboard so results remain
+    viewable after the round wraps up.
+    """
+    result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project.campaign_end_date = date.today()
     await db.commit()
     await db.refresh(project)
     return project

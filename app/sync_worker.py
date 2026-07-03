@@ -160,17 +160,20 @@ async def _scheduler_tick() -> None:
     is already in flight or queued, so back-to-back ticks can't pile up.
     """
     async with AsyncSessionLocal() as db:
-        # Skip projects whose campaign has ended (geo_projects.is_active=FALSE).
-        # Without this, a paused round keeps getting hit by the 30-min auto-sync
-        # and the "days since last submission" counter keeps creeping up even
-        # though no field activity is happening.
+        # Auto-sync follows the campaign lifecycle: only pull for rounds that
+        # are RUNNING - the start date has been reached and it hasn't ended.
+        # A round that hasn't started yet, is only being previewed on the
+        # dashboard, or has already ended is left alone, so the "days since
+        # last submission" counter doesn't creep up with no field activity.
         rows = (await db.execute(text("""
             SELECT sc.project_id, sc.auto_sync_interval_minutes,
                    sc.last_synced_at, sc.last_status
             FROM sync_config sc
             JOIN geo_projects gp ON gp.id = sc.project_id
             WHERE sc.auto_sync_enabled = TRUE
-              AND gp.is_active = TRUE
+              AND gp.campaign_start_date IS NOT NULL
+              AND gp.campaign_start_date <= CURRENT_DATE
+              AND (gp.campaign_end_date IS NULL OR gp.campaign_end_date >= CURRENT_DATE)
         """))).mappings().all()
 
     if not rows:
