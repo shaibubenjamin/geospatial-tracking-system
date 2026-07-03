@@ -1,6 +1,10 @@
 package org.ehealth.eritas
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -9,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,6 +27,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.ui.Alignment
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +39,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -62,6 +70,45 @@ import org.ehealth.eritas.ui.EritasGreen
 import org.ehealth.eritas.ui.EritasTheme
 
 class MainActivity : ComponentActivity() {
+
+    // ── Idle auto-logout ────────────────────────────────────────────────────
+    // Sign the user out after IDLE_TIMEOUT_MS with no interaction (parity with
+    // the web app). onUserInteraction() fires on every touch/key event, so we
+    // simply (re)schedule a logout that far in the future on each interaction.
+    // The runnable double-checks we're still logged in before tripping, and
+    // onPause/onResume use elapsed wall-clock so backgrounding counts as idle.
+    private val idleHandler = Handler(Looper.getMainLooper())
+    private val idleRunnable = Runnable {
+        if (ServiceLocator.tokenStore.isLoggedIn) {
+            Toast.makeText(this, "Signed out after 10 minutes of inactivity.", Toast.LENGTH_LONG).show()
+            SessionManager.onIdleTimeout()
+        }
+    }
+    private var lastInteractionAt = SystemClock.elapsedRealtime()
+
+    private fun rescheduleIdleLogout() {
+        idleHandler.removeCallbacks(idleRunnable)
+        val remaining = IDLE_TIMEOUT_MS - (SystemClock.elapsedRealtime() - lastInteractionAt)
+        idleHandler.postDelayed(idleRunnable, remaining.coerceAtLeast(0L))
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastInteractionAt = SystemClock.elapsedRealtime()
+        rescheduleIdleLogout()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // If we were backgrounded past the limit, this fires (near-)immediately.
+        rescheduleIdleLogout()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        idleHandler.removeCallbacks(idleRunnable)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -80,6 +127,18 @@ class MainActivity : ComponentActivity() {
                     val sessionExpired = SessionManager.sessionExpired
                     LaunchedEffect(sessionExpired) {
                         if (sessionExpired) loggedIn = false
+                    }
+                    // Idle auto-logout: the Activity's inactivity timer trips
+                    // this after 10 minutes. Clear the session fully (token +
+                    // project) and return to login.
+                    val idleExpired = SessionManager.idleExpired
+                    LaunchedEffect(idleExpired) {
+                        if (idleExpired && loggedIn) {
+                            ServiceLocator.tokenStore.clear()
+                            ServiceLocator.projectStore.clear()
+                            SessionManager.reset()
+                            loggedIn = false
+                        }
                     }
                     if (!loggedIn) {
                         // Surface the non-blocking "update available" banner on the
@@ -106,6 +165,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    companion object {
+        private const val IDLE_TIMEOUT_MS = 10 * 60 * 1000L // 10 minutes
+    }
 }
 
 private enum class Tab(val label: String) {
@@ -125,6 +188,7 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var bannerDismissed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     // Set when a map pin is tapped on the Coverage tab - switches to the Geo tab
     // focused on that LGA, and (for a settlement pin) zoomed onto the settlement.
     var mapFocusLga by remember { mutableStateOf<String?>(null) }
@@ -191,6 +255,10 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("About") },
+                            onClick = { menuOpen = false; showAbout = true },
+                        )
                         DropdownMenuItem(
                             text = { Text("Log out") },
                             onClick = { menuOpen = false; onLogout() },
@@ -270,4 +338,49 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
             },
         )
     }
+
+    if (showAbout) {
+        AboutDialog(onDismiss = { showAbout = false })
+    }
+}
+
+/**
+ * About dialog - what ERITAS is and the SARMAAN MDA programme it monitors.
+ * Mirrors the "About Us" section on the web landing page.
+ */
+@Composable
+private fun AboutDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+        title = {
+            Text("ERITAS - SARMAAN MDA", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column {
+                Text(
+                    "ERITAS - Evidence through Real-time Intelligence, Tracking, and " +
+                        "Accountability Systems - is the monitoring platform for the " +
+                        "SARMAAN MDA programme.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "The SARMAAN MDA campaign delivers preventive treatment to eligible " +
+                        "children across whole communities, round after round. ERITAS tracks " +
+                        "coverage, data quality, and team performance live as data arrives " +
+                        "from the field.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Powered by eHealth Africa · v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+    )
 }
