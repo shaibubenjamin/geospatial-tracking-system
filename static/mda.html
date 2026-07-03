@@ -3451,7 +3451,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // amber because that's more often a device / connectivity signal than
     // a data-quality one.
     const avgColour = v => (v == null) ? 'var(--muted)' : (v < 3 ? 'var(--bad)' : v > 60 ? 'var(--warn)' : 'var(--ink)');
-    const avgFmt    = v => (v == null) ? '—' : (v.toFixed(1) + ' min');
+    const avgFmt    = v => (v == null) ? '-' : (v.toFixed(1) + ' min');
     tbody.innerHTML = sorted.map(r => `
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:10px 14px;font-weight:700;color:var(--navy);white-space:nowrap">${r.hq_user || '-'}</td>
