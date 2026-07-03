@@ -88,6 +88,14 @@ jobs:
         run: |
           set -euo pipefail
           COMPOSE_B64=$(base64 -w0 deploy/docker-compose.prod.yml 2>/dev/null || base64 -b0 deploy/docker-compose.prod.yml)
+          # Also ship the current refresh-env.sh so the host script never goes
+          # stale, then run it before restart to regenerate /opt/mda-dashboard/.env
+          # from Secrets Manager. Without this the .env is only updated by a manual
+          # run, so a rotated/added secret (e.g. SYNC_ENCRYPTION_KEY) silently
+          # leaves prod on a stale env. refresh-env.sh does an atomic mktemp->mv
+          # under `set -euo pipefail`, so a Secrets Manager hiccup aborts the
+          # deploy and leaves the existing good .env untouched.
+          REFRESH_B64=$(base64 -w0 deploy/refresh-env.sh 2>/dev/null || base64 -b0 deploy/refresh-env.sh)
           CMD_ID=$(aws ssm send-command \
               --region "$AWS_REGION" \
               --instance-ids "$EC2_INSTANCE_ID" \
@@ -100,6 +108,9 @@ jobs:
                 \"sudo /home/ec2-user/ecr-login.sh\",
                 \"echo ${COMPOSE_B64} | base64 -d | sudo tee /opt/mda-dashboard/docker-compose.yml > /dev/null\",
                 \"sudo chown ec2-user:ec2-user /opt/mda-dashboard/docker-compose.yml\",
+                \"echo ${REFRESH_B64} | base64 -d | sudo tee /opt/mda-dashboard/refresh-env.sh > /dev/null\",
+                \"sudo chmod +x /opt/mda-dashboard/refresh-env.sh\",
+                \"sudo /opt/mda-dashboard/refresh-env.sh\",
                 \"sudo docker compose pull\",
                 \"sudo docker compose up -d --remove-orphans\",
                 \"sleep 8\",
