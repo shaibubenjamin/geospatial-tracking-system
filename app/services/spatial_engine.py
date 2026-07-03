@@ -19,12 +19,30 @@ SETTLEMENT_SIMPLIFY_TOLERANCE = float(os.environ.get("SETTLEMENT_SIMPLIFY_TOLERA
 
 
 async def _resolve_boundary_pid(project_id: int, db: AsyncSession) -> int:
-    """Resolve a project_id to the canonical boundary-owning project for its state.
+    """Resolve a project_id to the boundary-owning project for its state.
 
-    Boundaries (LGAs/wards/settlements/grids) are state-level; we store them once,
-    typically under the first project created for that state. When the user is
-    viewing Sokoto R5 but boundaries live under Sokoto R4, this helper returns R4.
+    Preference order:
+
+    1. **The project's own boundaries** — if this project has any rows in
+       ``lgas``, use them. This is the correct behaviour for a round that
+       loaded its own updated boundary set (e.g. spelling corrections,
+       new/renamed LGAs) — the sibling round's older boundaries must not
+       overwrite that intent.
+
+    2. **The state's canonical boundary project** — the lowest-id sibling
+       (same ``state_name``) that has boundaries. Sokoto R5 has no boundary
+       rows of its own and legitimately shares Sokoto R4's polygons through
+       this path.
     """
+    # Step 1: does the requested project have its own boundaries?
+    own = await db.execute(
+        text("SELECT EXISTS (SELECT 1 FROM lgas WHERE project_id = :pid)"),
+        {"pid": project_id},
+    )
+    if own.scalar():
+        return project_id
+
+    # Step 2: fall back to the state's canonical boundary sibling.
     res = await db.execute(text("""
         SELECT MIN(p2.id)
         FROM geo_projects p1

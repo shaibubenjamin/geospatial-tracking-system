@@ -242,7 +242,7 @@ class MdaHousehold(Base):
     flag_gps_poor_accuracy = Column(Boolean, default=False)   # accuracy > 20m
     flag_gps_zero = Column(Boolean, default=False)            # lat==0 & lon==0
     flag_after_hours = Column(Boolean, default=False)         # outside 06:00-19:00
-    flag_fast_form = Column(Boolean, default=False)           # < 5 min
+    flag_fast_form = Column(Boolean, default=False)           # < 3 min
     flag_slow_form = Column(Boolean, default=False)           # > 60 min
     flag_sync_lag = Column(Boolean, default=False)            # > 48 h
     flag_refusal = Column(Boolean, default=False)
@@ -433,3 +433,25 @@ class SourceConnection(Base):
     status = Column(Text, default="configured")   # 'configured' | 'draft'
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserReport(Base):
+    """Operator concerns / issue reports filed from the dashboard "Report a Concern" widget.
+
+    Anyone (public, LGA-viewer, admin) can submit a report — no auth required, but the
+    user's role / username (if known) is captured for context. Admins read these in the
+    admin portal.
+    """
+    __tablename__ = "user_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(Text, nullable=False, default="general")   # 'bug' | 'data-issue' | 'feature' | 'general'
+    subject = Column(Text)
+    message = Column(Text, nullable=False)
+    reporter_email = Column(Text)
+    reporter_name = Column(Text)
+    reporter_role = Column(Text)               # snapshot at submit time: 'public' | 'analyst' | 'admin' | …
+    page_url = Column(Text)                    # where the user was when they reported
+    user_agent = Column(Text)
+    status = Column(Text, default="open")      # 'open' | 'in-progress' | 'resolved' | 'dismissed'
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)

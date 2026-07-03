@@ -74,6 +74,14 @@ as "zero coverage," so the picture stays honest.
 
 ---
 
+## Architecture
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the system architecture, with an editable
+diagram at [eritas-network-architecture.excalidraw](eritas-network-architecture.excalidraw)
+(open it at excalidraw.com).
+
+---
+
 ## Running locally
 
 ERITAS runs as a set of containers, so a local instance needs only Docker.
