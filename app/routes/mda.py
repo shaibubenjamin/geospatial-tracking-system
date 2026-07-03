@@ -2334,6 +2334,8 @@ async def coverage_refusals_analysis(
 
 @router.get("/coverage/lga-by-age")
 async def coverage_lga_by_age(
+    lga: Optional[str] = None,
+    ward: Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
@@ -2342,13 +2344,23 @@ async def coverage_lga_by_age(
     lgas = allowed_lgas_of(_u)
     lga_b = _lga_and(lgas, "lga", params)
     lga_h = _lga_and(lgas, "h.lga", params)
+    # Optional drill-down filters so the age chart re-scopes with the page.
+    f_b = ""; f_h = ""
+    if lga:
+        f_b += " AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga))"
+        f_h += " AND UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))"
+        params["lga"] = lga
+    if ward:
+        f_b += " AND UPPER(TRIM(ward)) = UPPER(TRIM(:ward))"
+        f_h += " AND UPPER(TRIM(h.ward_name)) = UPPER(TRIM(:ward))"
+        params["ward"] = ward
     res = await db.execute(text(f"""
         WITH baseline AS (
           SELECT INITCAP(TRIM(lga)) AS lga,
                  SUM(COALESCE(target_1_11_f,  0) + COALESCE(target_1_11_m,  0)) AS bl_1_11,
                  SUM(COALESCE(target_12_59_f, 0) + COALESCE(target_12_59_m, 0)) AS bl_12_59
           FROM mda_baseline
-          WHERE project_id = :pid{lga_b}
+          WHERE project_id = :pid{lga_b}{f_b}
           GROUP BY INITCAP(TRIM(lga))
         ),
         treated AS (
@@ -2362,7 +2374,7 @@ async def coverage_lga_by_age(
           WHERE h.project_id = :pid AND i.project_id = :pid
             AND i.age_in_months IS NOT NULL
             AND i.age_in_months BETWEEN 1 AND 59
-            AND h.lga IS NOT NULL{lga_h}
+            AND h.lga IS NOT NULL{lga_h}{f_h}
           GROUP BY INITCAP(TRIM(h.lga))
         )
         SELECT b.lga,
