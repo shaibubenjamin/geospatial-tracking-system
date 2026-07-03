@@ -3844,6 +3844,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             FILTER.lga = lga; FILTER.ward = '';
             delete built['teams']; delete built['trends'];
             _reloadOverviewKPIs();
+            // The LGA-level Treatment Coverage Summary now follows the drill-down.
+            buildLGATable('lga-table-body', filteredData());
             // Replace the LGA bar chart with ward drill-down
             drillDownToWards(lga);
             showToast('Drilled into ' + lga + ' - showing wards. Click any ward bar or click ' + lga + ' again to go back.');
@@ -4595,6 +4597,39 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   let geoNavLevel = 'lga';
   let geoNavData  = { lga: [], ward: [], settlement: [] };
   let geoCurrentLGA = null, geoCurrentWard = null;
+
+  // Administrative coverage (treated / target) keyed by name, for the map
+  // popups. The map COLOURS by visitation ("where have we physically been?"),
+  // but operators also want the coverage number. We reuse the same fixed
+  // /coverage endpoints as the Coverage Analysis page so a ward/LGA shows the
+  // SAME coverage figure everywhere on the dashboard.
+  let geoAdminCov = { lga: {}, ward: {} };
+  async function _loadGeoAdminCoverage() {
+    const [lgas, wards] = await Promise.all([
+      api('/api/mda/coverage/lga'),
+      api('/api/mda/coverage/ward'),
+    ]);
+    const lgaMap = {}, wardMap = {};
+    (lgas || []).forEach(r => {
+      const k = (r.lga || '').trim().toLowerCase();
+      if (k) lgaMap[k] = { pct: parseFloat(r.coverage_pct) || 0, treated: r.actual_treated || 0, target: r.baseline_total || 0 };
+    });
+    (wards || []).forEach(r => {
+      const k = (r.lga || '').trim().toLowerCase() + '|' + (r.ward_name || '').trim().toLowerCase();
+      if (k !== '|') wardMap[k] = { pct: parseFloat(r.coverage_pct) || 0, treated: r.actual_treated || 0, target: r.baseline_total || 0 };
+    });
+    geoAdminCov = { lga: lgaMap, ward: wardMap };
+  }
+  // Renders the "Coverage (treated/target)" popup line. Empty string when the
+  // ward/LGA has no target in the baseline, so the popup just shows visitation
+  // rather than a misleading 0%.
+  function _adminCovLine(level, key) {
+    const a = geoAdminCov[level] && geoAdminCov[level][key];
+    if (!a || !a.target) return '';
+    return '<span style="color:#5B6B82;font-size:11.5px">Coverage (treated/target): <b style="color:#006B2E">' +
+      a.pct.toFixed(1) + '%</b></span><br>' +
+      '<span style="color:#5B6B82;font-size:11px">' + Number(a.treated).toLocaleString() + ' / ' + Number(a.target).toLocaleString() + ' treated</span><br>';
+  }
   let geoLayerVis = { lga: true, ward: true, settlement: true, points: true };
   let geoLGAfc = EMPTY_FC, geoWardfc = EMPTY_FC, geoSettlementfc = EMPTY_FC;
 
@@ -4831,6 +4866,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     _loadGeoCompleteness();
     _loadCoverageSummary();
     _loadSettlementBreakdown();
+    _loadGeoAdminCoverage();
   }
 
   async function _loadGeoCompleteness() {
@@ -5497,6 +5533,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         '<b style="color:#003D1A">' + (p.lga_name || '-') + '</b><br>' +
         '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#006B2E">' + pct.toFixed(0) + '%</b></span><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (r.visited_settlements || 0) + '/' + (r.total_settlements || 0) + ' settlements visited</span><br>' +
+        _adminCovLine('lga', (p.lga_name || '').trim().toLowerCase()) +
         '<button onclick="window._geoDrillLGA(\'' + p.lgacode + '\')" ' +
           'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Drill into wards →</button>' +
         '</div>'
@@ -5511,6 +5548,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         '<b style="color:#003D1A">' + (p.ward_name || '-') + '</b><br>' +
         '<span style="color:#5B6B82;font-size:11px">' + (p.lga_name || '') + '</span><br>' +
         '<span style="color:#5B6B82;font-size:11.5px">Visitation: <b style="color:#006B2E">' + pct.toFixed(0) + '%</b></span><br>' +
+        _adminCovLine('ward', (p.lga_name || '').trim().toLowerCase() + '|' + (p.ward_name || '').trim().toLowerCase()) +
         '<button onclick="window._geoDrillWard(\'' + p.wardcode + '\')" ' +
           'style="margin-top:6px;background:#006B2E;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Show settlements →</button>' +
         '</div>'
