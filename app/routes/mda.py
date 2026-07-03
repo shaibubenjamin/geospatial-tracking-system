@@ -3089,18 +3089,47 @@ async def geo_wards_coverage(
     lga_sql = _lga_and(allowed_lgas_of(_u), "w.lga_name", params)
     res = await db.execute(text(f"""
         WITH cov AS (
+          -- Visitation: share of a ward's settlements physically reached
+          -- (a GPS visit or >=70% form completeness). This is what the map
+          -- COLOURS by: "where have we actually been?" - the natural question
+          -- for a map, and distinct from administrative coverage below.
           SELECT wardcode,
                  AVG(CASE WHEN is_visited OR COALESCE(completeness_pct, 0) >= 70
                           THEN 1.0 ELSE 0.0 END) AS frac
           FROM settlement_analytics
           WHERE project_id = :pid
           GROUP BY wardcode
+        ),
+        tgt AS (
+          -- Ward-level TARGET from the baseline workbook (same source as the
+          -- Coverage Analysis page's ward drill-down), keyed by ward name.
+          SELECT UPPER(TRIM(mb.lga))  AS lga_key,
+                 UPPER(TRIM(mb.ward)) AS ward_key,
+                 SUM(mb.total_treated) AS baseline_total
+          FROM mda_baseline mb
+          WHERE mb.project_id = :pid AND mb.ward IS NOT NULL AND TRIM(mb.ward) <> ''
+          GROUP BY 1, 2
+        ),
+        act AS (
+          -- Actual treated per ward from submitted households.
+          SELECT UPPER(TRIM(h.lga))       AS lga_key,
+                 UPPER(TRIM(h.ward_name))  AS ward_key,
+                 COALESCE(SUM(h.number_of_treated), 0) AS actual_treated
+          FROM mda_households h
+          WHERE h.project_id = :pid AND h.ward_name IS NOT NULL
+          GROUP BY 1, 2
         )
         SELECT w.ward_name, w.lga_name, w.wardcode,
                ST_AsGeoJSON(w.geom) AS geom,
-               COALESCE(cov.frac, 0)::float AS frac
+               COALESCE(cov.frac, 0)::float AS frac,
+               tgt.baseline_total AS target,
+               COALESCE(act.actual_treated, 0) AS treated
         FROM wards w
         LEFT JOIN cov ON cov.wardcode = w.wardcode
+        LEFT JOIN tgt ON tgt.lga_key = UPPER(TRIM(w.lga_name))
+                     AND tgt.ward_key = UPPER(TRIM(w.ward_name))
+        LEFT JOIN act ON act.lga_key = UPPER(TRIM(w.lga_name))
+                     AND act.ward_key = UPPER(TRIM(w.ward_name))
         WHERE w.project_id = :bpid{lga_sql}
     """), params)
     import json as _json
@@ -3109,13 +3138,25 @@ async def geo_wards_coverage(
         if not r.geom:
             continue
         frac = float(r.frac or 0)
+        target = float(r.target) if r.target is not None else None
+        treated = float(r.treated or 0)
+        # Administrative coverage = treated / ward-target (matches the Coverage
+        # Analysis page). None when this ward has no target in the baseline so
+        # the popup can say "no target" rather than a misleading 0%.
+        admin_cov = round(100.0 * treated / target, 1) if target and target > 0 else None
         features.append({
             "type": "Feature",
             "geometry": _json.loads(r.geom),
             "properties": {
                 "ward_name": r.ward_name,
                 "lga_name": r.lga_name,
+                # coverage_pct kept as visitation for backward-compatible map
+                # colouring; visitation_pct is the same value, named plainly.
                 "coverage_pct": round(100.0 * frac, 1),
+                "visitation_pct": round(100.0 * frac, 1),
+                "admin_coverage_pct": admin_cov,
+                "treated": int(treated),
+                "target": int(target) if target else None,
                 "is_at_target": frac >= 0.7,
             },
         })
