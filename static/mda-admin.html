@@ -1773,7 +1773,10 @@
     sel.innerHTML = projects.map(p => {
       // Use the user-set project name authoritatively. Falls back to a
       // composed "State Round N" only if name is missing.
-      const status   = p.is_active ? ' (live)' : '';
+      // "(live)" means the campaign is actually running (start reached, not yet
+      // ended) - NOT just is_active (the default round). An ended round like
+      // Sokoto R5 is is_active but must not read "live".
+      const status   = (function(){const t=new Date().toISOString().slice(0,10);const s=p.campaign_start_date,e=p.campaign_end_date;return (s&&s<=t&&!(e&&e<=t))?' (live)':'';})();
       const round    = p.round_number != null ? `Round ${p.round_number}` : null;
       const fallback = p.state_name && round ? `${p.state_name} ${round}` : (p.state_name || `Project ${p.id}`);
       const lbl      = (p.name || fallback) + status;
@@ -2136,7 +2139,10 @@
       // Use the user-set project name authoritatively (e.g. "Kano Pilot"
       // shows as named, not auto-composed into "Kano Round 1"). Falls back
       // to a composed label only when name is missing.
-      const status   = p.is_active ? ' (live)' : '';
+      // "(live)" means the campaign is actually running (start reached, not yet
+      // ended) - NOT just is_active (the default round). An ended round like
+      // Sokoto R5 is is_active but must not read "live".
+      const status   = (function(){const t=new Date().toISOString().slice(0,10);const s=p.campaign_start_date,e=p.campaign_end_date;return (s&&s<=t&&!(e&&e<=t))?' (live)':'';})();
       const round    = p.round_number != null ? `Round ${p.round_number}` : null;
       const fallback = p.state_name && round ? `${p.state_name} ${round}` : (p.state_name || `Project ${p.id}`);
       const lbl      = (p.name || fallback) + status;
