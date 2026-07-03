@@ -2042,32 +2042,58 @@ async def mda_coverage_ward(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Ward-level coverage vs baseline, optionally filtered by LGA."""
-    filters: list = []
-    params: dict = {}
+    """Ward-level administrative coverage, optionally filtered by LGA.
+
+    Anchored on the ward-level TARGETS in mda_baseline (the authoritative ward
+    list from the target workbook), not on the free-text ``ward_name`` typed on
+    each household. Household ward text is dirty (settlement / polling-unit names
+    leak in, and names repeat across LGAs), which used to surface ~40 "wards"
+    for an LGA that really has ~11. Anchoring on the targets returns exactly the
+    real wards, and coverage is the ward's own administrative coverage:
+    treated-in-ward / ward-target.
+    """
+    params: dict = {"pid": pid}
+    lgas = allowed_lgas_of(_u)
+    b_lga = a_lga = ""
     if lga:
-        filters.append("UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))")
+        b_lga = " AND UPPER(TRIM(mb.lga)) = UPPER(TRIM(:lga))"
+        a_lga = " AND UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))"
         params["lga"] = lga
-    where = _scoped_where(pid, filters, params, alias="h", lgas=allowed_lgas_of(_u))
+    b_scope = _lga_and(lgas, "mb.lga", params)   # per-user LGA access scope
+    a_scope = _lga_and(lgas, "h.lga", params)
     result = await db.execute(text(f"""
-        SELECT
-          h.ward_name,
-          h.lga,
-          COUNT(*) AS forms,
-          COALESCE(SUM(h.number_of_treated), 0) AS actual_treated,
-          COALESCE(b.baseline_total, 0) AS baseline_total,
-          CASE WHEN COALESCE(b.baseline_total, 0) > 0
-               THEN ROUND(100.0 * COALESCE(SUM(h.number_of_treated), 0) / b.baseline_total, 1)
-               ELSE 0 END AS coverage_pct,
-          COUNT(DISTINCT h.hq_user) AS teams,
-          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_reported
-        FROM mda_households h
-        LEFT JOIN (
-          SELECT UPPER(TRIM(lga)) AS lga, UPPER(TRIM(ward)) AS ward, SUM(total_treated) AS baseline_total
-          FROM mda_baseline WHERE project_id = :pid GROUP BY UPPER(TRIM(lga)), UPPER(TRIM(ward))
-        ) b ON UPPER(TRIM(h.lga)) = b.lga AND UPPER(TRIM(h.ward_name)) = b.ward
-        {where}
-        GROUP BY h.ward_name, h.lga, b.baseline_total
+        WITH tgt AS (
+          SELECT UPPER(TRIM(mb.lga))          AS lga_key,
+                 INITCAP(LOWER(TRIM(mb.lga)))  AS lga,
+                 UPPER(TRIM(mb.ward))          AS ward_key,
+                 INITCAP(LOWER(TRIM(mb.ward))) AS ward_name,
+                 SUM(mb.total_treated)         AS baseline_total
+          FROM mda_baseline mb
+          WHERE mb.project_id = :pid AND mb.ward IS NOT NULL AND TRIM(mb.ward) <> ''{b_lga}{b_scope}
+          GROUP BY 1, 2, 3, 4
+        ),
+        act AS (
+          SELECT UPPER(TRIM(h.lga))       AS lga_key,
+                 UPPER(TRIM(h.ward_name)) AS ward_key,
+                 COUNT(*)                 AS forms,
+                 COALESCE(SUM(h.number_of_treated), 0) AS actual_treated,
+                 COUNT(DISTINCT h.hq_user) AS teams,
+                 COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS days_reported
+          FROM mda_households h
+          WHERE h.project_id = :pid AND h.ward_name IS NOT NULL{a_lga}{a_scope}
+          GROUP BY 1, 2
+        )
+        SELECT t.ward_name, t.lga,
+               COALESCE(a.forms, 0)          AS forms,
+               COALESCE(a.actual_treated, 0) AS actual_treated,
+               t.baseline_total,
+               CASE WHEN t.baseline_total > 0
+                    THEN ROUND(100.0 * COALESCE(a.actual_treated, 0) / t.baseline_total, 1)
+                    ELSE 0 END               AS coverage_pct,
+               COALESCE(a.teams, 0)          AS teams,
+               COALESCE(a.days_reported, 0)  AS days_reported
+        FROM tgt t
+        LEFT JOIN act a ON a.lga_key = t.lga_key AND a.ward_key = t.ward_key
         ORDER BY coverage_pct DESC NULLS LAST
     """), params)
     rows = result.fetchall()
@@ -3452,21 +3478,24 @@ async def get_ward_list(
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """
-    Return wards derived from GPS spatial intersection with ward boundaries.
+    Return the real wards per LGA, anchored on the ward-level TARGETS in
+    mda_baseline (the target workbook) rather than the free-text ``ward_name``
+    typed on households. Household text is dirty - settlement / polling-unit
+    names leak in and repeat across LGAs - so it used to list ~40 "wards" for an
+    LGA that really has ~11. LGA/ward names are returned Title Case.
     - With ?lga=X  → list of ward names for that LGA
     - Without lga  → dict { lga_name: [ward1, ward2, ...] } for all LGAs
-    LGA names are Title Case (normalised to match shapefile).
     """
     lgas = allowed_lgas_of(_u)
     if lga:
         params: dict = {"pid": pid, "lga": lga}
         lga_sql = _lga_and(lgas, "lga", params)
         result = await db.execute(text(f"""
-            SELECT DISTINCT ward_name
-            FROM mda_households
+            SELECT DISTINCT INITCAP(LOWER(TRIM(ward))) AS ward_name
+            FROM mda_baseline
             WHERE project_id = :pid
-              AND ward_name IS NOT NULL
-              AND lga = :lga{lga_sql}
+              AND ward IS NOT NULL AND TRIM(ward) <> ''
+              AND UPPER(TRIM(lga)) = UPPER(TRIM(:lga)){lga_sql}
             ORDER BY ward_name
         """), params)
         return [r[0] for r in result.fetchall()]
@@ -3474,10 +3503,11 @@ async def get_ward_list(
         params = {"pid": pid}
         lga_sql = _lga_and(lgas, "lga", params)
         result = await db.execute(text(f"""
-            SELECT lga, ward_name
-            FROM mda_households
-            WHERE project_id = :pid AND ward_name IS NOT NULL AND lga IS NOT NULL{lga_sql}
-            GROUP BY lga, ward_name
+            SELECT DISTINCT INITCAP(LOWER(TRIM(lga)))  AS lga,
+                            INITCAP(LOWER(TRIM(ward))) AS ward_name
+            FROM mda_baseline
+            WHERE project_id = :pid AND ward IS NOT NULL AND TRIM(ward) <> ''
+              AND lga IS NOT NULL AND TRIM(lga) <> ''{lga_sql}
             ORDER BY lga, ward_name
         """), params)
         grouped: Dict[str, list] = {}
