@@ -474,9 +474,15 @@
         if (!res.ok) throw new Error('stats fetch failed');
         const d = await res.json();
 
+        // "live" only when the campaign is actually running - not just because
+        // this is the current/default round. A round that has ended (or hasn't
+        // started) shows its name without the "live" tag and a quiet grey dot.
+        const roundLive = !!d.is_live;
         setEl('lp-round-label', d.active_round_label
-            ? `${d.active_round_label} - live`
+            ? (roundLive ? `${d.active_round_label} - live` : d.active_round_label)
             : 'Campaign monitoring');
+        const _dot = document.querySelector('.lp-round-dot');
+        if (_dot) { _dot.style.background = roundLive ? '' : '#9ca3af'; _dot.style.animation = roundLive ? '' : 'none'; }
 
         // LGAs / Wards fall back to the static defaults if the boundary tables
         // are empty for this round (e.g. brand-new project before import).

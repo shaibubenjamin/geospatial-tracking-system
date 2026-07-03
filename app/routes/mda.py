@@ -772,6 +772,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     if not p:
         return {
             "active_round_label": "—",
+            "is_live": False,
             "total_treated": 0,
             "baseline_total": 0,
             "coverage_pct": 0,
@@ -792,6 +793,11 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     # days_active instead).
     start_d, end_d = p[3], p[4]
     planned_days = (end_d - start_d).days + 1 if (start_d and end_d) else None
+    # "live" means the campaign is actually running - started and not yet ended.
+    # A round that is only the default/shown one but hasn't started, or has
+    # ended, is NOT live.
+    _today = datetime.utcnow().date()
+    is_live = bool(start_d and start_d <= _today and (end_d is None or end_d >= _today))
 
     # Boundary tables are typically loaded under a single project per state
     # (R4 holds Sokoto's polygons; R5 reuses them) — count distinct codes
@@ -815,6 +821,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     baseline = int(row.baseline or 0)
     return {
         "active_round_label": label,
+        "is_live":         is_live,
         "total_treated":   treated,
         "baseline_total":  baseline,
         "coverage_pct":    round(100.0 * treated / baseline, 1) if baseline > 0 else 0,
