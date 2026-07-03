@@ -84,8 +84,8 @@ class MainActivity : ComponentActivity() {
                     if (!loggedIn) {
                         // Surface the non-blocking "update available" banner on the
                         // login screen too (it used to appear only post-login). A
-                        // too-old build never reaches here — UpdateGate shows the
-                        // blocking wall first — so this is purely the optional case.
+                        // too-old build never reaches here - UpdateGate shows the
+                        // blocking wall first - so this is purely the optional case.
                         LoginScreen(optionalUpdate = optionalUpdate, onLoggedIn = {
                             SessionManager.reset()
                             loggedIn = true
@@ -125,7 +125,7 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var bannerDismissed by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    // Set when a map pin is tapped on the Coverage tab — switches to the Geo tab
+    // Set when a map pin is tapped on the Coverage tab - switches to the Geo tab
     // focused on that LGA, and (for a settlement pin) zoomed onto the settlement.
     var mapFocusLga by remember { mutableStateOf<String?>(null) }
     var mapFocusSettlement by remember { mutableStateOf<String?>(null) }
@@ -157,7 +157,7 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 title = {
                     // Two-line title: the current SECTION/tab name is the bold,
                     // prominent line; the active campaign sits beneath it. On the
-                    // Dashboard the campaign line is the switcher — tap it (or the
+                    // Dashboard the campaign line is the switcher - tap it (or the
                     // swap icon) to change state/round.
                     Column {
                         Text(
@@ -239,7 +239,7 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 UpdateBanner(optionalUpdate) { bannerDismissed = true }
             }
             when (selectedTab) {
-                // Native dashboard — KPIs + cumulative trend (real Material 3
+                // Native dashboard - KPIs + cumulative trend (real Material 3
                 // layout, not the desktop /mda squeezed into a WebView).
                 Tab.DASHBOARD -> DashboardScreen(projectId)
                 // Native LGA → ward coverage drill-down. A row's map pin jumps to
@@ -252,7 +252,7 @@ private fun MainScaffold(optionalUpdate: VersionInfo?, onLogout: () -> Unit) {
                 )
                 // Native QC + team + daily-trend metrics.
                 Tab.QUALITY -> QualityScreen(projectId)
-                // Geographic — coverage % cards over the Leaflet map. Honour a
+                // Geographic - coverage % cards over the Leaflet map. Honour a
                 // pending LGA focus from a Coverage row's map pin.
                 Tab.GEO -> GeographicScreen(projectId, focusLga = mapFocusLga, focusSettlement = mapFocusSettlement)
                 Tab.FIELD_GUIDE -> MyAreaScreen(projectId)

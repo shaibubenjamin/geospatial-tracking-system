@@ -27,7 +27,7 @@ interface Api {
     @POST("/api/auth/login")
     suspend fun login(@Body request: LoginRequest): LoginResponse
 
-    // ── Gated app surface (/api/app/*) — requires a token + a current version ─
+    // ── Gated app surface (/api/app/*) - requires a token + a current version ─
 
     @GET("/api/app/projects")
     suspend fun projects(): List<ProjectDto>

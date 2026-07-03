@@ -37,7 +37,7 @@
     th{color:var(--muted);font-weight:600;font-size:10.5px}
     .pillbadge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;color:#fff}
     #msg{padding:22px 12px;text-align:center;color:var(--muted)}#msg.err{color:#b91c1c}
-    /* Charts MUST have a bounded-height parent — with maintainAspectRatio:false
+    /* Charts MUST have a bounded-height parent - with maintainAspectRatio:false
        and no container height, Chart.js grows the canvas to ~1000px (the "lag").*/
     .chartbox{position:relative;height:185px;margin-top:6px}
     canvas{max-width:100%}
@@ -74,10 +74,10 @@
     // ── OVERVIEW ─────────────────────────────────────────────────────────────
     RENDER.overview=function(){ Promise.all([cget('/api/app/overview'+q), cget('/api/app/trends/daily'+q).catch(function(){return[];})])
       .then(function(r){ var d=r[0]||{},daily=r[1]||[]; var cov=+d.coverage_pct||0;
-        var day=(d.current_campaign_day!=null)?(d.planned_duration_days!=null?d.current_campaign_day+' / '+d.planned_duration_days:String(d.current_campaign_day)):'—';
-        var avg=d.teams_active>0?Math.round(d.total_forms/d.teams_active):'—';
+        var day=(d.current_campaign_day!=null)?(d.planned_duration_days!=null?d.current_campaign_day+' / '+d.planned_duration_days:String(d.current_campaign_day)):'-';
+        var avg=d.teams_active>0?Math.round(d.total_forms/d.teams_active):'-';
         var ks=[['Children treated',fmt(d.total_treated)],['Forms submitted',fmt(d.total_forms)],['Teams active',fmt(d.teams_active)],
-          ['LGAs covered',String(d.lgas_covered||0)],['Campaign day',day],['Campaign duration',(d.planned_duration_days!=null?d.planned_duration_days+' days':'—')],
+          ['LGAs covered',String(d.lgas_covered||0)],['Campaign day',day],['Campaign duration',(d.planned_duration_days!=null?d.planned_duration_days+' days':'-')],
           ['QC flags',fmt(d.total_qc_flags)],['Error rate',pc(d.error_rate_pct)+'%'],['Refusals',fmt(d.refusals)],
           ['Avg forms/team',String(avg)],['GPS outside LGA',fmt(d.gps_outside_lga)],['Fast forms',fmt(d.fast_forms)]];
         W.innerHTML='<div class="hero" style="background:'+covColor(cov)+'"><div class="lbl">Administrative coverage</div><div class="pct">'+cov.toFixed(0)+'%</div>'+
@@ -98,7 +98,7 @@
       .then(function(r){ var d=r[0]||{}, rows=(r[1]||[]).slice().sort(function(a,b){return b.coverage_pct-a.coverage_pct;});
         var good=rows.filter(function(l){return l.coverage_pct>=80;}).length, below=rows.filter(function(l){return l.coverage_pct<60;}).length;
         W.innerHTML='<div class="grid">'+kpi('Overall coverage',pc(d.coverage_pct)+'%')+kpi('Baseline target',fmt(d.baseline_total))+kpi('Treated',fmt(d.total_treated))+
-          kpi('LGAs ≥80%',good+' / '+rows.length)+kpi('LGAs <60%',below+' / '+rows.length)+kpi('Campaign day',(d.current_campaign_day||'—'))+'</div>'+
+          kpi('LGAs ≥80%',good+' / '+rows.length)+kpi('LGAs <60%',below+' / '+rows.length)+kpi('Campaign day',(d.current_campaign_day||'-'))+'</div>'+
           '<div class="card"><h3>Treatment coverage by LGA</h3><div class="csub">Treated ÷ baseline · sorted</div><div id="lgalist"></div></div>';
         var L=document.getElementById('lgalist');
         L.innerHTML=rows.map(function(l){var c=covColor(l.coverage_pct),w=Math.max(0,Math.min(100,l.coverage_pct));
@@ -128,7 +128,7 @@
           kpi('Avg forms/team',fmt(avg))+'</div>'+
           '<div class="card"><h3>Top teams by forms</h3><div class="csub">'+fmt(total)+' teams · showing top 20</div>'+
           '<table><thead><tr><th>Team</th><th>LGA</th><th>Forms</th><th>/day</th><th>Treated</th></tr></thead><tbody id="tb"></tbody></table></div>';
-        document.getElementById('tb').innerHTML=top.map(function(t){return '<tr><td>'+(t.hq_user||'—')+(t.meets_target?' ✓':'')+'</td><td>'+(t.lga||'—')+'</td><td>'+fmt(t.total_forms)+'</td><td>'+Math.round(t.avg_per_day||0)+'</td><td>'+fmt(t.total_treated)+'</td></tr>';}).join('');
+        document.getElementById('tb').innerHTML=top.map(function(t){return '<tr><td>'+(t.hq_user||'-')+(t.meets_target?' ✓':'')+'</td><td>'+(t.lga||'-')+'</td><td>'+fmt(t.total_forms)+'</td><td>'+Math.round(t.avg_per_day||0)+'</td><td>'+fmt(t.total_treated)+'</td></tr>';}).join('');
       }).catch(function(e){ msg('Could not load teams: '+e.message,true); }); };
 
     // ── CAMPAIGN TRENDS ───────────────────────────────────────────────────────
@@ -140,7 +140,7 @@
         if(daily.length&&window.Chart){ chart=new Chart(document.getElementById('c'),{type:'bar',
           data:{labels:daily.map(function(p){return (p.date||'').slice(5);}),datasets:[{data:daily.map(function(p){return p.forms||0;}),backgroundColor:'#16A34A',borderRadius:4}]},
           options:{animation:false,plugins:{legend:{display:false}},maintainAspectRatio:false,scales:{y:{ticks:{font:{size:10}},grid:{color:'#f1f3f5'}},x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{display:false}}}}}); }
-        document.getElementById('rb').innerHTML=rounds.map(function(rd){return '<tr><td>'+(rd.round_label||'—')+'</td><td>'+fmt(rd.targeted)+'</td><td>'+fmt(rd.administered)+'</td><td>'+pc(rd.coverage_pct)+'%</td><td>'+fmt(rd.total_forms)+'</td></tr>';}).join('');
+        document.getElementById('rb').innerHTML=rounds.map(function(rd){return '<tr><td>'+(rd.round_label||'-')+'</td><td>'+fmt(rd.targeted)+'</td><td>'+fmt(rd.administered)+'</td><td>'+pc(rd.coverage_pct)+'%</td><td>'+fmt(rd.total_forms)+'</td></tr>';}).join('');
       }).catch(function(e){ msg('Could not load trends: '+e.message,true); }); };
 
     // ── LGA COVERAGE (drill: LGA → ward → settlement, by % visited) ──────────
@@ -162,7 +162,7 @@
     function drawLga(){ destroyChart();
       if(lgaState.level==='lga'){
         var rows=lprops(window._lgasFC).slice().sort(function(a,b){return b.visitation_pct-a.visitation_pct;});
-        W.innerHTML='<div class="card"><h3>LGA coverage — % visited</h3><div class="csub">'+rows.length+' LGAs · avg '+lavg(rows,'visitation_pct').toFixed(0)+'% · tap to drill · 📍 to map</div><div id="ll"></div></div>';
+        W.innerHTML='<div class="card"><h3>LGA coverage - % visited</h3><div class="csub">'+rows.length+' LGAs · avg '+lavg(rows,'visitation_pct').toFixed(0)+'% · tap to drill · 📍 to map</div><div id="ll"></div></div>';
         document.getElementById('ll').innerHTML=rows.map(function(p){ var c=covColor(p.visitation_pct);
           return '<div class="row" onclick="lgaOpen(\''+p.lgacode+'\')" style="cursor:pointer"><div class="nm">'+(p.lga_name||p.lgacode)+lbar(p.visitation_pct)+'</div>'+
             '<div class="rt" style="color:'+c+'">'+pc(p.visitation_pct)+'%</div>'+
@@ -170,18 +170,18 @@
       } else if(lgaState.level==='ward'){
         var lga=lgaState.lga;
         var rows=lprops(window._wardsFC).filter(function(w){return w.lga_name===lga.lga_name;}).sort(function(a,b){return b.visitation_pct-a.visitation_pct;});
-        W.innerHTML='<div class="card">'+lback('LGAs')+mapBtn(lga.lgacode)+'<h3>'+lga.lga_name+' — wards</h3><div class="csub">'+rows.length+' wards · avg '+lavg(rows,'visitation_pct').toFixed(0)+'% visited · LGA '+pc(lga.visitation_pct)+'%</div><div id="ll"></div></div>';
+        W.innerHTML='<div class="card">'+lback('LGAs')+mapBtn(lga.lgacode)+'<h3>'+lga.lga_name+' - wards</h3><div class="csub">'+rows.length+' wards · avg '+lavg(rows,'visitation_pct').toFixed(0)+'% visited · LGA '+pc(lga.visitation_pct)+'%</div><div id="ll"></div></div>';
         document.getElementById('ll').innerHTML=rows.length?rows.map(function(w){ var c=covColor(w.visitation_pct), nm=(w.ward_name||'').replace(/'/g,"\\'");
           return '<div class="row" onclick="wardOpen(\''+nm+'\')" style="cursor:pointer"><div class="nm">'+(w.ward_name||w.wardcode)+'<small>'+(w.settlements_visited||0)+' / '+(w.settlements||0)+' settlements visited</small>'+lbar(w.visitation_pct)+'</div><div class="rt" style="color:'+c+'">'+pc(w.visitation_pct)+'%</div></div>'; }).join(''):'<div id="msg">No wards.</div>';
       } else {
         var w=lgaState.ward, code=lgaState.lga.lgacode;
-        W.innerHTML='<div class="card">'+lback('Wards')+mapBtn(lgaState.lga.lgacode)+'<h3>'+w.ward_name+' — settlements</h3><div class="csub" id="ss">Loading…</div><div id="ll"></div></div>';
+        W.innerHTML='<div class="card">'+lback('Wards')+mapBtn(lgaState.lga.lgacode)+'<h3>'+w.ward_name+' - settlements</h3><div class="csub" id="ss">Loading…</div><div id="ll"></div></div>';
         cget('/api/app/geo/settlements?lgacode='+encodeURIComponent(code)+qa).then(function(d){
           var rows=(d.features||[]).map(function(f){return f.properties;}).filter(function(s){return s.ward_name===w.ward_name;});
           var nv=rows.filter(function(s){return s.is_visited;}).length;
           document.getElementById('ss').textContent=rows.length+' settlements · '+nv+' visited';
           document.getElementById('ll').innerHTML=rows.length?rows.map(function(s){ var cp=(s.completeness_pct!=null?s.completeness_pct:(s.is_visited?100:0)); var c=covColor(cp);
-            return '<div class="row"><div class="nm">'+(s.settlement_name||'—')+lbar(cp)+'</div><div class="rt" style="color:'+c+'">'+pc(cp)+'%</div></div>'; }).join(''):'<div id="msg">No settlements.</div>';
+            return '<div class="row"><div class="nm">'+(s.settlement_name||'-')+lbar(cp)+'</div><div class="rt" style="color:'+c+'">'+pc(cp)+'%</div></div>'; }).join(''):'<div id="msg">No settlements.</div>';
         }).catch(function(e){ document.getElementById('ss').textContent='Error: '+e.message; });
       }
     }

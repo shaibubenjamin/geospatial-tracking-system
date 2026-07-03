@@ -64,7 +64,7 @@ fun openUpdateUrl(context: Context, info: VersionInfo) {
  * app, passing an optional VersionInfo when a non-blocking update exists so
  * the host can show a dismissible banner.
  *
- * If /version is unreachable we do NOT block — the server's 426 gate is the
+ * If /version is unreachable we do NOT block - the server's 426 gate is the
  * real enforcement, so an offline launch still lets the user in (and any data
  * call will be rejected server-side if the client is genuinely too old).
  */
@@ -86,7 +86,7 @@ fun UpdateGate(content: @Composable (optionalUpdate: VersionInfo?) -> Unit) {
         }
     }
 
-    // A mid-session 426 (server rejected this build as too old) trips this —
+    // A mid-session 426 (server rejected this build as too old) trips this -
     // flip to the blocking wall instead of letting a raw "HTTP 426" surface on
     // a screen. We fetch the latest /version for the wall's copy; if that fails,
     // fall back to a generic message pointing at the download URL.
@@ -170,7 +170,7 @@ private fun UpdateRequiredScreen(info: VersionInfo) {
             }
             Spacer(Modifier.height(14.dp))
             Text(
-                "Opens the download page in your browser — tap the file when it " +
+                "Opens the download page in your browser - tap the file when it " +
                     "finishes to install.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.8f),
