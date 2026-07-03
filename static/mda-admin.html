@@ -2919,27 +2919,26 @@
         const s = p.campaign_start_date, e = p.campaign_end_date;
         const running = s && s <= today && (!e || e > today);
         const ended   = s && e && e <= today;
+        // Two short primary buttons (dashboard toggle + campaign toggle); the
+        // state labels live in the Dashboard/Visibility columns, so the buttons
+        // only need the verb.
         const actions = [];
-        // Dashboard visibility - additive: showing one does NOT hide the others.
-        if (p.show_on_dashboard) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="removeFromDashboard(${p.id},'${esc(p.name)}')" title="Hide this round from the dashboard switcher"><i class="fa-solid fa-eye-slash"></i> Remove from dashboard</button>`);
-        } else {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="showOnDashboard(${p.id})" title="Add this round to the dashboard switcher (does not hide others or start the campaign)"><i class="fa-solid fa-display"></i> Show on dashboard</button>`);
-        }
-        // Campaign lifecycle - Start / End (stamps the dates, drives auto-sync).
-        if (running) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="Close the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End Campaign</button>`);
-        } else {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="Begin the campaign: stamps today as the start date, starts auto-sync, and shows it on the dashboard"><i class="fa-solid fa-play"></i> ${ended ? 'Restart Campaign' : 'Start Campaign'}</button>`);
-        }
-        actions.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
+        actions.push(p.show_on_dashboard
+          ? `<button class="btn btn-ghost btn-sm" onclick="removeFromDashboard(${p.id},'${esc(p.name)}')" title="Hide this round from the dashboard switcher (data untouched)"><i class="fa-solid fa-eye-slash"></i> Hide</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="showOnDashboard(${p.id})" title="Add this round to the dashboard switcher (additive - does not hide others or start the campaign)"><i class="fa-solid fa-display"></i> Show</button>`);
+        actions.push(running
+          ? `<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="Start the campaign: stamps today as the start date, starts auto-sync, and shows it on the dashboard"><i class="fa-solid fa-play"></i> ${ended ? 'Restart' : 'Start'}</button>`);
+        // Secondary actions as compact icon-only buttons (edit, visibility, delete).
+        const icons = [];
+        icons.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
         if (isSuperadmin) {
-          actions.push(p.is_public
-            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Visible to anyone on the public dashboard - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i> Make private</button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Only signed-in staff can see it - click to show on the public dashboard"><i class="fa-solid fa-lock"></i> Make public</button>`);
+          icons.push(p.is_public
+            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Public - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i></button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Private - click to make public"><i class="fa-solid fa-lock"></i></button>`);
         }
         if (!p.is_active) {
-          actions.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
+          icons.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
         }
         const timeline = ended ? `ran ${fmtD(s)} to ${fmtD(e)}`
                        : running ? `started ${fmtD(s)}`
@@ -2951,7 +2950,13 @@
           <td>${statusChip(p)}<br><small style="color:var(--muted)">${timeline}</small></td>
           <td>${dashCell(p)}</td>
           <td>${visCell(p)}</td>
-          <td>${actions.join(' ')}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
+              ${actions.join('')}
+              <span style="width:1px;align-self:stretch;background:var(--line);margin:2px 3px"></span>
+              ${icons.join('')}
+            </div>
+          </td>
         </tr>`;
       }).join('');
       container.innerHTML = `
