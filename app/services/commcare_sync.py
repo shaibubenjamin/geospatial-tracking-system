@@ -608,18 +608,11 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                         conn.rollback()
                     continue
 
-        # 5. Spatial QC + settlement_analytics — only if at least one set succeeded.
-        #    Runs across the whole project so the dashboard reflects all rows
-        #    (including from successful sets in earlier syncs).
-        if sets_succeeded:
-            _run_spatial_qc(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
-            _recompute_settlement_analytics(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
-            conn.commit()
-
-        # 6. Final status: ok / partial / error / cancelled. "cancelled"
-        #    wins when the user pressed Stop — even if some sets succeeded,
-        #    we report that the run was cut short so the UI can show the
-        #    right chip + tooltip.
+        # 5. Final status FIRST — the rows are already persisted per-set, so we
+        #    finalize the run BEFORE the heavy spatial recompute below. That way a
+        #    slow settlement_analytics rebuild can never leave the run orphaned at
+        #    'running' (the bug that stuck Kano R3 at 100% "loading" for 40+ min).
+        #    "cancelled" wins when the user pressed Stop.
         # ``total_fetched`` counts rows from CommCare. ``total_new`` counts
         # the rows that actually got written to the DB after the watermark
         # filter (the meaningful number for the operator).
@@ -655,6 +648,26 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
             WHERE id=%s
         """, (final_status, total_fetched, total_new, final_error, history_id))
         conn.commit()
+
+        # 6. Spatial QC + settlement_analytics rebuild — best-effort, AFTER the run
+        #    is finalized. Bounded by a per-statement timeout so a pathological
+        #    spatial join (Kano R3 = 770k grid cells) can never again run for 40+
+        #    minutes holding locks. On timeout/failure the synced rows + coverage
+        #    numbers still stand; only the settlement/grid map layer is deferred to
+        #    the next run. Runs across the whole project so the map reflects rows
+        #    from earlier successful sets too.
+        if sets_succeeded:
+            try:
+                ph_cur.execute("SET LOCAL statement_timeout = '300s'")
+                _run_spatial_qc(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
+                _recompute_settlement_analytics(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                logger.exception(
+                    "Post-sync spatial recompute failed/timed out for project %s "
+                    "(data is synced; settlement map layer may be stale)", project_id,
+                )
 
         return {
             "ok": final_status in ("ok", "partial"),
