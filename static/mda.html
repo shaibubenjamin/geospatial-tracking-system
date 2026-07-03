@@ -1088,6 +1088,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                   <th style="padding:10px 14px;text-align:left;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('hq_user')">Team (hq_user) <span id="qcts-hq_user"></span></th>
                   <th style="padding:10px 14px;text-align:left;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('lga')">LGA <span id="qcts-lga"></span></th>
                   <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('total_forms')">Total Records <span id="qcts-total_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('avg_duration_min')" title="Average time from form start to submit for this team (excludes forms >6h left open)">Avg Time <span id="qcts-avg_duration_min"></span></th>
                   <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('forms_with_error')">Records w/ Error <span id="qcts-forms_with_error"></span></th>
                   <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('error_rate')">Error Rate <span id="qcts-error_rate">▼</span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_forms')">Dup Forms <span id="qcts-dup_forms"></span></th>
@@ -1099,7 +1100,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                 </tr>
               </thead>
               <tbody id="qc-teams-tbody">
-                <tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
+                <tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -3428,7 +3429,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const tbody = document.getElementById('qc-teams-tbody');
     if (!tbody) return;
     if (!qcTeamsData.length) {
-      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No team data available yet for this project. Sync some forms to populate this table.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No team data available yet for this project. Sync some forms to populate this table.</td></tr>';
       return;
     }
     const { col, asc } = qcTeamsSort;
@@ -3439,16 +3440,24 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       return asc ? va - vb : vb - va;
     });
     // Update sort indicators in header
-    ['hq_user','lga','total_forms','forms_with_error','error_rate','dup_forms','gps_issues','after_hours','fast_forms','sync_lag','refusals'].forEach(c => {
+    ['hq_user','lga','total_forms','avg_duration_min','forms_with_error','error_rate','dup_forms','gps_issues','after_hours','fast_forms','sync_lag','refusals'].forEach(c => {
       const el = document.getElementById('qcts-' + c);
       if (el) el.textContent = c === col ? (asc ? '▲' : '▼') : '';
     });
     const errColour = r => r.error_rate >= 30 ? 'var(--bad)' : r.error_rate >= 15 ? 'var(--warn)' : 'var(--good)';
+    // Team's average form-completion time in minutes. Colour a fast average
+    // (<3 min) red so reviewers spot teams whose typical form isn't just
+    // occasionally rushed but systematically so; slow (>60 min) is muted
+    // amber because that's more often a device / connectivity signal than
+    // a data-quality one.
+    const avgColour = v => (v == null) ? 'var(--muted)' : (v < 3 ? 'var(--bad)' : v > 60 ? 'var(--warn)' : 'var(--ink)');
+    const avgFmt    = v => (v == null) ? '—' : (v.toFixed(1) + ' min');
     tbody.innerHTML = sorted.map(r => `
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:10px 14px;font-weight:700;color:var(--navy);white-space:nowrap">${r.hq_user || '-'}</td>
         <td style="padding:10px 14px;color:var(--muted);white-space:nowrap">${r.lga || '-'}</td>
         <td style="padding:10px 14px;text-align:right">${(r.total_forms||0).toLocaleString()}</td>
+        <td style="padding:10px 14px;text-align:right;color:${avgColour(r.avg_duration_min)};font-weight:600">${avgFmt(r.avg_duration_min)}</td>
         <td style="padding:10px 14px;text-align:right;color:${errColour(r)};font-weight:700">${(r.forms_with_error||0).toLocaleString()}</td>
         <td style="padding:10px 14px;text-align:right">
           <span style="background:${r.error_rate>=30?'var(--bad-bg)':r.error_rate>=15?'var(--warn-bg)':'var(--good-bg)'};color:${errColour(r)};padding:2px 8px;border-radius:99px;font-weight:700;font-size:11.5px">${r.error_rate}%</span>

@@ -1535,7 +1535,15 @@ async def qc_teams_summary(
           SUM(CASE WHEN flag_fast_form         THEN 1 ELSE 0 END)        AS fast_forms,
           SUM(CASE WHEN flag_slow_form         THEN 1 ELSE 0 END)        AS slow_forms,
           SUM(CASE WHEN flag_sync_lag          THEN 1 ELSE 0 END)        AS sync_lag,
-          SUM(CASE WHEN flag_refusal           THEN 1 ELSE 0 END)        AS refusals
+          SUM(CASE WHEN flag_refusal           THEN 1 ELSE 0 END)        AS refusals,
+          -- Per-team average form completion time. Same clipping window as
+          -- /qc/summary and /qc/duration-histogram (>0 and <360 min) so a
+          -- device-left-open outlier can't blow up one team's average.
+          ROUND(AVG(form_duration_min) FILTER (
+              WHERE form_duration_min IS NOT NULL
+                AND form_duration_min > 0
+                AND form_duration_min < 360
+          )::numeric, 2)                                                 AS avg_duration_min
         FROM mda_households {where}
         GROUP BY hq_user, lga
         ORDER BY forms_with_error DESC, total_forms DESC
@@ -1545,12 +1553,15 @@ async def qc_teams_summary(
         "hq_user","lga","total_forms","forms_with_error",
         "dup_forms","dup_gps","gps_outside_lga","poor_gps",
         "after_hours","fast_forms","slow_forms","sync_lag","refusals",
+        "avg_duration_min",
     ]
     out = []
     for row in rows:
         d = dict(zip(keys, row))
-        for k in keys[2:]:
+        # int-coerce the count columns (skip the float duration column)
+        for k in keys[2:-1]:
             d[k] = int(d[k] or 0)
+        d["avg_duration_min"] = float(d["avg_duration_min"]) if d["avg_duration_min"] is not None else None
         d["error_rate"] = round(100.0 * d["forms_with_error"] / d["total_forms"], 1) if d["total_forms"] else 0
         out.append(d)
     return out
@@ -1886,14 +1897,24 @@ async def mda_coverage_lga(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Coverage per LGA. The universe of LGAs is the union of
-    baseline-targeted LGAs and LGAs that have submitted at least one form.
+    """Coverage per LGA. The universe of LGAs is the union of:
+      - baseline-targeted LGAs
+      - LGAs that have submitted at least one form
+      - the project's in-scope LGA list (see app.services.project_scope) —
+        pulled from the boundary table so a data-collection LGA appears
+        even before any target is uploaded or any form is synced.
 
-    Why a union: pre-rollout (no baseline yet) a state still wants the LGA
-    bar chart to show the forms it's already syncing. Post-baseline a
-    targeted LGA must still appear even if zero forms have arrived (so the
-    "below 60% → mop-up" lens is honest about coverage gaps).
+    Why a union of all three: pre-rollout (no baseline yet) a state still
+    wants the LGA bar chart to show the forms it's already syncing. Post-
+    baseline a targeted LGA must still appear even if zero forms have
+    arrived. And a scope-registered LGA (Kano R3's 36) must appear even if
+    it has neither a baseline row nor any household forms yet — otherwise
+    the operator's "36 collection LGAs" get collapsed to whatever subset
+    the baseline sheet happened to cover.
     """
+    from app.services.project_scope import in_scope_lgas_for  # local — avoids circular
+    from app.services.spatial_engine import _resolve_boundary_pid
+
     # Filters that apply on the household side (date/ward). pid is added
     # separately because it gates the household subquery directly.
     hh_filters: list = ["h.project_id = :pid"]
@@ -1921,6 +1942,44 @@ async def mda_coverage_lga(
     lga_filter_baseline += _lga_and(lgas, "lga", params)
     lga_filter_hh += _lga_and(lgas, "h.lga", params)
 
+    # Look up whether this project has a registered "in-scope LGA" list
+    # (currently only Kano R3). If yes, we'll pull that LGA set from the
+    # boundary table as a third contributor to the universe CTE below.
+    scope_names_lower: Optional[list[str]] = None
+    p_row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :pid"),
+        {"pid": pid},
+    )).fetchone()
+    if p_row:
+        scope_set = in_scope_lgas_for(p_row[0], p_row[1])
+        if scope_set:
+            scope_names_lower = [n.strip().lower() for n in scope_set]
+
+    # Conditionally add a `scope_lgas` CTE + UNION arm. Kept out of the SQL
+    # entirely when scope_names_lower is None so Sokoto R4/R5/Kano Pilot see
+    # exactly the same query they've always seen.
+    scope_cte      = ""
+    scope_union    = ""
+    if scope_names_lower is not None:
+        boundary_pid = await _resolve_boundary_pid(pid, db)
+        params["boundary_pid"]     = boundary_pid
+        params["scope_names_lower"] = scope_names_lower
+        # LGA-scoped user restriction (allowed_lgas) also applied here so an
+        # LGA-scoped account never widens its view via the scope path.
+        scope_lga_and = _lga_and(lgas, "l.lga_name", params)
+        scope_cte = f"""
+          scope_lgas AS (
+            SELECT
+              INITCAP(LOWER(TRIM(l.lga_name))) AS lga,
+              UPPER(TRIM(l.lga_name))          AS lga_key
+            FROM lgas l
+            WHERE l.project_id = :boundary_pid
+              AND LOWER(TRIM(l.lga_name)) = ANY(:scope_names_lower)
+              {scope_lga_and}
+          ),
+        """
+        scope_union = "UNION SELECT lga_key, lga FROM scope_lgas"
+
     result = await db.execute(text(f"""
         WITH baseline AS (
           SELECT
@@ -1945,10 +2004,12 @@ async def mda_coverage_lga(
             AND h.lga IS NOT NULL AND TRIM(h.lga) <> ''
           GROUP BY 1, 2
         ),
+        {scope_cte}
         universe AS (
           SELECT lga_key, lga FROM baseline
           UNION
           SELECT lga_key, lga FROM hh
+          {scope_union}
         )
         SELECT
           u.lga,
