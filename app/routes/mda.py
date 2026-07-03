@@ -1752,27 +1752,17 @@ async def mda_overview(
     # the boundary settlement count (each settlement should be visited at
     # least once) so projects without a campaign-window configured still
     # get a meaningful target.
+    # Forms target = the delivery-capacity estimate ONLY: active teams × 80
+    # forms/team/day × planned campaign-days. If there's no campaign window
+    # (no planned_duration_days) or no teams reporting yet, we return None so
+    # the card shows "no target yet" rather than a misleading value. We used
+    # to fall back to the boundary settlement count, but that isn't an
+    # accurate forms target - a value must be accurate or absent.
     target_forms: Optional[int] = None
     teams = d.get("teams_active") or 0
     pdd = d.get("planned_duration_days")
     if teams > 0 and pdd:
         target_forms = teams * 80 * int(pdd)
-    if not target_forms:
-        # Boundaries are typically attached to the canonical project for the
-        # state (Sokoto R4 holds Sokoto's polygons; R5 reuses them). Use the
-        # min project id in this state that has settlement rows.
-        s_res = await db.execute(text("""
-            SELECT COALESCE((
-              SELECT COUNT(*) FROM settlements
-              WHERE project_id = (
-                SELECT MIN(p2.id) FROM geo_projects p1
-                JOIN geo_projects p2 ON p2.state_name = p1.state_name
-                WHERE p1.id = :pid
-                  AND EXISTS (SELECT 1 FROM settlements s WHERE s.project_id = p2.id)
-              )
-            ), 0)
-        """), {"pid": pid})
-        target_forms = int(s_res.scalar() or 0) or None
     d["target_forms"] = target_forms
 
     # Repeat-group drift QC. Counts households whose form-level
