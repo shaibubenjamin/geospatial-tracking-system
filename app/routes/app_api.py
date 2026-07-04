@@ -242,27 +242,18 @@ async def app_coverage_settlement(
 # GET /api/app/geo/wards — ward polygons + coverage in one call (map layer).
 # ─────────────────────────────────────────────────────────────────────────────
 async def _boundary_pid(pid: int, db: AsyncSession) -> int:
-    """Resolve which project holds the ward polygons for ``pid``'s state.
+    """Resolve which project holds the boundary polygons for ``pid``'s state.
 
-    Boundaries are typically attached to the canonical project for a state
-    (e.g. Sokoto R4 holds Sokoto's polygons; R5 reuses them), while coverage
-    analytics are computed per round. This returns the lowest-id project in
-    the same state that actually has ward rows, falling back to ``pid``.
+    Delegates to the shared ``_resolve_boundary_pid`` (own-boundaries-first) so
+    the app resolves the SAME boundary as the web analytics and the sync
+    recompute. A round with its own boundary set (e.g. Kano R3, project 4) is
+    served against its own polygons; a round without (Sokoto R5) reuses the
+    state's canonical set. Previously this returned the lowest-id sibling, which
+    made the app read a different boundary than settlement_analytics was keyed to
+    (wardcodes didn't match → 0 coverage everywhere).
     """
-    res = await db.execute(
-        text(
-            """
-            SELECT MIN(p2.id)
-            FROM geo_projects p1
-            JOIN geo_projects p2 ON p2.state_name = p1.state_name
-            WHERE p1.id = :pid
-              AND EXISTS (SELECT 1 FROM wards w WHERE w.project_id = p2.id)
-            """
-        ),
-        {"pid": pid},
-    )
-    row = res.fetchone()
-    return int(row[0]) if row and row[0] is not None else pid
+    from app.services.spatial_engine import _resolve_boundary_pid
+    return await _resolve_boundary_pid(pid, db)
 
 
 @router.get("/geo/wards")
