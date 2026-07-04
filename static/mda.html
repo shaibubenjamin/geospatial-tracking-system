@@ -3784,6 +3784,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   function _covDrillChart(el, labels, values, rows, onBarClick, opts) {
     opts = opts || {};
     const noPct = !!opts.noPercent;  // settlement level: no target → no coverage %
+    // Reserve enough width for the y-axis (ward/settlement) labels so long names
+    // like "Dorawar Sallau" aren't clipped at the canvas edge. ~6.5px per char
+    // at 10.5px Inter, + padding, capped so one very long name can't eat the plot.
+    const _lblW = Math.min(170, Math.max(64, Math.max(0, ...labels.map(l => String(l || '').length)) * 6.5 + 14));
     new Chart(el, {
       type: 'bar',
       data: { labels, datasets: [{ label: noPct ? 'Settlements' : 'Coverage %', data: values,
@@ -3810,7 +3814,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             return ' ' + (ctx.raw || 0).toFixed(1) + '%' + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
           } } }
         },
-        scales: { x: noPct ? { display: false } : { display: false, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
+        scales: {
+          x: noPct ? { display: false } : { display: false, max: 100 },
+          y: { grid: { display: false }, ticks: { font: { size: 10.5 }, autoSkip: false },
+               afterFit: (s) => { s.width = Math.max(s.width, _lblW); } }
+        },
         maintainAspectRatio: false
       }
     });
