@@ -1078,7 +1078,18 @@ async def rounds_lga_compare(
             "coverage_pct": round(100.0 * tr / bl, 1) if bl > 0 else 0.0,
         }
     rounds_meta = [{"round_number": rn} for rn in sorted([x for x in seen_rounds if x is not None])]
-    return {"rounds": rounds_meta, "lgas": list(by_lga.values())}
+    # The round the caller is actually looking at, so the client shows THAT
+    # round's per-LGA progress instead of a hardcoded one. When scoped to a
+    # project, it's that project's round; otherwise the latest round present.
+    active_round = None
+    if project_id is not None:
+        active_round = (await db.execute(
+            text("SELECT round_number FROM geo_projects WHERE id = :pid"),
+            {"pid": project_id},
+        )).scalar()
+    if active_round is None and rounds_meta:
+        active_round = rounds_meta[-1]["round_number"]
+    return {"rounds": rounds_meta, "active_round": active_round, "lgas": list(by_lga.values())}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

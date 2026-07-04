@@ -293,7 +293,8 @@ tbody tr:hover{background:var(--pale)}
    Inner layout: icon and value share row 1 (icon left, value right of it);
    label + description flow underneath. The two-column CSS grid handles this
    without any HTML restructuring of the existing markup. */
-.qc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px;align-items:start}
+.qc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;align-items:start}
+@media(max-width:1200px){.qc-grid{grid-template-columns:repeat(2,1fr)}}
 .qc-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:4px;align-items:start;transition:box-shadow .15s,transform .15s}
 .qc-tile:hover{box-shadow:0 4px 14px rgba(0,0,0,.06);transform:translateY(-1px)}
 .qc-icon{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-size:17px;grid-row:1;grid-column:1;align-self:center;margin-bottom:0}
@@ -991,7 +992,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         </div>
 
         <!-- QC totals KPI row -->
-        <div class="kpi-grid cols-2" style="margin-bottom:12px">
+        <div class="kpi-grid cols-4" style="margin-bottom:12px">
           <div class="kpi accent">
             <div class="kpi-icon-strip"><i class="fa-solid fa-flag"></i></div>
             <div class="lbl">Total Quality Check (QC) Flags</div>
@@ -1018,10 +1019,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           </div>
         </div>
 
-        <!-- Quality-check detail tiles in a uniform 2-column grid (10 tiles = 5
-             even rows), so with the 4-card summary band above (2 rows of 2) the
-             whole page reads as 7 clean rows of 2 with no orphan tile. Tiles stay
-             grouped: form integrity, then timing patterns, then location + outcome. -->
+        <!-- Quality-check detail tiles in a 4-column grid (10 tiles = 4+4+2), so
+             with the 4-card summary band above (one row of 4) columns line up and
+             the tiles keep a comfortable width — 2-col stretched them too wide on
+             large screens. Grouped: form integrity, timing patterns, location +
+             outcome. Drops to 2-col ≤1200px and 1-col on mobile. -->
         <div class="qc-grid">
           <!-- Row 1: Form integrity -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-file-circle-check"></i></div><div class="qc-val" id="qc-total-forms">-</div><div class="qc-lbl">Total Forms Analysed</div><div class="qc-desc">All household MDA forms checked for data quality issues</div></div>
@@ -2180,6 +2182,15 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
 
   let _lgaCompareCache = null;
+  // The round key to read from an lga-compare payload: the round the caller is
+  // viewing (active_round), else the latest round present. Returned as a string
+  // because rounds{} is keyed by stringified round numbers.
+  function _lgaCompareRound(data) {
+    if (data && data.active_round != null) return String(data.active_round);
+    const rs = (data && data.rounds) || [];
+    if (!rs.length) return null;
+    return String(Math.max(...rs.map(r => r.round_number)));
+  }
   function _renderLGACompareTable(data) {
     const tbody = document.getElementById('lga-compare-tbody');
     if (!tbody) return;
@@ -2188,16 +2199,17 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       return;
     }
     _lgaCompareCache = data;
-    // Target column comes from the R5 baseline (mda_baseline.total_treated),
-    // exposed by the lga-compare endpoint as rounds[5].baseline. R4 columns
-    // and the delta are no longer rendered.
+    // Show the round the user is actually viewing. The endpoint reports it as
+    // active_round (falls back to the latest round present); hardcoding a round
+    // (e.g. R5) made every row read 0 on any other round, e.g. Kano R3.
+    const activeRound = _lgaCompareRound(data);
     const rows = [...data.lgas].sort((a, b) => {
-      const av = a.rounds['5']?.coverage_pct || 0;
-      const bv = b.rounds['5']?.coverage_pct || 0;
+      const av = a.rounds[activeRound]?.coverage_pct || 0;
+      const bv = b.rounds[activeRound]?.coverage_pct || 0;
       return bv - av;
     });
     tbody.innerHTML = rows.map(r => {
-      const r5 = r.rounds['5'] || { baseline: 0, treated: 0, coverage_pct: 0 };
+      const r5 = r.rounds[activeRound] || { baseline: 0, treated: 0, coverage_pct: 0 };
       return '<tr>' +
         '<td style="padding:9px 14px">' + r.lga + '</td>' +
         '<td style="padding:9px 14px;text-align:right">' + Number(r5.baseline || 0).toLocaleString() + '</td>' +
@@ -2209,9 +2221,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 
   function dlLGACompareCSV() {
     if (!_lgaCompareCache) return;
+    const activeRound = _lgaCompareRound(_lgaCompareCache);
     const rows = [['LGA','Target (Baseline)','Treated','Coverage %']];
     _lgaCompareCache.lgas.forEach(r => {
-      const r5 = r.rounds['5'] || {};
+      const r5 = r.rounds[activeRound] || {};
       rows.push([r.lga, r5.baseline || 0, r5.treated || 0, r5.coverage_pct ?? '']);
     });
     const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
