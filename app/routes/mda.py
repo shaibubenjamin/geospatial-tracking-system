@@ -1478,22 +1478,53 @@ async def submissions_by_ward(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Ward-level submission & treatment counts, used for chart drill-down."""
-    filters = ["ward_name IS NOT NULL"]
+    """Ward-level submission & treatment counts, used for chart drill-down.
+
+    Anchored on the canonical ward list in ``mda_baseline`` — the SAME source the
+    ward *filter* dropdown uses (see ``/wards``) — NOT the free-text ``ward_name``
+    typed on households. Household text is dirty: settlement / polling-unit names
+    leak in (e.g. "Kwachiri" under Ungogo, which isn't a ward) and spellings drift
+    ("Yada Kunya" vs the canonical "Yadakunya"), so grouping on it lists more
+    "wards" than the LGA really has and splits real wards across spellings. We
+    JOIN households to the baseline on a case- and space-insensitive key and
+    report the canonical ward name, so variants fold into the real ward and
+    non-wards drop out — the drill now matches the filter exactly.
+    """
+    filters = ["h.ward_name IS NOT NULL"]
     params: dict = {}
-    if lga:  filters.append("lga = :lga");       params["lga"]  = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
+    if lga:  filters.append("h.lga = :lga"); params["lga"] = lga
+    if ward:
+        # Match the selected ward space/case-insensitively so canonical filter
+        # values (e.g. "Yadakunya") still match dirty household text ("Yada Kunya").
+        filters.append("REPLACE(LOWER(TRIM(h.ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
+        params["ward"] = ward
+    where = _scoped_where(pid, filters, params, alias="h", lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
-          ward_name,
-          lga,
-          COUNT(*) AS forms,
-          COALESCE(SUM(number_of_treated), 0) AS treated,
-          COUNT(DISTINCT hq_user) AS teams,
-          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date), 0), 1) AS avg_per_day
-        FROM mda_households {where}
-        GROUP BY ward_name, lga
+          b.ward_disp                            AS ward_name,
+          INITCAP(LOWER(TRIM(h.lga)))            AS lga,
+          COUNT(*)                               AS forms,
+          COALESCE(SUM(h.number_of_treated), 0)  AS treated,
+          COUNT(DISTINCT h.hq_user)              AS teams,
+          ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date), 0), 1) AS avg_per_day
+        FROM mda_households h
+        JOIN (
+          -- De-duplicated to one row per (lga, ward) so the join can't fan out
+          -- the household counts even if the baseline has settlement-level rows.
+          SELECT
+            REPLACE(LOWER(TRIM(lga)),  ' ', '') AS lga_key,
+            REPLACE(LOWER(TRIM(ward)), ' ', '') AS ward_key,
+            MIN(INITCAP(LOWER(TRIM(ward))))     AS ward_disp
+          FROM mda_baseline
+          WHERE project_id = :pid
+            AND ward IS NOT NULL AND TRIM(ward) <> ''
+            AND lga  IS NOT NULL AND TRIM(lga)  <> ''
+          GROUP BY 1, 2
+        ) b
+          ON b.lga_key  = REPLACE(LOWER(TRIM(h.lga)),       ' ', '')
+         AND b.ward_key = REPLACE(LOWER(TRIM(h.ward_name)), ' ', '')
+        {where}
+        GROUP BY b.ward_disp, INITCAP(LOWER(TRIM(h.lga)))
         ORDER BY forms DESC
     """), params)
     keys = ["ward_name", "lga", "forms", "treated", "teams", "avg_per_day"]
@@ -2062,18 +2093,21 @@ async def mda_coverage_ward(
     a_scope = _lga_and(lgas, "h.lga", params)
     result = await db.execute(text(f"""
         WITH tgt AS (
-          SELECT UPPER(TRIM(mb.lga))          AS lga_key,
-                 INITCAP(LOWER(TRIM(mb.lga)))  AS lga,
-                 UPPER(TRIM(mb.ward))          AS ward_key,
-                 INITCAP(LOWER(TRIM(mb.ward))) AS ward_name,
-                 SUM(mb.total_treated)         AS baseline_total
+          -- Space-insensitive keys so canonical baseline wards match dirty
+          -- household spellings ("Yadakunya" vs "Yada Kunya"); dedup to one row
+          -- per (lga, ward) with MIN() display names + summed target.
+          SELECT REPLACE(UPPER(TRIM(mb.lga)),  ' ', '') AS lga_key,
+                 MIN(INITCAP(LOWER(TRIM(mb.lga))))       AS lga,
+                 REPLACE(UPPER(TRIM(mb.ward)), ' ', '')  AS ward_key,
+                 MIN(INITCAP(LOWER(TRIM(mb.ward))))      AS ward_name,
+                 SUM(mb.total_treated)                   AS baseline_total
           FROM mda_baseline mb
           WHERE mb.project_id = :pid AND mb.ward IS NOT NULL AND TRIM(mb.ward) <> ''{b_lga}{b_scope}
-          GROUP BY 1, 2, 3, 4
+          GROUP BY 1, 3
         ),
         act AS (
-          SELECT UPPER(TRIM(h.lga))       AS lga_key,
-                 UPPER(TRIM(h.ward_name)) AS ward_key,
+          SELECT REPLACE(UPPER(TRIM(h.lga)),       ' ', '') AS lga_key,
+                 REPLACE(UPPER(TRIM(h.ward_name)), ' ', '') AS ward_key,
                  COUNT(*)                 AS forms,
                  COALESCE(SUM(h.number_of_treated), 0) AS actual_treated,
                  COUNT(DISTINCT h.hq_user) AS teams,
@@ -3264,10 +3298,15 @@ async def mda_coverage_settlement(
     drill. Filtered by LGA + ward NAME, and LGA-scoped for restricted accounts."""
     clauses = ["sa.project_id = :pid"]
     params: dict = {"pid": pid}
+    # Match space/case-insensitively so the canonical ward/LGA names the charts
+    # pass down (e.g. "Yadakunya") still hit settlement_analytics regardless of
+    # how the boundary data cased/spaced them ("YADA KUNYA").
     if lga:
-        clauses.append("sa.lga_name = :lga"); params["lga"] = lga
+        clauses.append("REPLACE(LOWER(TRIM(sa.lga_name)), ' ', '') = REPLACE(LOWER(TRIM(:lga)), ' ', '')")
+        params["lga"] = lga
     if ward:
-        clauses.append("sa.ward_name = :ward"); params["ward"] = ward
+        clauses.append("REPLACE(LOWER(TRIM(sa.ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
+        params["ward"] = ward
     where = " AND ".join(clauses) + _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
     res = await db.execute(text(f"""
         SELECT sa.settlement_name, sa.ward_name, sa.lga_name,
