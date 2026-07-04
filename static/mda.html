@@ -2502,7 +2502,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   function populateLGAFilter() {
     const lsEl = document.getElementById('f-lga');
     if (!lsEl || lsEl.options.length > 1 || !lgaCovData.length) return;
-    lgaCovData.forEach(r => {
+    [...lgaCovData].sort((a, b) => (a.lga || '').localeCompare(b.lga || '')).forEach(r => {
       const o = document.createElement('option');
       o.value = r.lga; o.textContent = r.lga;
       lsEl.appendChild(o);
@@ -2864,7 +2864,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   function populateCovFilters() {
     const sel = document.getElementById('cov-f-lga');
     if (!sel || sel.options.length > 1) return;
-    (lgaCovData || []).forEach(r => {
+    [...(lgaCovData || [])].sort((a, b) => (a.lga || '').localeCompare(b.lga || '')).forEach(r => {
       if (!r.lga) return;
       const o = document.createElement('option');
       o.value = r.lga; o.textContent = r.lga;
@@ -6061,7 +6061,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (!sel) return;
     // Clear previous (keep "All LGAs" option)
     while (sel.options.length > 1) sel.remove(1);
-    lgaNames.forEach(lga => {
+    [...lgaNames].sort((a, b) => String(a).localeCompare(String(b))).forEach(lga => {
       const o = document.createElement('option');
       o.value = lga; o.textContent = lga;
       sel.appendChild(o);

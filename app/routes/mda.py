@@ -2568,6 +2568,11 @@ async def campaign_dates(
                     ORDER BY (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date) AS dates
         FROM mda_households
         WHERE project_id = :pid AND received_on IS NOT NULL
+          -- Only campaign days: drop pre-campaign (test/stray) submissions before
+          -- the official start date, so the date filter starts on day 1 (the day
+          -- the campaign started), not an earlier stray-submission day.
+          AND (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
+              >= COALESCE((SELECT campaign_start_date FROM geo_projects WHERE id = :pid), '1900-01-01'::date)
     """), {"pid": pid})
     row = result.fetchone()
     if not row or not row[0]:
