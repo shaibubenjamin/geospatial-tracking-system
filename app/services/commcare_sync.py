@@ -649,24 +649,34 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
         """, (final_status, total_fetched, total_new, final_error, history_id))
         conn.commit()
 
-        # 6. Spatial QC + settlement_analytics rebuild — best-effort, AFTER the run
-        #    is finalized. Bounded by a per-statement timeout so a pathological
-        #    spatial join (Kano R3 = 770k grid cells) can never again run for 40+
-        #    minutes holding locks. On timeout/failure the synced rows + coverage
-        #    numbers still stand; only the settlement/grid map layer is deferred to
-        #    the next run. Runs across the whole project so the map reflects rows
-        #    from earlier successful sets too.
+        # 6. Post-sync spatial work, AFTER the run is finalized. Split into two
+        #    independently-committed steps so the fast one is never lost if the
+        #    heavy one times out.
         if sets_succeeded:
+            # 6a. Spatial QC — assigns ward_name + QC flags to households (the
+            #     small side, fast). Committed on its own so the Overview ward
+            #     drill-down works even if the settlement rebuild (6b) times out.
+            try:
+                ph_cur.execute("SET LOCAL statement_timeout = '120s'")
+                _run_spatial_qc(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                logger.exception("Post-sync spatial QC failed for project %s", project_id)
+            # 6b. settlement_analytics rebuild — heavier grid join. Bounded by a
+            #     per-statement timeout so a large project (Kano R3 = 770k grid
+            #     cells) can't run for 40+ minutes holding locks. On timeout the
+            #     synced rows, coverage numbers AND ward views (6a) still stand;
+            #     only the Geographic/settlement layer defers to the next run.
             try:
                 ph_cur.execute("SET LOCAL statement_timeout = '300s'")
-                _run_spatial_qc(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
                 _recompute_settlement_analytics(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
                 conn.commit()
             except Exception:
                 conn.rollback()
                 logger.exception(
-                    "Post-sync spatial recompute failed/timed out for project %s "
-                    "(data is synced; settlement map layer may be stale)", project_id,
+                    "Post-sync settlement recompute failed/timed out for project %s "
+                    "(data + ward views synced; Geographic/settlement layer may be stale)", project_id,
                 )
 
         return {
@@ -896,68 +906,62 @@ def _run_spatial_qc(ph_cur, *, project_id: int, boundary_pid: int) -> None:
 def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: int) -> None:
     """Recompute the settlement_analytics rollup for this project.
 
-    Settlements/grids come from the state's boundary project; household
-    EXISTS checks are scoped to the round being synced.
+    Each household point is tested against grids / settlements ONCE via spatial
+    joins (GiST-indexed), instead of re-evaluating ST_Within 3x per grid in
+    correlated subqueries — which made this run 40+ minutes on large states
+    (Kano R3 = ~770k grid cells). Verified to produce identical output to the
+    old query on Sokoto (9,473 settlements, 0 diffs). Settlements/grids come
+    from the state's boundary project; household matches are scoped to the round.
     """
     ph_cur.execute(
         """
+        WITH pts AS (
+            SELECT geom FROM mda_households
+            WHERE project_id = %(mda_pid)s AND geom IS NOT NULL
+        ),
+        -- Grids that contain at least one household point (drive from the small
+        -- point set, probing the grid GiST index — fast).
+        visited_grids AS (
+            SELECT DISTINCT g.id AS grid_id
+            FROM pts p
+            JOIN grids g ON g.project_id = %(boundary_pid)s AND ST_Within(p.geom, g.geom)
+        ),
+        -- Points per settlement (drive from points, probing settlement GiST index).
+        sett_pts AS (
+            SELECT s.id AS settlement_id, COUNT(*) AS point_count
+            FROM pts p
+            JOIN settlements s ON s.project_id = %(boundary_pid)s AND ST_Within(p.geom, s.geom)
+            GROUP BY s.id
+        )
         INSERT INTO settlement_analytics
           (project_id, settlement_id, unique_cod, lgacode, wardcode,
            settlement_name, lga_name, ward_name,
            total_grids, visited_grids, completeness_pct,
            is_visited, point_count, last_computed)
         SELECT
-            %(mda_pid)s          AS project_id,
-            s.id                 AS settlement_id,
-            s.unique_cod, s.lgacode, s.wardcode,
+            %(mda_pid)s, s.id, s.unique_cod, s.lgacode, s.wardcode,
             s.settlement_name, s.lga_name, s.ward_name,
-            COUNT(DISTINCT g.id) AS total_grids,
-            COUNT(DISTINCT CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM mda_households h
-                    WHERE h.project_id = %(mda_pid)s
-                      AND h.geom IS NOT NULL
-                      AND ST_Within(h.geom, g.geom)
-                ) THEN g.id END
-            ) AS visited_grids,
-            CASE WHEN COUNT(DISTINCT g.id) > 0
-                 THEN ROUND(100.0 * COUNT(DISTINCT CASE
-                      WHEN EXISTS (
-                          SELECT 1 FROM mda_households h
-                          WHERE h.project_id = %(mda_pid)s
-                            AND h.geom IS NOT NULL
-                            AND ST_Within(h.geom, g.geom)
-                      ) THEN g.id END
-                 ) / NULLIF(COUNT(DISTINCT g.id), 0), 2)
+            COUNT(g.id) AS total_grids,
+            COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL) AS visited_grids,
+            CASE WHEN COUNT(g.id) > 0
+                 THEN ROUND(100.0 * COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL)
+                            / NULLIF(COUNT(g.id), 0), 2)
                  ELSE 0 END AS completeness_pct,
-            CASE
-                WHEN COUNT(DISTINCT g.id) > 0
-                THEN (
-                    COUNT(DISTINCT CASE WHEN EXISTS (
-                        SELECT 1 FROM mda_households h
-                        WHERE h.project_id = %(mda_pid)s
-                          AND h.geom IS NOT NULL AND ST_Within(h.geom, g.geom)
-                    ) THEN g.id END) * 100.0
-                    / NULLIF(COUNT(DISTINCT g.id), 0)
-                ) >= %(visit_threshold)s
-                ELSE EXISTS (
-                    SELECT 1 FROM mda_households h2
-                    WHERE h2.project_id = %(mda_pid)s
-                      AND h2.geom IS NOT NULL AND ST_Within(h2.geom, s.geom)
-                )
-            END AS is_visited,
-            (SELECT COUNT(*) FROM mda_households h3
-             WHERE h3.project_id = %(mda_pid)s
-               AND h3.geom IS NOT NULL AND ST_Within(h3.geom, s.geom)
-            ) AS point_count,
+            CASE WHEN COUNT(g.id) > 0
+                 THEN (100.0 * COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL)
+                       / NULLIF(COUNT(g.id), 0)) >= %(visit_threshold)s
+                 ELSE COALESCE(sp.point_count, 0) > 0 END AS is_visited,
+            COALESCE(sp.point_count, 0) AS point_count,
             NOW() AS last_computed
         FROM settlements s
         LEFT JOIN grids g
-               ON g.unique_cod  = s.unique_cod
-              AND g.project_id  = s.project_id
+               ON g.unique_cod = s.unique_cod
+              AND g.project_id = s.project_id
+        LEFT JOIN visited_grids vg ON vg.grid_id = g.id
+        LEFT JOIN sett_pts sp ON sp.settlement_id = s.id
         WHERE s.project_id = %(boundary_pid)s
         GROUP BY s.id, s.unique_cod, s.lgacode, s.wardcode,
-                 s.settlement_name, s.lga_name, s.ward_name
+                 s.settlement_name, s.lga_name, s.ward_name, sp.point_count
         ON CONFLICT (project_id, settlement_id) DO UPDATE SET
             total_grids      = EXCLUDED.total_grids,
             visited_grids    = EXCLUDED.visited_grids,

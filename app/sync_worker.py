@@ -174,6 +174,7 @@ async def _scheduler_tick() -> None:
               AND gp.campaign_start_date IS NOT NULL
               AND gp.campaign_start_date <= CURRENT_DATE
               AND (gp.campaign_end_date IS NULL OR gp.campaign_end_date >= CURRENT_DATE)
+              AND NOT COALESCE(gp.campaign_paused, FALSE)
         """))).mappings().all()
 
     if not rows:

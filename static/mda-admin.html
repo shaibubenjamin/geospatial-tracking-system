@@ -2905,56 +2905,61 @@
       }
       const esc = s => String(s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
       const today = new Date().toISOString().slice(0, 10);
-      // Campaign lifecycle is derived from the start/end dates and is separate
-      // from "Show on dashboard" (view focus, is_active) and Public/Private.
+      // Campaign lifecycle is derived from the start/end dates + the paused flag.
+      // Lifecycle and Public/Private are now the only two axes (the separate
+      // "Show on dashboard" toggle was retired - non-admins auto-see the active
+      // round; admins pick a default round).
       const statusChip = (p) => {
         const s = p.campaign_start_date, e = p.campaign_end_date;
         if (s && e && e <= today) return '<span class="chip" style="background:#fef3c7;color:#92400e"><i class="fa-solid fa-flag-checkered" style="font-size:9px;margin-right:4px"></i>Ended</span>';
+        if (s && s <= today && p.campaign_paused) return '<span class="chip" style="background:#e2e8f0;color:#475569"><i class="fa-solid fa-pause" style="font-size:9px;margin-right:4px"></i>Paused</span>';
         if (s && s <= today)      return '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px"></i> Running</span>';
         if (s && s > today)       return '<span class="chip" style="background:#e0f2fe;color:#075985"><i class="fa-solid fa-clock" style="font-size:9px;margin-right:4px"></i>Scheduled</span>';
         return '<span class="chip" style="background:var(--mist);color:var(--muted)">Not started</span>';
       };
       const fmtD = d => d ? new Date(d).toLocaleDateString() : '';
-      const dashCell = (p) => p.show_on_dashboard
-        ? `<span class="chip good"><i class="fa-solid fa-display" style="font-size:9px;margin-right:4px"></i>Shown</span>${p.is_active ? '<br><small style="color:var(--muted)">default round</small>' : ''}`
-        : '<span class="chip" style="background:var(--mist);color:var(--muted)">Hidden</span>';
       const visCell = (p) => p.is_public
         ? '<span class="chip good"><i class="fa-solid fa-globe" style="font-size:9px;margin-right:4px"></i>Public</span>'
         : '<span class="chip" style="background:var(--mist);color:var(--muted)"><i class="fa-solid fa-lock" style="font-size:9px;margin-right:4px"></i>Private</span>';
       let rows = projects.map(p => {
         const s = p.campaign_start_date, e = p.campaign_end_date;
-        const running = s && s <= today && (!e || e > today);
         const ended   = s && e && e <= today;
-        // Two short primary buttons (dashboard toggle + campaign toggle); the
-        // state labels live in the Dashboard/Visibility columns, so the buttons
-        // only need the verb.
+        const paused  = s && s <= today && !ended && p.campaign_paused;
+        const running = s && s <= today && !ended && !p.campaign_paused;
+        // Lifecycle action(s): Start / Pause / Resume / End / Restart.
         const actions = [];
-        actions.push(p.show_on_dashboard
-          ? `<button class="btn btn-ghost btn-sm" onclick="removeFromDashboard(${p.id},'${esc(p.name)}')" title="Hide this round from the dashboard switcher (data untouched)"><i class="fa-solid fa-eye-slash"></i> Hide</button>`
-          : `<button class="btn btn-ghost btn-sm" onclick="showOnDashboard(${p.id})" title="Add this round to the dashboard switcher (additive - does not hide others or start the campaign)"><i class="fa-solid fa-display"></i> Show</button>`);
-        actions.push(running
-          ? `<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`
-          : `<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="Start the campaign: stamps today as the start date, starts auto-sync, and shows it on the dashboard"><i class="fa-solid fa-play"></i> ${ended ? 'Restart' : 'Start'}</button>`);
-        // Secondary actions as compact icon-only buttons (edit, visibility, delete).
+        if (running) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="pauseCampaign(${p.id},'${esc(p.name)}')" title="Pause: temporarily stop the campaign + auto-sync. Resumable - does not end the round"><i class="fa-solid fa-pause"></i> Pause</button>`);
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`);
+        } else if (paused) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="resumeCampaign(${p.id},'${esc(p.name)}')" title="Resume: campaign runs again and auto-sync picks back up"><i class="fa-solid fa-play"></i> Resume</button>`);
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`);
+        } else {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="${ended ? 'Restart' : 'Start'} the campaign: stamps today as the start date and begins auto-sync"><i class="fa-solid fa-play"></i> ${ended ? 'Restart' : 'Start'}</button>`);
+        }
+        // Icon actions: default-round star, edit, public toggle (superadmin), delete.
         const icons = [];
+        icons.push(p.is_active
+          ? `<button class="btn btn-ghost btn-sm" disabled title="This is the default round the dashboard opens to"><i class="fa-solid fa-star" style="color:#f59e0b"></i></button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="setDefaultRound(${p.id},'${esc(p.name)}')" title="Make this the default round the dashboard opens to"><i class="fa-solid fa-star" style="color:var(--muted)"></i></button>`);
         icons.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
         if (isSuperadmin) {
           icons.push(p.is_public
-            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Public - click to make private"><i class="fa-solid fa-globe" style="color:var(--good)"></i></button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Private - click to make public"><i class="fa-solid fa-lock"></i></button>`);
+            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Public (anyone, no login, can see it) - click to make Private"><i class="fa-solid fa-globe" style="color:var(--good)"></i></button>`
+            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Private (logged-in users only) - click to make Public"><i class="fa-solid fa-lock"></i></button>`);
         }
         if (!p.is_active) {
           icons.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
         }
         const timeline = ended ? `ran ${fmtD(s)} to ${fmtD(e)}`
+                       : paused ? `paused (started ${fmtD(s)})`
                        : running ? `started ${fmtD(s)}`
                        : (s && s > today) ? `starts ${fmtD(s)}`
                        : 'not yet started';
         return `
         <tr>
-          <td><b>${p.name}</b><br><small style="color:var(--muted)">${p.slug}</small>${p.description ? `<br><small style="color:var(--muted)">${p.description}</small>` : ''}</td>
+          <td><b>${p.name}</b>${p.is_active ? ' <span class="chip good" style="font-size:10px"><i class="fa-solid fa-star" style="font-size:8px;margin-right:3px"></i>Default</span>' : ''}<br><small style="color:var(--muted)">${p.slug}</small>${p.description ? `<br><small style="color:var(--muted)">${p.description}</small>` : ''}</td>
           <td>${statusChip(p)}<br><small style="color:var(--muted)">${timeline}</small></td>
-          <td>${dashCell(p)}</td>
           <td>${visCell(p)}</td>
           <td>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
@@ -2968,7 +2973,7 @@
       container.innerHTML = `
         <div style="overflow-x:auto">
           <table>
-            <thead><tr><th>Name / Slug</th><th>Status</th><th>Dashboard</th><th>Visibility</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name / Slug</th><th>Status</th><th>Visibility</th><th>Actions</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -3102,6 +3107,38 @@
     }
   };
   window.markProjectEnded = window.endCampaign;  // back-compat alias
+
+  // Pause = temporary, resumable halt. Auto-sync stops and the round reads
+  // "Paused" (not live), but it stays in-window / the current campaign.
+  window.pauseCampaign = async function(id, name) {
+    const ok = await confirmDialog({
+      title: 'Pause this campaign?',
+      message: `Pause "${name}"? Auto-sync stops and it shows as "Paused" (not live), but the round is not ended - you can Resume it anytime.`,
+      confirmLabel: 'Pause',
+    });
+    if (!ok) return;
+    const res = await api('/api/projects/' + id + '/pause-campaign', { method: 'POST' });
+    if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); return; }
+    if (res.ok) { loadProjects(); }
+    else { const d = await res.json().catch(() => ({})); await alertDialog({ title: 'Could not pause', message: d.detail || `HTTP ${res.status}`, danger: true }); }
+  };
+
+  // Resume = clear the pause; the campaign runs again and auto-sync picks back up.
+  window.resumeCampaign = async function(id, name) {
+    const res = await api('/api/projects/' + id + '/resume-campaign', { method: 'POST' });
+    if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); return; }
+    if (res.ok) { loadProjects(); }
+    else { const d = await res.json().catch(() => ({})); await alertDialog({ title: 'Could not resume', message: d.detail || `HTTP ${res.status}`, danger: true }); }
+  };
+
+  // Set default round = the round the dashboard opens to (is_active). Only one
+  // round is the default at a time; the backend clears it from the others.
+  window.setDefaultRound = async function(id, name) {
+    const res = await api('/api/projects/' + id, { method: 'PATCH', body: JSON.stringify({ is_active: true }) });
+    if (!res) { await alertDialog({ title: 'Network error', message: 'Could not reach the server.', danger: true }); return; }
+    if (res.ok) { loadProjects(); }
+    else { const d = await res.json().catch(() => ({})); await alertDialog({ title: 'Could not set default', message: d.detail || `HTTP ${res.status}`, danger: true }); }
+  };
 
   window.editProject = async function(id, currentName, currentDesc) {
     // Custom modal-driven inline editor - keeps the UX consistent with the

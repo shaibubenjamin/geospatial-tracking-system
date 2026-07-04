@@ -763,7 +763,8 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     """
     # Pick the currently-active project; fall back to the most recent one.
     proj = await db.execute(text("""
-        SELECT id, state_name, round_number, campaign_start_date, campaign_end_date
+        SELECT id, state_name, round_number, campaign_start_date, campaign_end_date,
+               COALESCE(campaign_paused, FALSE) AS campaign_paused
         FROM geo_projects
         ORDER BY is_active DESC, round_number DESC NULLS LAST, id DESC
         LIMIT 1
@@ -797,7 +798,8 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     # A round that is only the default/shown one but hasn't started, or has
     # ended, is NOT live.
     _today = datetime.utcnow().date()
-    is_live = bool(start_d and start_d <= _today and (end_d is None or end_d >= _today))
+    _paused = bool(p[5])
+    is_live = bool(start_d and start_d <= _today and (end_d is None or end_d >= _today) and not _paused)
 
     # Boundary tables are typically loaded under a single project per state
     # (R4 holds Sokoto's polygons; R5 reuses them) — count distinct codes
