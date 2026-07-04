@@ -293,7 +293,7 @@ tbody tr:hover{background:var(--pale)}
    Inner layout: icon and value share row 1 (icon left, value right of it);
    label + description flow underneath. The two-column CSS grid handles this
    without any HTML restructuring of the existing markup. */
-.qc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;align-items:start}
+.qc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px;align-items:start}
 .qc-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:4px;align-items:start;transition:box-shadow .15s,transform .15s}
 .qc-tile:hover{box-shadow:0 4px 14px rgba(0,0,0,.06);transform:translateY(-1px)}
 .qc-icon{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-size:17px;grid-row:1;grid-column:1;align-self:center;margin-bottom:0}
@@ -991,7 +991,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         </div>
 
         <!-- QC totals KPI row -->
-        <div class="kpi-grid cols-4" style="margin-bottom:12px">
+        <div class="kpi-grid cols-2" style="margin-bottom:12px">
           <div class="kpi accent">
             <div class="kpi-icon-strip"><i class="fa-solid fa-flag"></i></div>
             <div class="lbl">Total Quality Check (QC) Flags</div>
@@ -1018,12 +1018,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           </div>
         </div>
 
-        <!-- Quality checks are grouped into three logical rows:
-             Row 1 - Form integrity   (totals & ID / repeat-group sanity)
-             Row 2 - Timing patterns  (when & how long forms were filled)
-             Row 3 - Location + outcome (GPS issues & refusal rate)
-             The 3×3 layout keeps related metrics next to each other and
-             removes the orphan tile that the old 4-wide grid left behind. -->
+        <!-- Quality-check detail tiles in a uniform 2-column grid (10 tiles = 5
+             even rows), so with the 4-card summary band above (2 rows of 2) the
+             whole page reads as 7 clean rows of 2 with no orphan tile. Tiles stay
+             grouped: form integrity, then timing patterns, then location + outcome. -->
         <div class="qc-grid">
           <!-- Row 1: Form integrity -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-file-circle-check"></i></div><div class="qc-val" id="qc-total-forms">-</div><div class="qc-lbl">Total Forms Analysed</div><div class="qc-desc">All household MDA forms checked for data quality issues</div></div>
