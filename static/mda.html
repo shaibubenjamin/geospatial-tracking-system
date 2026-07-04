@@ -2358,7 +2358,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const { fixedHeight = 420, rowPx = 30, minInner = 360, gutterPx = 40 } = opts || {};
     const wrap = canvasEl?.parentElement;
     if (!wrap) return;
-    wrap.style.height = fixedHeight + 'px';
+    // Viewport = content height, capped at fixedHeight (scrolls past that). When
+    // fewer rows remain (e.g. "Hide empty"), the box shrinks to fit instead of
+    // leaving blank scroll space below the last bar.
+    const innerH = Math.max(minInner, rowCount * rowPx + gutterPx);
+    wrap.style.height = Math.min(fixedHeight, innerH) + 'px';
     wrap.style.overflowY = 'auto';
     wrap.style.overflowX = 'hidden';
     wrap.style.position = 'relative';
@@ -3905,6 +3909,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   function buildLGABarChart(data, sortBy) {
     const el = document.getElementById('c_lgaBar');
     if (!el) return;
+    // Self-destroy so this is safe to call directly (e.g. the "Hide empty"
+    // rerender), not only via the caller that pre-destroys the chart. Without
+    // this a re-render hits "canvas already in use" and silently no-ops.
+    const _ex = Chart.getChart(el); if (_ex) _ex.destroy();
     _formsRerender = () => buildLGABarChart(data, sortBy);
     const key = sortBy === 'treated' ? 'actual_treated' : 'forms';
     // Show every LGA in the round (R5 has ~20). Rather than scrolling, grow
@@ -4246,8 +4254,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       _loadMopUpShortlist();
 
       // LGA level: flipping "Hide empty" rebuilds the coverage view (same path
-      // covDrillUp uses), so the toggle re-applies at this level too.
-      _covRerender = () => { delete built['coverage']; buildCharts('coverage'); };
+      // covDrillUp uses), so the toggle re-applies at this level too. Destroy the
+      // existing chart first (like covDrillUp) or the rebuild hits "canvas in use".
+      _covRerender = () => {
+        const c0 = Chart.getChart(document.getElementById('c_covLgaBar')); if (c0) c0.destroy();
+        delete built['coverage']; buildCharts('coverage');
+      };
       if (lgaCovData.length) {
         const sorted = _applyHide([...lgaCovData], 'cov', 'cov').sort((a,b)=>b.coverage_pct-a.coverage_pct);
         const maxCov = Math.max(...sorted.map(l => parseFloat(l.coverage_pct)||0), 1);
