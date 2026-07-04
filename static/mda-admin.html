@@ -130,6 +130,8 @@
     .btn-danger  { background: var(--bad); color: #fff; }
     .btn-danger:hover { background: #b91c1c; }
     .btn-sm { padding: 5px 10px; font-size: 11.5px; }
+    /* Square icon-only button so the Actions column aligns in a neat grid */
+    .btn-icon { width: 32px; height: 30px; padding: 0; justify-content: center; }
     .btn-success { background: var(--good); color: #fff; }
     .btn-success:hover { background: #15803d; }
 
@@ -2913,7 +2915,7 @@
         const s = p.campaign_start_date, e = p.campaign_end_date;
         if (s && e && e <= today) return '<span class="chip" style="background:#fef3c7;color:#92400e"><i class="fa-solid fa-flag-checkered" style="font-size:9px;margin-right:4px"></i>Ended</span>';
         if (s && s <= today && p.campaign_paused) return '<span class="chip" style="background:#e2e8f0;color:#475569"><i class="fa-solid fa-pause" style="font-size:9px;margin-right:4px"></i>Paused</span>';
-        if (s && s <= today)      return '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px"></i> Running</span>';
+        if (s && s <= today)      return '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px;margin-right:6px"></i>Running</span>';
         if (s && s > today)       return '<span class="chip" style="background:#e0f2fe;color:#075985"><i class="fa-solid fa-clock" style="font-size:9px;margin-right:4px"></i>Scheduled</span>';
         return '<span class="chip" style="background:var(--mist);color:var(--muted)">Not started</span>';
       };
@@ -2937,19 +2939,20 @@
         } else {
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="${ended ? 'Restart' : 'Start'} the campaign: stamps today as the start date and begins auto-sync"><i class="fa-solid fa-play"></i> ${ended ? 'Restart' : 'Start'}</button>`);
         }
-        // Icon actions: default-round star, edit, public toggle (superadmin), delete.
+        // Icon actions (uniform squares): default-round star, edit, public toggle
+        // (superadmin), delete.
         const icons = [];
         icons.push(p.is_active
-          ? `<button class="btn btn-ghost btn-sm" disabled title="This is the default round the dashboard opens to"><i class="fa-solid fa-star" style="color:#f59e0b"></i></button>`
-          : `<button class="btn btn-ghost btn-sm" onclick="setDefaultRound(${p.id},'${esc(p.name)}')" title="Make this the default round the dashboard opens to"><i class="fa-solid fa-star" style="color:var(--muted)"></i></button>`);
-        icons.push(`<button class="btn btn-ghost btn-sm" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
+          ? `<button class="btn btn-ghost btn-sm btn-icon" disabled title="This is the default round the dashboard opens to"><i class="fa-solid fa-star" style="color:#f59e0b"></i></button>`
+          : `<button class="btn btn-ghost btn-sm btn-icon" onclick="setDefaultRound(${p.id},'${esc(p.name)}')" title="Make this the default round the dashboard opens to"><i class="fa-solid fa-star" style="color:var(--muted)"></i></button>`);
+        icons.push(`<button class="btn btn-ghost btn-sm btn-icon" onclick="editProject(${p.id},'${esc(p.name)}','${esc(p.description)}')" title="Edit name / description"><i class="fa-solid fa-pen"></i></button>`);
         if (isSuperadmin) {
           icons.push(p.is_public
-            ? `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Public (anyone, no login, can see it) - click to make Private"><i class="fa-solid fa-globe" style="color:var(--good)"></i></button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Private (logged-in users only) - click to make Public"><i class="fa-solid fa-lock"></i></button>`);
+            ? `<button class="btn btn-ghost btn-sm btn-icon" onclick="setProjectPublic(${p.id},false,'${esc(p.name)}')" title="Public (anyone, no login, can see it) - click to make Private"><i class="fa-solid fa-globe" style="color:var(--good)"></i></button>`
+            : `<button class="btn btn-ghost btn-sm btn-icon" onclick="setProjectPublic(${p.id},true,'${esc(p.name)}')" title="Private (logged-in users only) - click to make Public"><i class="fa-solid fa-lock"></i></button>`);
         }
         if (!p.is_active) {
-          icons.push(`<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
+          icons.push(`<button class="btn btn-danger btn-sm btn-icon" onclick="deleteProject(${p.id},'${esc(p.name)}')" title="Delete this project - irreversible"><i class="fa-solid fa-trash"></i></button>`);
         }
         const timeline = ended ? `ran ${fmtD(s)} to ${fmtD(e)}`
                        : paused ? `paused (started ${fmtD(s)})`
@@ -2962,10 +2965,10 @@
           <td>${statusChip(p)}<br><small style="color:var(--muted)">${timeline}</small></td>
           <td>${visCell(p)}</td>
           <td>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
-              ${actions.join('')}
-              <span style="width:1px;align-self:stretch;background:var(--line);margin:2px 3px"></span>
-              ${icons.join('')}
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap">
+              <span style="display:inline-flex;gap:6px;min-width:172px">${actions.join('')}</span>
+              <span style="width:1px;align-self:stretch;background:var(--line)"></span>
+              <span style="display:inline-flex;gap:6px">${icons.join('')}</span>
             </div>
           </td>
         </tr>`;
