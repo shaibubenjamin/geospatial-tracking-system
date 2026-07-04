@@ -3655,16 +3655,20 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   async function drillDownToSettlements(lga, ward) {
     const el = document.getElementById('c_lgaBar');
     if (!el) return;
-    const existing = Chart.getChart(el); if (existing) existing.destroy();
+    // Fetch FIRST — big wards have hundreds of settlements; keep the ward chart
+    // on screen while they load (no blank flash) and stay on wards if there's
+    // nothing to show.
+    const data = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!data.length) { showToast('No settlement breakdown for ' + ward + ' - staying on wards'); return; }
 
+    const existing = Chart.getChart(el); if (existing) existing.destroy();
     const lgaEsc = String(lga).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const titleEl = el.closest('.card')?.querySelector('.card-title');
-    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlement coverage - ' + ward +
+    // "Settlements" not "coverage": settlements have no treatment target, so no %
+    // bars — visited / not, which also renders far faster for hundreds of bars.
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlements - ' + ward +
       ' &nbsp;<button onclick="drillDownToWards(\'' + lgaEsc + '\')" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> Wards</button>' +
       ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-table-cells-large" style="font-size:10px"></i> All LGAs</button>';
-
-    const data = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
-    if (!data.length) { showToast('No settlement data for ' + ward); return; }
 
     const wrap = el.parentElement;
     const rowH = 30, maxViewport = 500;
@@ -3681,8 +3685,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       type: 'bar',
       data: {
         labels: data.map(r => r.settlement_name || '(unnamed)'),
-        datasets: [{ label: 'Coverage %', data: data.map(r => r.completeness_pct || 0),
-          backgroundColor: data.map(r => { const c = r.completeness_pct || 0; return c >= 80 ? '#006B2E' : c >= 60 ? '#16A34A' : c > 0 ? '#4CAF50' : '#CBD5E1'; }),
+        datasets: [{ label: 'Settlements', data: data.map(r => r.completeness_pct || 0),
+          backgroundColor: data.map(r => (r.point_count > 0 || r.is_visited) ? '#16A34A' : '#CBD5E1'),
           borderRadius: 5, maxBarThickness: 22 }]
       },
       options: {
@@ -3692,13 +3696,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           legend: { display: false },
           tooltip: { callbacks: { label: ctx => {
             const r = data[ctx.dataIndex] || {};
-            return ' ' + (r.completeness_pct || 0) + '% · ' + (r.point_count || 0) + ' pts · ' + (r.is_visited ? 'visited' : 'not visited');
+            const v = (r.point_count > 0 || r.is_visited);
+            return ' ' + (v ? 'Visited' : 'Not visited') + ' · ' + (r.point_count || 0) + ' pts';
           } } },
-          datalabels: { ...DL_BASE, anchor: 'center', align: 'center',
-            color: ctx => (ctx.dataset.data[ctx.dataIndex] > 18) ? '#fff' : '#334155',
-            font: { size: 10, weight: '700' }, formatter: v => (v || 0) + '%' }
+          datalabels: { display: false }
         },
-        scales: { x: { display: false, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
+        scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
         maintainAspectRatio: false
       }
     });
