@@ -3576,6 +3576,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // Refresh age-summary for children
     const ageSel = await api('/api/mda/individuals/age-summary' + qs);
     if (ageSel) _renderAgeSummary(ageSel);
+    // Row-2 sibling: Forms Submitted vs Target must follow the drill too, or it
+    // keeps showing the campaign-wide total while the charts beside it are scoped
+    // to the drilled LGA/ward. It reads the just-refreshed (scoped) overviewData.
+    buildFormsVsTargetChart();
   }
 
   function _filterQS(lga, ward, dateFrom, dateTo) {
@@ -3640,7 +3644,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       data: {
         labels: data.map(r => r.ward_name),
         datasets: [{ label: 'Forms', data: data.map(r => r.forms || 0),
-          backgroundColor: data.map(r => `rgba(0,107,46,${Math.max(0.35, (r.forms||0)/maxVal * 0.9).toFixed(2)})`),
+          // One solid brand green for every ward (no value-based gradient).
+          backgroundColor: '#006B2E', hoverBackgroundColor: '#005225',
           borderRadius: 5, maxBarThickness: 24 }]
       },
       options: {
