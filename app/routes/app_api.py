@@ -65,6 +65,17 @@ async def app_projects(
     allowed = allowed_states_of(_u)
     if allowed is not None:
         projects = [p for p in projects if (p.state_name or "").strip().lower() in allowed]
+    # Non-admins (LGA field logins) only see the IN-WINDOW campaign: started and
+    # not yet ended. Old/not-started/ended rounds (e.g. a pilot / Round 1) are
+    # hidden so the app selector shows only the active campaign. Admins and
+    # superadmins still see every round.
+    if not (bool(getattr(_u, "is_superadmin", False)) or bool(getattr(_u, "is_admin", False))):
+        from datetime import date as _date
+        _t = _date.today()
+        def _in_window(p):
+            s, e = p.campaign_start_date, p.campaign_end_date
+            return bool(s and s <= _t and (e is None or e >= _t))
+        projects = [p for p in projects if _in_window(p)]
     return [
         {
             "id": p.id,
