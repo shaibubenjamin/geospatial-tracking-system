@@ -374,15 +374,34 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
         if not cfg["form_ids"]:
             raise RuntimeError("No form IDs configured for this project.")
 
-        # 2. Identify the state's canonical boundary project for spatial QC
+        # 2. Boundary project for spatial QC + settlement_analytics. Prefer the
+        #    round's OWN boundaries (if it loaded its own LGAs) so a round with an
+        #    updated boundary set (e.g. Kano R3's own 28k settlements/grids) is
+        #    analysed against its own polygons, not a sibling's — this MUST match
+        #    the web's _resolve_boundary_pid or the web joins by settlement_id
+        #    against a different boundary and shows 0. Falls back to the state's
+        #    canonical (lowest-id) boundary project (e.g. Sokoto R5 → R4).
         cur.execute("""
-            SELECT MIN(p2.id) FROM geo_projects p1
-            JOIN geo_projects p2 ON p2.state_name = p1.state_name
-            WHERE p1.id = %s
-              AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id)
-        """, (project_id,))
+            SELECT CASE
+                     WHEN EXISTS (SELECT 1 FROM lgas WHERE project_id = %(pid)s) THEN %(pid)s
+                     ELSE (SELECT MIN(p2.id) FROM geo_projects p1
+                           JOIN geo_projects p2 ON p2.state_name = p1.state_name
+                           WHERE p1.id = %(pid)s
+                             AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id))
+                   END AS bp
+        """, {"pid": project_id})
         bp_row = cur.fetchone()
-        boundary_pid = (bp_row["min"] if bp_row and bp_row.get("min") else project_id)
+        boundary_pid = (bp_row["bp"] if bp_row and bp_row.get("bp") else project_id)
+
+        # In-scope LGA set for this round (the planned campaign LGAs, e.g. Kano
+        # R3 = 36). When set, the settlement_analytics rebuild is scoped to these
+        # LGAs so the whole geo cascade (settlement → ward → LGA) reflects the
+        # planned LGAs, not every boundary LGA. None → no scope (all boundary LGAs).
+        from app.services.project_scope import in_scope_lgas_for  # local — avoids circular
+        cur.execute("SELECT state_name, round_number FROM geo_projects WHERE id = %(pid)s", {"pid": project_id})
+        _pr = cur.fetchone()
+        _scope = in_scope_lgas_for(_pr["state_name"], _pr["round_number"]) if _pr else None
+        scope_lgas = sorted(_scope) if _scope else None
 
         # 3. Mark sync as running + open a history row + reset progress.
         # Also clear any stale cancel_requested flag from a previous run so
@@ -670,7 +689,7 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
             #     only the Geographic/settlement layer defers to the next run.
             try:
                 ph_cur.execute("SET LOCAL statement_timeout = '300s'")
-                _recompute_settlement_analytics(ph_cur, project_id=project_id, boundary_pid=boundary_pid)
+                _recompute_settlement_analytics(ph_cur, project_id=project_id, boundary_pid=boundary_pid, scope_lgas=scope_lgas)
                 conn.commit()
             except Exception:
                 conn.rollback()
@@ -903,18 +922,34 @@ def _run_spatial_qc(ph_cur, *, project_id: int, boundary_pid: int) -> None:
     """, (project_id, boundary_pid))
 
 
-def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: int) -> None:
+def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: int,
+                                    scope_lgas: Optional[list] = None) -> None:
     """Recompute the settlement_analytics rollup for this project.
 
     Each household point is tested against grids / settlements ONCE via spatial
-    joins (GiST-indexed), instead of re-evaluating ST_Within 3x per grid in
-    correlated subqueries — which made this run 40+ minutes on large states
-    (Kano R3 = ~770k grid cells). Verified to produce identical output to the
-    old query on Sokoto (9,473 settlements, 0 diffs). Settlements/grids come
-    from the state's boundary project; household matches are scoped to the round.
+    joins (GiST-indexed) — fast even on large states. Verified identical to the
+    old correlated-subquery query on Sokoto (9,473 settlements, 0 diffs).
+
+    Delete-then-insert (not upsert) so a boundary or scope change can never leave
+    orphan rows keyed to a previous boundary project. When ``scope_lgas`` is
+    given (the campaign's in-scope LGA name set from ``project_scope``), only
+    settlements in those LGAs are rolled up — so the whole cascade
+    (settlement → ward → LGA) reflects the planned campaign LGAs (Kano R3 = 36),
+    not every boundary LGA. Settlements/grids come from the boundary project;
+    household matches are scoped to the round.
     """
+    scope_clause = ""
+    params = {"mda_pid": project_id, "boundary_pid": boundary_pid, "visit_threshold": 70}
+    if scope_lgas:
+        scope_clause = "AND LOWER(TRIM(s.lga_name)) = ANY(%(scope)s)"
+        params["scope"] = [n.strip().lower() for n in scope_lgas]
+
+    # Clean slate for this project so a boundary/scope change can't leave stale
+    # rows keyed to a previous boundary. Atomic with the INSERT (same txn).
+    ph_cur.execute("DELETE FROM settlement_analytics WHERE project_id = %(mda_pid)s",
+                   {"mda_pid": project_id})
     ph_cur.execute(
-        """
+        f"""
         WITH pts AS (
             SELECT geom FROM mda_households
             WHERE project_id = %(mda_pid)s AND geom IS NOT NULL
@@ -959,18 +994,11 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
               AND g.project_id = s.project_id
         LEFT JOIN visited_grids vg ON vg.grid_id = g.id
         LEFT JOIN sett_pts sp ON sp.settlement_id = s.id
-        WHERE s.project_id = %(boundary_pid)s
+        WHERE s.project_id = %(boundary_pid)s {scope_clause}
         GROUP BY s.id, s.unique_cod, s.lgacode, s.wardcode,
                  s.settlement_name, s.lga_name, s.ward_name, sp.point_count
-        ON CONFLICT (project_id, settlement_id) DO UPDATE SET
-            total_grids      = EXCLUDED.total_grids,
-            visited_grids    = EXCLUDED.visited_grids,
-            completeness_pct = EXCLUDED.completeness_pct,
-            is_visited       = EXCLUDED.is_visited,
-            point_count      = EXCLUDED.point_count,
-            last_computed    = EXCLUDED.last_computed
         """,
-        {"mda_pid": project_id, "boundary_pid": boundary_pid, "visit_threshold": 70},
+        params,
     )
 
 
@@ -999,13 +1027,23 @@ def recompute_spatial_for_project(project_id: int) -> Dict[str, Any]:
         # same lookup the sync uses so multi-round states (Sokoto R4/R5)
         # share one set of polygons.
         cur.execute("""
-            SELECT MIN(p2.id) AS bp FROM geo_projects p1
-            JOIN geo_projects p2 ON p2.state_name = p1.state_name
-            WHERE p1.id = %s
-              AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id)
-        """, (project_id,))
+            SELECT CASE
+                     WHEN EXISTS (SELECT 1 FROM lgas WHERE project_id = %(pid)s) THEN %(pid)s
+                     ELSE (SELECT MIN(p2.id) FROM geo_projects p1
+                           JOIN geo_projects p2 ON p2.state_name = p1.state_name
+                           WHERE p1.id = %(pid)s
+                             AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id))
+                   END AS bp
+        """, {"pid": project_id})
         row = cur.fetchone()
         boundary_pid = (row["bp"] if row and row.get("bp") else project_id)
+
+        # In-scope LGA set (planned campaign LGAs) — scopes the analytics rebuild.
+        from app.services.project_scope import in_scope_lgas_for
+        cur.execute("SELECT state_name, round_number FROM geo_projects WHERE id = %(pid)s", {"pid": project_id})
+        _pr = cur.fetchone()
+        _scope = in_scope_lgas_for(_pr["state_name"], _pr["round_number"]) if _pr else None
+        scope_lgas = sorted(_scope) if _scope else None
 
         # Clear stale flags before re-running QC so rows whose status flipped
         # from "outside" to "inside" actually get cleared (the QC step only
@@ -1021,7 +1059,7 @@ def recompute_spatial_for_project(project_id: int) -> Dict[str, Any]:
         """, (project_id,))
 
         _run_spatial_qc(cur, project_id=project_id, boundary_pid=boundary_pid)
-        _recompute_settlement_analytics(cur, project_id=project_id, boundary_pid=boundary_pid)
+        _recompute_settlement_analytics(cur, project_id=project_id, boundary_pid=boundary_pid, scope_lgas=scope_lgas)
         conn.commit()
 
         # Surface counts so the caller can show "X settlements, Y outside-LGA flags after rebuild".

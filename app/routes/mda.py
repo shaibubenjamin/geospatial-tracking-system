@@ -3074,14 +3074,10 @@ async def geo_wards_coverage(
     Geometry comes from the state's boundary project; coverage from
     settlement_analytics for the selected project, joined by round-stable
     wardcode."""
-    bpid_res = await db.execute(text("""
-        SELECT MIN(p2.id) FROM geo_projects p1
-        JOIN geo_projects p2 ON p2.state_name = p1.state_name
-        WHERE p1.id = :pid
-          AND EXISTS (SELECT 1 FROM wards w WHERE w.project_id = p2.id)
-    """), {"pid": pid})
-    brow = bpid_res.fetchone()
-    bpid = int(brow[0]) if brow and brow[0] is not None else pid
+    # Own-boundaries-first (matches the web analytics + the sync recompute) so the
+    # wardcode join lines up with settlement_analytics for this round.
+    from app.services.spatial_engine import _resolve_boundary_pid
+    bpid = await _resolve_boundary_pid(pid, db)
     params: dict = {"pid": pid, "bpid": bpid}
     lga_sql = _lga_and(allowed_lgas_of(_u), "w.lga_name", params)
     res = await db.execute(text(f"""
@@ -3167,12 +3163,9 @@ async def geo_lgas_coverage(
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     """LGA polygons (GeoJSON) coloured by coverage — public aggregate."""
-    brow = (await db.execute(text("""
-        SELECT MIN(p2.id) FROM geo_projects p1
-        JOIN geo_projects p2 ON p2.state_name = p1.state_name
-        WHERE p1.id = :pid AND EXISTS (SELECT 1 FROM lgas l WHERE l.project_id = p2.id)
-    """), {"pid": pid})).fetchone()
-    bpid = int(brow[0]) if brow and brow[0] is not None else pid
+    # Own-boundaries-first (matches the web analytics + the sync recompute).
+    from app.services.spatial_engine import _resolve_boundary_pid
+    bpid = await _resolve_boundary_pid(pid, db)
     params: dict = {"pid": pid, "bpid": bpid}
     lga_sql = _lga_and(allowed_lgas_of(_u), "l.lga_name", params)
     res = await db.execute(text(f"""
