@@ -70,6 +70,26 @@ def _scope_lga_names(allowed_lgas: Optional[set], col: str, params: Dict[str, An
     return f" AND lower(trim({col})) = ANY(:{key})"
 
 
+async def _campaign_scope_and(project_id: int, db: AsyncSession, col: str,
+                              params: Dict[str, Any], key: str = "camp_scope") -> str:
+    """SQL fragment restricting a boundary query to the round's in-scope campaign
+    LGAs (``project_scope``). Returns '' when the project has no in-scope set, so
+    states/rounds without a planned-LGA list are unaffected. This keeps
+    non-campaign LGAs completely empty on the map — no stray settlements, wards or
+    points rendered inside an LGA that isn't part of the round (e.g. Sumaila for
+    Kano R3, which is greyed out at LGA level)."""
+    from app.services.project_scope import in_scope_lgas_for
+    row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :pid"),
+        {"pid": project_id},
+    )).fetchone()
+    scope = in_scope_lgas_for(row[0], row[1]) if row else None
+    if not scope:
+        return ""
+    params[key] = [n.strip().lower() for n in scope]
+    return f" AND lower(trim({col})) = ANY(:{key})"
+
+
 async def get_lga_geojson(project_id: int, db: AsyncSession, allowed_lgas: Optional[set] = None) -> Dict[str, Any]:
     """Return GeoJSON FeatureCollection for all LGAs of the state.
 
@@ -147,6 +167,7 @@ async def get_ward_geojson(
         where_extra = "AND w.lgacode = :lgacode"
         params["lgacode"] = lgacode
     where_extra += _scope_lga_names(allowed_lgas, "w.lga_name", params)
+    where_extra += await _campaign_scope_and(project_id, db, "w.lga_name", params)
 
     # Ward metrics use the same "visited = ≥1 GPS point" rule and per-settlement
     # capped completeness (≥70 → 100). Ward completeness is mean of those caps.
@@ -227,6 +248,7 @@ async def get_settlement_geojson(
 
     where_extra = ("AND " + " AND ".join(filters)) if filters else ""
     where_extra += _scope_lga_names(allowed_lgas, "s.lga_name", params)
+    where_extra += await _campaign_scope_and(project_id, db, "s.lga_name", params)
 
     result = await db.execute(
         text(f"""
@@ -396,6 +418,10 @@ async def get_points_geojson(
             params["lga_scope"] = list(allowed_lgas)
         else:
             extra_filter += " AND FALSE"
+
+    # Hide points reported in LGAs that aren't part of the round, so a greyed-out
+    # non-campaign LGA (e.g. Sumaila for Kano R3) shows no household dots inside.
+    extra_filter += await _campaign_scope_and(project_id, db, "h.lga", params)
 
     # in_settlement: TRUE when the point falls inside any settlement polygon
     # for this state. Per the campaign-team rule, a point is "in-bounds" if it
