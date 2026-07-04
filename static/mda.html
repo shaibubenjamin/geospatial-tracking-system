@@ -6199,7 +6199,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   async function populateProjectSelector() {
     const sel = document.getElementById('project-selector');
     if (!sel) return;
-    const projects = await api('/api/projects?dashboard=true');
+    // No ?dashboard filter: the backend scopes this per role - admins/superadmins
+    // get every round (this switcher is their round picker); LGA/public users get
+    // only the in-window (active) campaign. "Show on dashboard" was retired.
+    const projects = await api('/api/projects');
     if (!Array.isArray(projects) || !projects.length) {
       sel.innerHTML = '<option value="">No projects</option>';
       sel.disabled = true;
@@ -6225,8 +6228,9 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       // "(live)" = the campaign is running (started, not yet ended) - not just
       // the dashboard's default round.
       const _running = p.campaign_start_date && p.campaign_start_date <= _today
-                       && (!p.campaign_end_date || p.campaign_end_date > _today);
-      const status = _running ? ' (live)' : '';
+                       && (!p.campaign_end_date || p.campaign_end_date > _today)
+                       && !p.campaign_paused;
+      const status = _running ? ' (live)' : (p.campaign_paused ? ' (paused)' : '');
       // Use the user-set project NAME (e.g. "Kano Pilot") authoritatively.
       // Only fall back to a composed "State Round N" label when name is
       // missing - keeps the dropdown consistent with the admin Projects

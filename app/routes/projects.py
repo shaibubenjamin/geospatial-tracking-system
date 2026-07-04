@@ -13,6 +13,18 @@ from app.routes.auth import get_current_user, get_current_user_optional, require
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+def _in_window(p, today) -> bool:
+    """True when a round is in its campaign window: started and not yet ended.
+
+    A paused round is still in-window (it's the current campaign, just halted) —
+    pausing stops auto-sync and the "live" tag, not visibility. Used to scope
+    what non-admins (LGA logins + public) may see: only the active campaign.
+    """
+    s = getattr(p, "campaign_start_date", None)
+    e = getattr(p, "campaign_end_date", None)
+    return bool(s and s <= today and (e is None or e >= today))
+
+
 def _slugify(name: str) -> str:
     """Lowercase, drop non-alphanumerics, collapse to single dashes."""
     s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
@@ -52,16 +64,31 @@ async def list_projects(
         )
     )
     projects = result.scalars().all()
-    if dashboard:
-        projects = [p for p in projects if bool(getattr(p, "show_on_dashboard", False))]
+    is_admin = _user is not None and (
+        bool(getattr(_user, "is_superadmin", False)) or bool(getattr(_user, "is_admin", False))
+    )
+
+    # Audience + state scope.
     if _user is None:
         # Anonymous (public dashboard) → only projects opted in as public.
         projects = [p for p in projects if bool(getattr(p, "is_public", False))]
     else:
-        # State scope: a non-(super)admin only sees their assigned state(s).
+        # A non-(super)admin only sees their assigned state(s).
         allowed = allowed_states_of(_user)
         if allowed is not None:
             projects = [p for p in projects if (p.state_name or "").strip().lower() in allowed]
+
+    if is_admin:
+        # Admins/superadmins see every round. ``dashboard`` narrows to the rounds
+        # they've chosen to surface in the switcher (their view preference).
+        if dashboard:
+            projects = [p for p in projects if bool(getattr(p, "show_on_dashboard", False))]
+    else:
+        # Everyone else (LGA logins + public) only ever sees the IN-WINDOW
+        # campaign: started and not yet ended. Old/not-started/ended rounds are
+        # hidden — "only the active campaign can be seen".
+        today = date.today()
+        projects = [p for p in projects if _in_window(p, today)]
     return projects
 
 
@@ -132,6 +159,8 @@ async def update_project(
         project.campaign_start_date = data.campaign_start_date
     if data.campaign_end_date is not None:
         project.campaign_end_date = data.campaign_end_date
+    if data.campaign_paused is not None:
+        project.campaign_paused = data.campaign_paused
     if data.is_public is not None:
         project.is_public = data.is_public
     if data.is_active is not None:
@@ -193,6 +222,8 @@ async def start_campaign(
     # single default round the dashboard opens to). Showing it does not hide
     # any other rounds already on the dashboard.
     project.show_on_dashboard = True
+    # Starting (or restarting) clears any prior pause so the round is Running.
+    project.campaign_paused = False
     await db.execute(
         text("UPDATE geo_projects SET is_active = FALSE WHERE id != :pid").bindparams(pid=project_id)
     )
@@ -219,6 +250,46 @@ async def end_campaign(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     project.campaign_end_date = date.today()
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+@router.post("/{project_id}/pause-campaign", response_model=ProjectOut)
+async def pause_campaign(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_superadmin),
+):
+    """Pause a running campaign — a temporary, resumable halt.
+
+    The round stays in-window (start reached, not ended), so it remains the
+    current campaign, but auto-sync stops and it reads "Paused" instead of
+    "live". Resume clears the flag. Distinct from End (which finishes the round).
+    """
+    result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project.campaign_paused = True
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+@router.post("/{project_id}/resume-campaign", response_model=ProjectOut)
+async def resume_campaign(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _super: User = Depends(require_superadmin),
+):
+    """Resume a paused campaign — clears the pause so it's Running again and
+    auto-sync picks it back up (it's still inside the campaign window)."""
+    result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project.campaign_paused = False
     await db.commit()
     await db.refresh(project)
     return project

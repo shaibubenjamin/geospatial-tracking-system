@@ -78,6 +78,7 @@ class ProjectUpdate(BaseModel):
     round_number: Optional[int] = None
     campaign_start_date: Optional[date] = None
     campaign_end_date: Optional[date] = None
+    campaign_paused: Optional[bool] = None
 
 
 class ProjectOut(BaseModel):
@@ -92,6 +93,7 @@ class ProjectOut(BaseModel):
     round_number: Optional[int] = None
     campaign_start_date: Optional[date] = None
     campaign_end_date: Optional[date] = None
+    campaign_paused: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -143,6 +143,7 @@ async def lifespan(app: FastAPI):
             # Dashboard switcher multi-select. Nullable so the one-time backfill
             # below only touches never-set rows (removed rows become FALSE, not NULL).
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS show_on_dashboard BOOLEAN",
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS campaign_paused BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 await db.execute(text(stmt))

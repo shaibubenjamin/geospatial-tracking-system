@@ -35,6 +35,10 @@ class GeoProject(Base):
     # planned campaign length so cards can show "Day 2 of 5" rather than just
     # the count of days for which data has been received.
     campaign_end_date = Column(Date)
+    # Temporary, resumable halt of a running campaign. When TRUE the round is
+    # still in-window (start reached, not ended) but auto-sync stops and it
+    # reads "Paused" instead of "live". Cleared on Resume. Distinct from End.
+    campaign_paused = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     lgas = relationship("LGA", back_populates="project", cascade="all, delete-orphan")
