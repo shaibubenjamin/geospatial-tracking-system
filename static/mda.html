@@ -293,8 +293,12 @@ tbody tr:hover{background:var(--pale)}
    Inner layout: icon and value share row 1 (icon left, value right of it);
    label + description flow underneath. The two-column CSS grid handles this
    without any HTML restructuring of the existing markup. */
-.qc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;align-items:start}
-@media(max-width:1200px){.qc-grid{grid-template-columns:repeat(2,1fr)}}
+/* Detail tiles: even 5-wide grid (10 tiles = 5+5, no orphan) with stretch so
+   every tile in a row is the SAME height (no ragged bottoms). Snaps to 2-wide
+   on smaller screens — both counts divide 10 evenly, so there's never a gap. */
+.qc-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+.qc-grid .qc-tile{height:100%}
+@media(max-width:1400px){.qc-grid{grid-template-columns:repeat(2,1fr)}}
 .qc-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:4px;align-items:start;transition:box-shadow .15s,transform .15s}
 .qc-tile:hover{box-shadow:0 4px 14px rgba(0,0,0,.06);transform:translateY(-1px)}
 .qc-icon{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-size:17px;grid-row:1;grid-column:1;align-self:center;margin-bottom:0}
@@ -1019,11 +1023,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           </div>
         </div>
 
-        <!-- Quality-check detail tiles in a 4-column grid (10 tiles = 4+4+2), so
-             with the 4-card summary band above (one row of 4) columns line up and
-             the tiles keep a comfortable width — 2-col stretched them too wide on
-             large screens. Grouped: form integrity, timing patterns, location +
-             outcome. Drops to 2-col ≤1200px and 1-col on mobile. -->
+        <!-- "Headline + even grid" layout: the 4-card summary band above is the
+             headline row; these 10 detail tiles sit in an even 5-wide grid
+             (5+5 — no orphan) with equal heights (no ragged bottoms). Grouped:
+             form integrity, timing patterns, location + outcome. Snaps to 2-wide
+             ≤1400px and 1-wide on mobile (both divide 10 evenly → never a gap). -->
         <div class="qc-grid">
           <!-- Row 1: Form integrity -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-file-circle-check"></i></div><div class="qc-val" id="qc-total-forms">-</div><div class="qc-lbl">Total Forms Analysed</div><div class="qc-desc">All household MDA forms checked for data quality issues</div></div>

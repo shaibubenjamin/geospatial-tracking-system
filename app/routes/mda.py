@@ -2151,13 +2151,18 @@ async def mda_coverage_ward(
 
 @router.get("/individuals/age-summary")
 async def individuals_age_summary(
-    lga:  Optional[str] = None,
-    ward: Optional[str] = None,
+    lga:       Optional[str] = None,
+    ward:      Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to:   Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Age-band breakdown from mda_individuals, filterable by LGA and ward."""
+    """Age-band breakdown from mda_individuals, filterable by LGA, ward and date.
+    The date filter is honoured on every figure here (the reported treated total
+    and the age bands) so the chart stays in step with the Overview KPIs when the
+    operator picks a specific day/range."""
     hh_filters = ["h.project_id = :pid", "i.project_id = :pid", "h.lga IS NOT NULL"]
     params: dict = {"pid": pid}
     if lga:
@@ -2166,6 +2171,12 @@ async def individuals_age_summary(
     if ward:
         hh_filters.append("h.ward_name = :ward")
         params["ward"] = ward
+    if date_from:
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
+        params["date_from"] = date_from
+    if date_to:
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
+        params["date_to"] = date_to
     lgas = allowed_lgas_of(_u)
     hh_where = " AND ".join(hh_filters) + _lga_and(lgas, "h.lga", params)
     lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
@@ -2210,6 +2221,10 @@ async def individuals_age_summary(
         rep_filters.append("lga = :lga")
     if ward:
         rep_filters.append("ward_name = :ward")
+    if date_from:
+        rep_filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
+    if date_to:
+        rep_filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
     rep_where = _scoped_where(pid, rep_filters, params, lgas=lgas)
     rep = await db.execute(text(f"""
         SELECT COALESCE(SUM(number_of_treated), 0) AS treated_reported
