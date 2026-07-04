@@ -2830,11 +2830,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         type: 'bar',
         data: { labels: sorted.map(l=>l.lga),
           datasets: [{ label: 'Coverage %', data: sorted.map(l=>parseFloat(l.coverage_pct)||0),
-            // Match the main render path: solid vivid green per coverage tier.
-            backgroundColor: sorted.map(l => {
-              const v = parseFloat(l.coverage_pct)||0;
-              return v >= 80 ? '#006B2E' : v >= 60 ? '#16A34A' : '#4CAF50';
-            }),
+            // One uniform brand green for every bar.
+            backgroundColor: '#006B2E', hoverBackgroundColor: '#005225',
             borderRadius: 5, maxBarThickness: 28 }]
         },
         options: {
@@ -3748,7 +3745,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       data: {
         labels: data.map(r => r.settlement_name || '(unnamed)'),
         datasets: [{ label: 'Settlements', data: data.map(r => r.completeness_pct || 0),
-          backgroundColor: data.map(r => (r.point_count > 0 || r.is_visited) ? '#16A34A' : '#CBD5E1'),
+          backgroundColor: data.map(r => (r.point_count > 0 || r.is_visited) ? '#006B2E' : '#CBD5E1'),
           borderRadius: 5, maxBarThickness: 22 }]
       },
       options: {
@@ -3826,9 +3823,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     new Chart(el, {
       type: 'bar',
       data: { labels, datasets: [{ label: noPct ? 'Settlements' : 'Coverage %', data: values,
-        backgroundColor: values.map(v => noPct
-          ? (v > 0 ? '#16A34A' : '#CBD5E1')
-          : (v >= 80 ? '#006B2E' : v >= 60 ? '#16A34A' : v > 0 ? '#4CAF50' : '#CBD5E1')),
+        // One uniform brand green for every bar; grey only for true zero (no bar).
+        backgroundColor: values.map(v => (v > 0 ? '#006B2E' : '#CBD5E1')),
         borderRadius: 5, maxBarThickness: 24 }] },
       options: {
         indexAxis: 'y',
@@ -3927,14 +3923,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       data: {
         labels: sorted.map(l => l.lga),
         datasets: [{ label: 'Forms Submitted', data: sorted.map(l => l[key]||0),
-          // Solid shades of green per coverage tier - opacity-based fading
-          // washed the bars out at <60% coverage where most R5 LGAs sit today.
-          backgroundColor: sorted.map(l => {
-            const cov = parseFloat(l.coverage_pct) || 0;
-            return cov >= 80 ? '#006B2E'   // deep green
-                 : cov >= 60 ? '#16A34A'   // mid green
-                 :             '#4CAF50';  // light green - still vibrant, not washed
-          }),
+          // One uniform brand green for every bar (no coverage-tier shading).
+          backgroundColor: '#006B2E', hoverBackgroundColor: '#005225',
           borderRadius: 5, maxBarThickness: 26 }]
       },
       options: {
@@ -4269,13 +4259,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           type: 'bar',
           data: { labels: sorted.map(l=>l.lga),
             datasets: [{ label: 'Coverage %', data: sorted.map(l=>parseFloat(l.coverage_pct)||0),
-              // Solid vivid greens by coverage tier - no opacity fading.
-              backgroundColor: sorted.map(l => {
-                const v = parseFloat(l.coverage_pct)||0;
-                return v >= 80 ? '#006B2E'   // deep green
-                     : v >= 60 ? '#16A34A'   // mid green
-                     :           '#4CAF50';  // light green - still vibrant
-              }), borderRadius: 5, maxBarThickness: 28 }]
+              // One uniform brand green for every bar (no coverage-tier shading).
+              backgroundColor: '#006B2E', hoverBackgroundColor: '#005225', borderRadius: 5, maxBarThickness: 28 }]
           },
           options: {
             indexAxis: 'y',
