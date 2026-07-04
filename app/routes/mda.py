@@ -246,6 +246,22 @@ def _lga_and(lgas, col: str, params: dict, key: str = "lgascope") -> str:
     return f" AND lower(trim({col})) = ANY(:{key})"
 
 
+def _as_date(s: "Optional[str]"):
+    """Parse a YYYY-MM-DD filter string into a datetime.date.
+
+    asyncpg binds a date-typed query parameter as a datetime.date, NOT a str, so
+    passing the raw 'YYYY-MM-DD' string 500s every date-filtered query with
+    "'str' object has no attribute 'toordinal'". Callers convert here before
+    putting the value in params. Returns None for empty/malformed input (the
+    filter then matches nothing instead of crashing the request)."""
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
 def _scoped_where(pid: int, filters: list, params: dict, alias: str = "",
                   date_filter: bool = True, date_col: str = "received_on",
                   lgas=None, lga_col: str = "lga") -> str:
@@ -1166,8 +1182,8 @@ async def qc_summary(
     # which CommCare HQ accepted the form. Field workers can backfill date_trt
     # / check_treatment_date inconsistently, so received_on is the only column
     # that reflects what the platform actually has data for.
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)"); params["date_from"] = date_from
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
@@ -1435,8 +1451,8 @@ async def qc_duration_histogram(
     ]
     if lga:  filters.append("lga = :lga");        params["lga"]  = lga
     if ward: filters.append("ward_name = :ward"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)"); params["date_from"] = date_from
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
 
     # 1-minute-wide bins from 0 → 60 min; >=60 lumped into bin 60 (the long tail).
@@ -1561,8 +1577,8 @@ async def qc_teams_summary(
     params: dict = {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)"); params["date_from"] = date_from
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     # forms_with_error uses the same definition as /qc/summary and /overview
     # (refusal NOT counted — it's an outcome; sync_lag NOT counted — it's a
@@ -1702,8 +1718,8 @@ async def mda_overview(
     filters, params = [], {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)"); params["date_from"] = date_from
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     lgas = allowed_lgas_of(_u)
     where = _scoped_where(pid, filters, params, lgas=lgas)
     lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
@@ -1864,8 +1880,8 @@ async def mda_trends_daily(
     params: dict = {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
     if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)"); params["date_from"] = date_from
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)");   params["date_to"]   = date_to
+    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
@@ -1964,11 +1980,11 @@ async def mda_coverage_lga(
         hh_filters.append("h.ward_name = :ward")
         params["ward"] = ward
     if date_from:
-        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)")
-        params["date_from"] = date_from
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
+        params["date_from"] = _as_date(date_from)
     if date_to:
-        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)")
-        params["date_to"] = date_to
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
+        params["date_to"] = _as_date(date_to)
     hh_where = " AND ".join(hh_filters)
 
     # Optional LGA-name filter applies to both baseline and households.
@@ -2172,11 +2188,11 @@ async def individuals_age_summary(
         hh_filters.append("h.ward_name = :ward")
         params["ward"] = ward
     if date_from:
-        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)")
-        params["date_from"] = date_from
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
+        params["date_from"] = _as_date(date_from)
     if date_to:
-        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)")
-        params["date_to"] = date_to
+        hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
+        params["date_to"] = _as_date(date_to)
     lgas = allowed_lgas_of(_u)
     hh_where = " AND ".join(hh_filters) + _lga_and(lgas, "h.lga", params)
     lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
@@ -2222,9 +2238,9 @@ async def individuals_age_summary(
     if ward:
         rep_filters.append("ward_name = :ward")
     if date_from:
-        rep_filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= CAST(:date_from AS date)")
+        rep_filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
     if date_to:
-        rep_filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= CAST(:date_to AS date)")
+        rep_filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to")
     rep_where = _scoped_where(pid, rep_filters, params, lgas=lgas)
     rep = await db.execute(text(f"""
         SELECT COALESCE(SUM(number_of_treated), 0) AS treated_reported
