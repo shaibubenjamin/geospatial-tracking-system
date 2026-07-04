@@ -3818,6 +3818,9 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const wrap = el?.parentElement; if (wrap) { wrap.style.height = ''; wrap.style.overflow = ''; }
     const t = el?.closest('.card')?.querySelector('.card-title');
     if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Treatment Coverage by LGA (%)';
+    // Force a rebuild — buildCharts() no-ops when built['coverage'] is already
+    // true, which left the LGA bar blank when clicking "All LGAs" to drill back up.
+    delete built['coverage'];
     buildCharts('coverage');
   }
   window.covDrillToWards = covDrillToWards;
