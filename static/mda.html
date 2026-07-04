@@ -22,7 +22,7 @@ body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--pale);
 .app{display:flex;height:100vh}
 
 /* ===== SIDEBAR ===== */
-.sidebar{width:252px;background:linear-gradient(180deg,#001A08,var(--navy) 40%,var(--deep));color:#cce8d5;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.18);transition:width .25s cubic-bezier(.4,0,.2,1);overflow-x:hidden}
+.sidebar{width:252px;background:linear-gradient(180deg,#001A08,var(--navy) 40%,var(--deep));color:#cce8d5;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;box-shadow:2px 0 20px rgba(0,0,0,.18);transition:width .25s cubic-bezier(.4,0,.2,1);overflow-x:hidden;position:relative;z-index:1000}
 .brand{padding:22px 22px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.1);transition:padding .25s}
 .brand-logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--bright),var(--gold));display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;box-shadow:0 2px 12px rgba(0,107,46,.5);flex-shrink:0}
 .brand-name{color:#fff;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;transition:opacity .2s}
@@ -3751,11 +3751,15 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       sc.appendChild(wrap);
     }
   }
-  function _covDrillChart(el, labels, values, rows, onBarClick) {
+  function _covDrillChart(el, labels, values, rows, onBarClick, opts) {
+    opts = opts || {};
+    const noPct = !!opts.noPercent;  // settlement level: no target → no coverage %
     new Chart(el, {
       type: 'bar',
-      data: { labels, datasets: [{ label: 'Coverage %', data: values,
-        backgroundColor: values.map(v => v >= 80 ? '#006B2E' : v >= 60 ? '#16A34A' : v > 0 ? '#4CAF50' : '#CBD5E1'),
+      data: { labels, datasets: [{ label: noPct ? 'Settlements' : 'Coverage %', data: values,
+        backgroundColor: values.map(v => noPct
+          ? (v > 0 ? '#16A34A' : '#CBD5E1')
+          : (v >= 80 ? '#006B2E' : v >= 60 ? '#16A34A' : v > 0 ? '#4CAF50' : '#CBD5E1')),
         borderRadius: 5, maxBarThickness: 24 }] },
       options: {
         indexAxis: 'y',
@@ -3763,14 +3767,20 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         onHover: (e, els) => { el.style.cursor = (els.length && onBarClick) ? 'pointer' : 'default'; },
         plugins: {
           legend: { display: false },
-          datalabels: { display: true, anchor: 'center', align: 'center', color: '#fff',
-            font: { size: 10.5, weight: '700' }, formatter: v => (v || 0).toFixed(1) + '%' },
+          datalabels: noPct
+            ? { display: false }
+            : { display: true, anchor: 'center', align: 'center', color: '#fff',
+                font: { size: 10.5, weight: '700' }, formatter: v => (v || 0).toFixed(1) + '%' },
           tooltip: { callbacks: { label: ctx => {
             const r = rows[ctx.dataIndex] || {};
+            if (noPct) {
+              const visited = (ctx.raw || 0) > 0 || (r.point_count || 0) > 0;
+              return ' ' + (visited ? 'Visited' : 'Not visited') + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
+            }
             return ' ' + (ctx.raw || 0).toFixed(1) + '%' + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
           } } }
         },
-        scales: { x: { display: false, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
+        scales: { x: noPct ? { display: false } : { display: false, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
         maintainAspectRatio: false
       }
     });
@@ -3788,13 +3798,17 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
   async function covDrillToSettlements(lga, ward) {
     const el = document.getElementById('c_covLgaBar'); if (!el) return;
+    // Fetch FIRST — if this ward has no settlement breakdown, stay on the ward
+    // view (don't destroy the ward chart and leave a blank canvas).
+    const data = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!data.length) { showToast('No settlement breakdown for ' + ward + ' - staying on wards'); return; }
     const ex = Chart.getChart(el); if (ex) ex.destroy();
     const t = el.closest('.card')?.querySelector('.card-title');
-    if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlement coverage - ' + ward + ' &nbsp;' + _covDrillBack(lga, ward);
-    const data = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
-    if (!data.length) { showToast('No settlement data for ' + ward); return; }
+    // "Settlements" not "coverage" — settlements have no treatment target, so the
+    // bars carry no percentage (visited / not, coloured by whether any GPS landed).
+    if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlements - ' + ward + ' &nbsp;' + _covDrillBack(lga, ward);
     _covDrillScroll(el, data.length);
-    _covDrillChart(el, data.map(r => r.settlement_name || '(unnamed)'), data.map(r => r.completeness_pct || 0), data, null);
+    _covDrillChart(el, data.map(r => r.settlement_name || '(unnamed)'), data.map(r => r.completeness_pct || 0), data, null, { noPercent: true });
   }
   function covDrillUp() {
     const el = document.getElementById('c_covLgaBar');
