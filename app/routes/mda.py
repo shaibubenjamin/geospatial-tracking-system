@@ -1176,7 +1176,7 @@ async def qc_summary(
         filters.append("lga = :lga")
         params["lga"] = lga
     if ward:
-        filters.append("ward_name = :ward")
+        filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
         params["ward"] = ward
     # Date filter / "days active" both key off received_on — the timestamp at
     # which CommCare HQ accepted the form. Field workers can backfill date_trt
@@ -1349,7 +1349,7 @@ async def qc_refusals_by_lga(
     params: dict = {}
     filters: list = []
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if ward: filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
@@ -1391,7 +1391,7 @@ async def qc_duration_by_lga(
     params: dict = {}
     filters: list = ["form_duration_min IS NOT NULL"]
     if lga:  filters.append("lga = :lga");  params["lga"] = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if ward: filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
@@ -1450,7 +1450,7 @@ async def qc_duration_histogram(
         "form_duration_min < 360",
     ]
     if lga:  filters.append("lga = :lga");        params["lga"]  = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if ward: filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
@@ -1576,7 +1576,7 @@ async def qc_teams_summary(
     filters: list = ["hq_user IS NOT NULL"]
     params: dict = {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
-    if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
+    if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
@@ -1717,7 +1717,7 @@ async def mda_overview(
 ):
     filters, params = [], {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
-    if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
+    if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     lgas = allowed_lgas_of(_u)
@@ -1879,7 +1879,7 @@ async def mda_trends_daily(
     filters = ["received_on IS NOT NULL"]
     params: dict = {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
-    if ward:      filters.append("ward_name = :ward"); params["ward"] = ward
+    if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
@@ -1911,7 +1911,7 @@ async def mda_teams(
     filters = ["hq_user IS NOT NULL"]
     params: dict = {}
     if lga:  filters.append("lga = :lga");       params["lga"]  = lga
-    if ward: filters.append("ward_name = :ward"); params["ward"] = ward
+    if ward: filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     result = await db.execute(text(f"""
         SELECT
@@ -1977,7 +1977,7 @@ async def mda_coverage_lga(
     hh_filters: list = ["h.project_id = :pid"]
     params: dict = {"pid": pid}
     if ward:
-        hh_filters.append("h.ward_name = :ward")
+        hh_filters.append("REPLACE(LOWER(TRIM(h.ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
         params["ward"] = ward
     if date_from:
         hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
@@ -2185,7 +2185,7 @@ async def individuals_age_summary(
         hh_filters.append("h.lga = :lga")
         params["lga"] = lga
     if ward:
-        hh_filters.append("h.ward_name = :ward")
+        hh_filters.append("REPLACE(LOWER(TRIM(h.ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
         params["ward"] = ward
     if date_from:
         hh_filters.append("(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
@@ -2236,7 +2236,7 @@ async def individuals_age_summary(
     if lga:
         rep_filters.append("lga = :lga")
     if ward:
-        rep_filters.append("ward_name = :ward")
+        rep_filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
     if date_from:
         rep_filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from")
     if date_to:
