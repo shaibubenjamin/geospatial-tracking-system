@@ -3575,7 +3575,21 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> All LGAs</button>';
 
     const data = await api('/api/mda/submissions/ward?lga=' + encodeURIComponent(lga)) || [];
-    if (!data.length) { showToast('No ward data for ' + lga); return; }
+    if (!data.length) {
+      // No submissions for this LGA yet (e.g. campaign not started / no synced
+      // forms). Draw a clear message instead of leaving a blank white canvas.
+      const wrap0 = el.parentElement;
+      if (wrap0 && wrap0.clientWidth) { el.width = wrap0.clientWidth; el.height = Math.max(160, wrap0.clientHeight || 220); }
+      const ctx0 = el.getContext('2d');
+      ctx0.clearRect(0, 0, el.width, el.height);
+      ctx0.fillStyle = '#5B6B82';
+      ctx0.font = '13px Inter, system-ui, sans-serif';
+      ctx0.textAlign = 'center';
+      ctx0.fillText('No household submissions yet for ' + lga + '.', el.width / 2, el.height / 2 - 8);
+      ctx0.fillStyle = '#94a3b8'; ctx0.font = '12px Inter, system-ui, sans-serif';
+      ctx0.fillText('Ward submissions appear once forms are synced for this campaign.', el.width / 2, el.height / 2 + 14);
+      return;
+    }
 
     // Dynamic height: 34px per ward keeps bars full-size regardless of ward count
     const wrap = el.parentElement;  // .chart-wrap - Chart.js reads *this* for canvas size
