@@ -2195,6 +2195,27 @@ async def individuals_age_summary(
     """), params)
     bl_row = bl.fetchone()
 
+    # Reported treated total = SUM(number_of_treated) over the SAME households (no
+    # individuals join, so no fan-out). This is the authoritative "children
+    # treated" figure — the primary reported field and the coverage numerator —
+    # so the 1–59 chart total matches the "Children Treated" KPI and Treatment
+    # Coverage %. It runs ~drift higher than the per-child row count above because
+    # some treated children have no age-recorded repeat-group row (see the
+    # Form ↔ Repeat-Group Drift QC), which is why the age *bands* (from
+    # mda_individuals) can't sum exactly to it.
+    rep_filters = ["h.project_id = :pid", "h.lga IS NOT NULL"]
+    if lga:
+        rep_filters.append("h.lga = :lga")
+    if ward:
+        rep_filters.append("h.ward_name = :ward")
+    rep_where = " AND ".join(rep_filters) + _lga_and(lgas, "h.lga", params)
+    rep = await db.execute(text(f"""
+        SELECT COALESCE(SUM(h.number_of_treated), 0) AS treated_reported
+        FROM mda_households h
+        WHERE {rep_where}
+    """), params)
+    treated_reported = int(rep.scalar() or 0)
+
     treated_1_11   = int(row.treated_1_11 or 0)
     treated_12_59  = int(row.treated_12_59 or 0)
     baseline_1_11  = int(bl_row.baseline_1_11) if bl_row else 0
@@ -2206,6 +2227,7 @@ async def individuals_age_summary(
         "total_12_59":   int(row.total_12_59 or 0),
         "treated_12_59": treated_12_59,
         "total_treated": int(row.total_treated or 0),
+        "treated_reported": treated_reported,
         "grand_total":   int(row.grand_total or 0),
         "baseline_total": int(bl_row.total) if bl_row else 0,
         # Age-band coverage (populated only if the round's baseline carries per-band targets)

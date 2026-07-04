@@ -3982,8 +3982,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (!el) return;
     const existing = Chart.getChart(el); if (existing) existing.destroy();
     // Single comparison: total baseline target for 1–59 months vs total treated 1–59.
+    // Use treated_reported (SUM of number_of_treated — the same source as the
+    // "Children Treated" KPI and Treatment Coverage %) so this bar matches them;
+    // total_treated (per-child repeat-group rows) runs slightly lower due to
+    // under-filled repeat groups. Fall back to total_treated if the field is absent.
     const baseline = Number(d.baseline_total || 0);
-    const treated  = Number(d.total_treated  || 0);
+    const treated  = Number(d.treated_reported != null ? d.treated_reported : (d.total_treated || 0));
     const labels   = ['Children 1–59 months'];
     new Chart(el, {
       type: 'bar',
