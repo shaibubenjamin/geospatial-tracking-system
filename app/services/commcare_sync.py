@@ -948,9 +948,11 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
                                     scope_lgas: Optional[list] = None) -> None:
     """Recompute the settlement_analytics rollup for this project.
 
-    Each household point is tested against grids / settlements ONCE via spatial
-    joins (GiST-indexed) — fast even on large states. Verified identical to the
-    old correlated-subquery query on Sokoto (9,473 settlements, 0 diffs).
+    FORM-authoritative (2026-07-05): a settlement is "visited" when a household
+    reported it via the CommCare field-entered (lga, ward, settlement) dropdown,
+    matched to the boundary polygon by name — NOT by GPS point-in-polygon (which
+    misfiled households across boundaries when GPS drifted). See the comment on
+    the INSERT below for details and the ~98.8% name-match rate.
 
     Delete-then-insert (not upsert) so a boundary or scope change can never leave
     orphan rows keyed to a previous boundary project. When ``scope_lgas`` is
@@ -961,7 +963,7 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
     household matches are scoped to the round.
     """
     scope_clause = ""
-    params = {"mda_pid": project_id, "boundary_pid": boundary_pid, "visit_threshold": 70}
+    params = {"mda_pid": project_id, "boundary_pid": boundary_pid}
     if scope_lgas:
         scope_clause = "AND LOWER(TRIM(s.lga_name)) = ANY(%(scope)s)"
         params["scope"] = [n.strip().lower() for n in scope_lgas]
@@ -970,25 +972,28 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
     # rows keyed to a previous boundary. Atomic with the INSERT (same txn).
     ph_cur.execute("DELETE FROM settlement_analytics WHERE project_id = %(mda_pid)s",
                    {"mda_pid": project_id})
+    # FORM-AUTHORITATIVE visitation. A settlement polygon is "visited" when at
+    # least one household reported it via the CommCare field-entered
+    # (lga, ward, settlement) dropdown — matched to the polygon by name
+    # (space/case-insensitive). This replaces the GPS point-in-polygon join,
+    # which misfiled households across boundaries when GPS drifted. ~98.8% of
+    # Kano R3 households match a polygon exactly; the rest are street-level
+    # detail finer than the boundary and simply aren't placed on the map.
+    # point_count = households reporting the settlement; completeness is binary
+    # (reported = 100) since settlements carry no per-settlement target.
+    # grids are joined only for the total_grids reference (name/code join, no
+    # spatial op) — so this is also much faster than the old ST_Within recompute.
     ph_cur.execute(
         f"""
-        WITH pts AS (
-            SELECT geom FROM mda_households
-            WHERE project_id = %(mda_pid)s AND geom IS NOT NULL
-        ),
-        -- Grids that contain at least one household point (drive from the small
-        -- point set, probing the grid GiST index — fast).
-        visited_grids AS (
-            SELECT DISTINCT g.id AS grid_id
-            FROM pts p
-            JOIN grids g ON g.project_id = %(boundary_pid)s AND ST_Within(p.geom, g.geom)
-        ),
-        -- Points per settlement (drive from points, probing settlement GiST index).
-        sett_pts AS (
-            SELECT s.id AS settlement_id, COUNT(*) AS point_count
-            FROM pts p
-            JOIN settlements s ON s.project_id = %(boundary_pid)s AND ST_Within(p.geom, s.geom)
-            GROUP BY s.id
+        WITH form_matched AS (
+            SELECT REPLACE(LOWER(TRIM(lga)),             ' ', '') AS lk,
+                   REPLACE(LOWER(TRIM(ward_name)),       ' ', '') AS wk,
+                   REPLACE(LOWER(TRIM(settlement_name)), ' ', '') AS sk,
+                   COUNT(*) AS forms
+            FROM mda_households
+            WHERE project_id = %(mda_pid)s
+              AND settlement_name IS NOT NULL AND TRIM(settlement_name) <> ''
+            GROUP BY 1, 2, 3
         )
         INSERT INTO settlement_analytics
           (project_id, settlement_id, unique_cod, lgacode, wardcode,
@@ -999,26 +1004,22 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
             %(mda_pid)s, s.id, s.unique_cod, s.lgacode, s.wardcode,
             s.settlement_name, s.lga_name, s.ward_name,
             COUNT(g.id) AS total_grids,
-            COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL) AS visited_grids,
-            CASE WHEN COUNT(g.id) > 0
-                 THEN ROUND(100.0 * COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL)
-                            / NULLIF(COUNT(g.id), 0), 2)
-                 ELSE 0 END AS completeness_pct,
-            CASE WHEN COUNT(g.id) > 0
-                 THEN (100.0 * COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL)
-                       / NULLIF(COUNT(g.id), 0)) >= %(visit_threshold)s
-                 ELSE COALESCE(sp.point_count, 0) > 0 END AS is_visited,
-            COALESCE(sp.point_count, 0) AS point_count,
+            CASE WHEN COALESCE(fm.forms, 0) > 0 THEN COUNT(g.id) ELSE 0 END AS visited_grids,
+            CASE WHEN COALESCE(fm.forms, 0) > 0 THEN 100 ELSE 0 END AS completeness_pct,
+            COALESCE(fm.forms, 0) > 0 AS is_visited,
+            COALESCE(fm.forms, 0) AS point_count,
             NOW() AS last_computed
         FROM settlements s
         LEFT JOIN grids g
                ON g.unique_cod = s.unique_cod
               AND g.project_id = s.project_id
-        LEFT JOIN visited_grids vg ON vg.grid_id = g.id
-        LEFT JOIN sett_pts sp ON sp.settlement_id = s.id
+        LEFT JOIN form_matched fm
+               ON fm.lk = REPLACE(LOWER(TRIM(s.lga_name)),        ' ', '')
+              AND fm.wk = REPLACE(LOWER(TRIM(s.ward_name)),        ' ', '')
+              AND fm.sk = REPLACE(LOWER(TRIM(s.settlement_name)),  ' ', '')
         WHERE s.project_id = %(boundary_pid)s {scope_clause}
         GROUP BY s.id, s.unique_cod, s.lgacode, s.wardcode,
-                 s.settlement_name, s.lga_name, s.ward_name, sp.point_count
+                 s.settlement_name, s.lga_name, s.ward_name, fm.forms
         """,
         params,
     )
