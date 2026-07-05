@@ -80,6 +80,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS flag_gps_outside_state BOOLEAN DEFAULT FALSE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS check_treatment_date DATE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS hq_user TEXT",
+            # Field-entered settlement (CommCare admin5 dropdown) — drives the
+            # form-based settlement drill (see /api/mda/submissions/settlement).
+            "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS settlement_name TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN DEFAULT FALSE",
             # Phase 4a — state + round on geo_projects, project_id on MDA tables
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS state_name TEXT",
