@@ -426,7 +426,18 @@ async def upload_mda(
             local_hour = (started_time + timedelta(hours=1)).hour
             flag_after_hours = local_hour < 6 or local_hour >= 19
 
-        flag_fast_form = bool(form_duration_min is not None and form_duration_min < 3)
+        # Fast-form: <3 min AND a real visit was actually attempted. Refusals
+        # (consent_trt='0') and N/A entries (consent_trt='2') finish quickly
+        # for legitimate reasons and are excluded (operator agreement
+        # 2026-07-05). The CommCare sync path also excludes empty households
+        # via consent_survey.num_reside='0' — this Excel workbook format
+        # doesn't carry num_reside as a mapped cell, so it applies only the
+        # consent_trt guard here.
+        _real_visit_attempted = consent_trt not in ("0", "2")
+        flag_fast_form = bool(
+            form_duration_min is not None and form_duration_min < 3
+            and _real_visit_attempted
+        )
         flag_slow_form = bool(form_duration_min is not None and form_duration_min > 60)
         flag_sync_lag  = bool(sync_lag_hours is not None and sync_lag_hours > 48)
         flag_refusal   = consent_trt == "0"

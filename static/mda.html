@@ -1105,8 +1105,9 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                   <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('total_forms')">Total Records <span id="qcts-total_forms"></span></th>
                   <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('avg_duration_min')" title="Average time from form start to submit for this team (excludes forms >6h left open)">Avg Time <span id="qcts-avg_duration_min"></span></th>
                   <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('forms_with_error')">Records w/ Error <span id="qcts-forms_with_error"></span></th>
-                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('error_rate')">Error Rate <span id="qcts-error_rate">▼</span></th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('error_rate')">Error Rate <span id="qcts-error_rate"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_forms')">Dup Forms <span id="qcts-dup_forms"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_gps')" title="Number of this team's forms that share GPS coordinates with another form in the project (stacked points)">Stacked Points <span id="qcts-dup_gps"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('gps_issues')">GPS Issues <span id="qcts-gps_issues"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('after_hours')">After Hours <span id="qcts-after_hours"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast (&lt;3 min) <span id="qcts-fast_forms"></span></th>
@@ -1115,7 +1116,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                 </tr>
               </thead>
               <tbody id="qc-teams-tbody">
-                <tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
+                <tr><td colspan="13" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -3349,11 +3350,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 
     // ── QC Teams table ──
     if (teamQC && teamQC.length) {
-      // GPS Issues column rolls up all three location anomalies (mis-placed,
-      // duplicate, poor accuracy) into one count so the team table stays
-      // narrow but the underlying signal is still trackable per team.
+      // GPS Issues column rolls up misplaced + poor-accuracy points. Stacked
+      // points (dup_gps) now have their own dedicated column so they're
+      // excluded from this rollup — otherwise the team's stacked count would
+      // show twice (once in "Stacked Points" and again inside "GPS Issues").
       qcTeamsData = teamQC.map(r => ({ ...r,
-        gps_issues: (r.gps_outside_lga||0) + (r.poor_gps||0) + (r.dup_gps||0)
+        gps_issues: (r.gps_outside_lga||0) + (r.poor_gps||0)
       }));
       renderQCTeamsTable();
     }
@@ -3492,7 +3494,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const tbody = document.getElementById('qc-teams-tbody');
     if (!tbody) return;
     if (!qcTeamsData.length) {
-      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No team data available yet for this project. Sync some forms to populate this table.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:24px;color:var(--muted);font-size:13px">No team data available yet for this project. Sync some forms to populate this table.</td></tr>';
       return;
     }
     const { col, asc } = qcTeamsSort;
@@ -3502,10 +3504,22 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       if (typeof va === 'string') return asc ? va.localeCompare(vb) : vb.localeCompare(va);
       return asc ? va - vb : vb - va;
     });
-    // Update sort indicators in header
-    ['hq_user','lga','total_forms','avg_duration_min','forms_with_error','error_rate','dup_forms','gps_issues','after_hours','fast_forms','sync_lag','refusals'].forEach(c => {
+    // Sort affordance. Every sortable column shows a muted ⇅ so it's
+    // obvious it's clickable; the active column highlights direction
+    // (▲ asc, ▼ desc) in navy so it stands out from the muted ones.
+    const SORT_COLS = ['hq_user','lga','total_forms','avg_duration_min',
+                       'forms_with_error','error_rate','dup_forms','dup_gps',
+                       'gps_issues','after_hours','fast_forms','sync_lag','refusals'];
+    SORT_COLS.forEach(c => {
       const el = document.getElementById('qcts-' + c);
-      if (el) el.textContent = c === col ? (asc ? '▲' : '▼') : '';
+      if (!el) return;
+      if (c === col) {
+        el.innerHTML = asc
+          ? '<span style="color:var(--navy);font-weight:800">▲</span>'
+          : '<span style="color:var(--navy);font-weight:800">▼</span>';
+      } else {
+        el.innerHTML = '<span style="color:var(--muted);opacity:.55;font-size:10px">⇅</span>';
+      }
     });
     const errColour = r => r.error_rate >= 30 ? 'var(--bad)' : r.error_rate >= 15 ? 'var(--warn)' : 'var(--good)';
     // Team's average form-completion time in minutes. Colour a fast average
@@ -3526,6 +3540,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <span style="background:${r.error_rate>=30?'var(--bad-bg)':r.error_rate>=15?'var(--warn-bg)':'var(--good-bg)'};color:${errColour(r)};padding:2px 8px;border-radius:99px;font-weight:700;font-size:11.5px">${r.error_rate}%</span>
         </td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_forms||0}</td>
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_gps||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.gps_issues||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.after_hours||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.fast_forms||0}</td>
