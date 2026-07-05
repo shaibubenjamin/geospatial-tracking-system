@@ -579,6 +579,7 @@ _PUBLIC_GET_PATHS: set[str] = {
     "/api/mda/teams/by-lga",
     "/api/mda/teams/footprint",
     "/api/mda/submissions/ward",
+    "/api/mda/settlement-forms",
     "/api/mda/individuals/age-summary",
     "/api/mda/wards",
     # Project metadata (list view)
