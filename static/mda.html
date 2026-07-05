@@ -3715,7 +3715,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // on screen while they load (no blank flash) and stay on wards if there's
     // nothing to show.
     // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
-    const raw = await api('/api/mda/submissions/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    const raw = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
     if (!raw.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
     _formsRerender = () => drillDownToSettlements(lga, ward);
     const data = _applyHide(raw, 'forms', 'forms');
@@ -3846,7 +3846,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               // Settlement level = form counts (field-entered CommCare settlement).
               return ' ' + (r.forms || 0).toLocaleString() + ' forms · ' + (r.treated || 0).toLocaleString() + ' treated';
             }
-            return ' ' + (ctx.raw || 0).toFixed(1) + '%' + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
+            // Ward coverage: show the numbers behind the % (treated + target), so
+            // the percentage is never read in isolation.
+            return [' Coverage: ' + (ctx.raw || 0).toFixed(1) + '%',
+                    ' Treated: ' + Number(r.actual_treated || 0).toLocaleString(),
+                    ' Target (baseline): ' + Number(r.baseline_total || 0).toLocaleString()];
           } } }
         },
         scales: {
@@ -3877,7 +3881,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // Fetch FIRST — if this ward has no settlement breakdown, stay on the ward
     // view (don't destroy the ward chart and leave a blank canvas).
     // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
-    const raw = await api('/api/mda/submissions/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    const raw = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
     if (!raw.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
     _covRerender = () => covDrillToSettlements(lga, ward);
     const data = _applyHide(raw, 'cov', 'forms');
