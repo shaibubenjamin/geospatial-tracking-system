@@ -1292,56 +1292,36 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block"></span>GPS in grid</span>
               <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#dc2626;border-radius:50%;display:inline-block"></span>GPS outside</span>
             </div>
-            <!-- QC overlay + Team Movement controls. All overlays now live inside
-                 a single dropdown - operators pick one (or layer multiple) without
-                 the strip wrapping over multiple lines on narrow viewports. The
-                 Team-Movement selectors (team / date) only appear once that
-                 overlay is active, surfacing inline next to the trigger. -->
+            <!-- QC overlay + Team Movement controls. Each overlay gets its own
+                 button on the strip (was briefly consolidated into a "Map
+                 Overlays" dropdown but the dropdown obscured the choices when
+                 opened — operators asked for the flat, visible layout back
+                 2026-07-05). The Team-Movement selectors (team / date) only
+                 appear once that overlay is toggled on. -->
             <div class="geo-ctrl-strip">
-              <div class="geo-dl-menu" id="geo-overlay-menu">
-                <button class="geo-ctrl-btn geo-dl-trigger" onclick="toggleGeoOverlayMenu(event)" title="Show QC heatmap / movement overlays">
-                  <i class="fa-solid fa-layer-group"></i> Map Overlays <i class="fa-solid fa-chevron-down" style="font-size:9px;margin-left:2px"></i>
-                </button>
-                <div class="geo-dl-list" id="geo-overlay-list">
-                  <div class="geo-dl-section">QC Heatmaps</div>
-                  <div class="geo-dl-item" id="geo-ovl-hm-all" onclick="_geoOvl(()=>geoHeatmap('all', document.getElementById('geo-ovl-hm-all')))">
-                    <i class="fa-solid fa-fire" style="color:#dc2626"></i>
-                    <div>All QC Anomalies<span class="geo-dl-item-sub">Heatmap of every flagged GPS point</span></div>
-                  </div>
-                  <div class="geo-dl-item" id="geo-ovl-hm-dup" onclick="_geoOvl(()=>geoHeatmap('duplicate', document.getElementById('geo-ovl-hm-dup')))">
-                    <i class="fa-solid fa-copy" style="color:#d97706"></i>
-                    <div>Duplicate GPS<span class="geo-dl-item-sub">Points sharing the same coordinates</span></div>
-                  </div>
-                  <div class="geo-dl-item" id="geo-ovl-hm-lga" onclick="_geoOvl(()=>geoHeatmap('outside_lga', document.getElementById('geo-ovl-hm-lga')))">
-                    <i class="fa-solid fa-location-crosshairs" style="color:#dc2626"></i>
-                    <div>Points Outside LGA<span class="geo-dl-item-sub">GPS falls outside the reported LGA polygon</span></div>
-                  </div>
-                  <div class="geo-dl-item" id="geo-ovl-hm-ward" onclick="_geoOvl(()=>geoHeatmap('outside_ward', document.getElementById('geo-ovl-hm-ward')))">
-                    <i class="fa-solid fa-crosshairs" style="color:#dc2626"></i>
-                    <div>Points Outside Ward<span class="geo-dl-item-sub">GPS falls outside the reported ward</span></div>
-                  </div>
-                  <div class="geo-dl-divider"></div>
-                  <div class="geo-dl-section">Team Activity</div>
-                  <div class="geo-dl-item" id="geo-ovl-movement" onclick="_geoOvl(()=>geoToggleMovement(document.getElementById('geo-ovl-movement')))">
-                    <i class="fa-solid fa-route" style="color:#005225"></i>
-                    <div>Team Movement Paths<span class="geo-dl-item-sub">Per-team GPS breadcrumbs with date filter</span></div>
-                  </div>
-                </div>
-              </div>
-              <!-- Inline secondary controls - only relevant once Team Movement is on. -->
+              <button class="geo-ctrl-btn" id="geo-btn-hm-all" onclick="geoHeatmap('all',this)" title="Heatmap of every flagged GPS point">
+                <i class="fa-solid fa-fire" style="color:#dc2626"></i> QC Heatmap
+              </button>
+              <button class="geo-ctrl-btn" id="geo-btn-hm-dup" onclick="geoHeatmap('duplicate',this)" title="Points sharing the same coordinates (stacked)">
+                <i class="fa-solid fa-copy" style="color:#d97706"></i> Duplicate GPS
+              </button>
+              <button class="geo-ctrl-btn" id="geo-btn-hm-lga" onclick="geoHeatmap('outside_lga',this)" title="Points >500 m outside the reported LGA polygon">
+                <i class="fa-solid fa-location-crosshairs" style="color:#dc2626"></i> Outside LGA
+              </button>
+              <button class="geo-ctrl-btn" id="geo-btn-hm-ward" onclick="geoHeatmap('outside_ward',this)" title="Points outside the reported ward polygon">
+                <i class="fa-solid fa-crosshairs" style="color:#dc2626"></i> Outside Ward
+              </button>
+              <div class="geo-ctrl-sep"></div>
+              <button class="geo-ctrl-btn" id="geo-btn-movement" onclick="geoToggleMovement(this)" title="Per-team GPS breadcrumbs">
+                <i class="fa-solid fa-route" style="color:#005225"></i> Team Movement
+              </button>
+              <!-- Inline secondary controls — only relevant once Team Movement is on. -->
               <select id="geo-team-select" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter to a specific team">
                 <option value="">All Teams</option>
               </select>
               <select id="geo-movement-date" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter by date">
                 <option value="">All Dates</option>
               </select>
-              <!-- Hidden compat IDs so the existing geoHeatmap/geoToggleMovement
-                   bodies that toggle .active classes by ID still find a node. -->
-              <span id="geo-btn-hm-all" style="display:none"></span>
-              <span id="geo-btn-hm-dup" style="display:none"></span>
-              <span id="geo-btn-hm-lga" style="display:none"></span>
-              <span id="geo-btn-hm-ward" style="display:none"></span>
-              <span id="geo-btn-movement" style="display:none"></span>
               <button class="geo-ctrl-btn" id="geo-btn-clear" onclick="geoClearOverlays()" title="Clear all overlays" style="margin-left:auto;color:var(--muted)">
                 <i class="fa-solid fa-eraser"></i> Clear
               </button>
@@ -6163,9 +6143,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   window.viewStackedPointsOnMap = function() {
     try { switchView('geo'); } catch (_) {}
     setTimeout(function() {
-      var trigger = document.getElementById('geo-ovl-hm-dup');
-      // Fall back to the invisible legacy button if the dropdown isn't in the DOM.
-      if (!trigger) trigger = document.getElementById('geo-btn-hm-dup');
+      // Prefer the visible Duplicate-GPS button on the strip (geo-btn-hm-dup).
+      // The old dropdown-item ID (geo-ovl-hm-dup) is kept as a fallback in
+      // case a future refactor re-introduces a dropdown.
+      var trigger = document.getElementById('geo-btn-hm-dup')
+                 || document.getElementById('geo-ovl-hm-dup');
       try { geoHeatmap('duplicate', trigger); } catch (_) {}
       var toast = (typeof showToast === 'function') ? showToast : null;
       if (toast) toast('Duplicate-GPS overlay switched on. Use "Clear" on the map to turn it off.');
