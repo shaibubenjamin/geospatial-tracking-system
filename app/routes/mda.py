@@ -3367,6 +3367,7 @@ async def geo_settlements_coverage(
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
                COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
+               COALESCE(sa.point_count, 0) AS point_count,
                -- Simplify geometry (~33 m) — settlement polygons are tiny at map
                -- scale, so this sharply cuts the GeoJSON payload (faster load on
                -- the phone) with no visible change.
@@ -3383,7 +3384,9 @@ async def geo_settlements_coverage(
         feats.append({"type": "Feature", "geometry": _json.loads(r.geom),
                       "properties": {"settlement_name": r.settlement_name, "lga_name": r.lga_name,
                                      "ward_name": r.ward_name, "is_visited": bool(r.is_visited),
-                                     "completeness_pct": round(float(r.completeness_pct or 0), 1)}})
+                                     "completeness_pct": round(float(r.completeness_pct or 0), 1),
+                                     # forms reported in this settlement (CommCare field-entered)
+                                     "forms": int(r.point_count or 0)}})
     return {"type": "FeatureCollection", "project_id": pid, "features": feats}
 
 
