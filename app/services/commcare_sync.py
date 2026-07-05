@@ -976,11 +976,15 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
                                     scope_lgas: Optional[list] = None) -> None:
     """Recompute the settlement_analytics rollup for this project.
 
-    FORM-authoritative (2026-07-05): a settlement is "visited" when a household
-    reported it via the CommCare field-entered (lga, ward, settlement) dropdown,
-    matched to the boundary polygon by name — NOT by GPS point-in-polygon (which
-    misfiled households across boundaries when GPS drifted). See the comment on
-    the INSERT below for details and the ~98.8% name-match rate.
+    Two DISTINCT metrics (2026-07-05):
+      * is_visited (binary) — FORM-authoritative: >=1 household reported the
+        settlement via the CommCare (lga, ward, settlement) dropdown, name-matched
+        to the polygon. Form-based because GPS point-in-polygon misfiled ~2/3 of
+        visits on GPS drift (~98.8% name-match rate).
+      * completeness_pct (0-100 gradient) — how thoroughly the settlement was
+        covered: % of its grid cells that contain a household GPS point. A
+        settlement can be visited but only, say, 30% complete.
+    See the comment on the INSERT below.
 
     Delete-then-insert (not upsert) so a boundary or scope change can never leave
     orphan rows keyed to a previous boundary project. When ``scope_lgas`` is
@@ -1000,20 +1004,31 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
     # rows keyed to a previous boundary. Atomic with the INSERT (same txn).
     ph_cur.execute("DELETE FROM settlement_analytics WHERE project_id = %(mda_pid)s",
                    {"mda_pid": project_id})
-    # FORM-AUTHORITATIVE visitation. A settlement polygon is "visited" when at
-    # least one household reported it via the CommCare field-entered
-    # (lga, ward, settlement) dropdown — matched to the polygon by name
-    # (space/case-insensitive). This replaces the GPS point-in-polygon join,
-    # which misfiled households across boundaries when GPS drifted. ~98.8% of
-    # Kano R3 households match a polygon exactly; the rest are street-level
-    # detail finer than the boundary and simply aren't placed on the map.
-    # point_count = households reporting the settlement; completeness is binary
-    # (reported = 100) since settlements carry no per-settlement target.
-    # grids are joined only for the total_grids reference (name/code join, no
-    # spatial op) — so this is also much faster than the old ST_Within recompute.
+    # TWO DISTINCT metrics, by design:
+    #   * is_visited (BINARY) — FORM-authoritative: a settlement is visited when
+    #     >=1 household reported it via the CommCare field-entered
+    #     (lga, ward, settlement) dropdown, name-matched to the polygon
+    #     (space/case-insensitive). Form-based because GPS point-in-polygon
+    #     misfiled ~2/3 of visits when GPS drifted across boundaries
+    #     (~98.8% of households name-match a polygon).
+    #   * completeness_pct (GRADIENT 0-100) — how THOROUGHLY the settlement was
+    #     covered: the % of its grid cells that contain a household GPS point.
+    #     A settlement can be visited (reported) yet only, say, 30% complete.
+    # point_count = households reporting the settlement (form count).
     ph_cur.execute(
         f"""
-        WITH form_matched AS (
+        WITH pts AS (
+            SELECT geom FROM mda_households
+            WHERE project_id = %(mda_pid)s AND geom IS NOT NULL
+        ),
+        -- Grid cells that contain at least one household GPS point (drives the
+        -- completeness gradient). Probes the grid GiST index from the point set.
+        visited_grids AS (
+            SELECT DISTINCT g.id AS grid_id
+            FROM pts p
+            JOIN grids g ON g.project_id = %(boundary_pid)s AND ST_Within(p.geom, g.geom)
+        ),
+        form_matched AS (
             SELECT REPLACE(LOWER(TRIM(lga)),             ' ', '') AS lk,
                    REPLACE(LOWER(TRIM(ward_name)),       ' ', '') AS wk,
                    REPLACE(LOWER(TRIM(settlement_name)), ' ', '') AS sk,
@@ -1032,8 +1047,13 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
             %(mda_pid)s, s.id, s.unique_cod, s.lgacode, s.wardcode,
             s.settlement_name, s.lga_name, s.ward_name,
             COUNT(g.id) AS total_grids,
-            CASE WHEN COALESCE(fm.forms, 0) > 0 THEN COUNT(g.id) ELSE 0 END AS visited_grids,
-            CASE WHEN COALESCE(fm.forms, 0) > 0 THEN 100 ELSE 0 END AS completeness_pct,
+            COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL) AS visited_grids,
+            -- completeness = grid gradient (how thoroughly covered)
+            CASE WHEN COUNT(g.id) > 0
+                 THEN ROUND(100.0 * COUNT(g.id) FILTER (WHERE vg.grid_id IS NOT NULL)
+                            / NULLIF(COUNT(g.id), 0), 2)
+                 ELSE 0 END AS completeness_pct,
+            -- visited = binary, form-authoritative (was this settlement reported)
             COALESCE(fm.forms, 0) > 0 AS is_visited,
             COALESCE(fm.forms, 0) AS point_count,
             NOW() AS last_computed
@@ -1041,6 +1061,7 @@ def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: in
         LEFT JOIN grids g
                ON g.unique_cod = s.unique_cod
               AND g.project_id = s.project_id
+        LEFT JOIN visited_grids vg ON vg.grid_id = g.id
         LEFT JOIN form_matched fm
                ON fm.lk = REPLACE(LOWER(TRIM(s.lga_name)),        ' ', '')
               AND fm.wk = REPLACE(LOWER(TRIM(s.ward_name)),        ' ', '')
