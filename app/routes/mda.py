@@ -1558,7 +1558,7 @@ async def submissions_by_ward(
     return [dict(zip(keys, row)) for row in result.fetchall()]
 
 
-@router.get("/submissions/settlement")
+@router.get("/settlement-forms")
 async def submissions_by_settlement(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
