@@ -414,7 +414,9 @@ tbody tr:hover{background:var(--pale)}
 /* Geo layer eye-btn toggled off */
 .geo-bm-btn.layer-off{opacity:.4}
 /* Geo fullscreen mode */
-.geo-map-card.geo-fullscreen-mode{position:fixed;inset:0;z-index:500;border-radius:0;margin:0;height:100vh!important}
+/* z-index above the sidebar (1000) so fullscreen truly covers it — otherwise the
+   sidebar overlaps the map's left edge. Kept below the 2000 FABs so Exit/chat stay reachable. */
+.geo-map-card.geo-fullscreen-mode{position:fixed;inset:0;z-index:1500;border-radius:0;margin:0;height:100vh!important}
 .geo-map-card.geo-fullscreen-mode .geo-ctrl-strip{padding:8px 14px}
 .geo-map-card.geo-fullscreen-mode #geo-map{min-height:0;height:calc(100vh - 110px)!important}
 /* Coverage pct KPI accent */
@@ -5882,7 +5884,18 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (icon) icon.className = geoIsFullscreen ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
     const btn = document.getElementById('geo-fs-btn');
     if (btn) btn.classList.toggle('active', geoIsFullscreen);
-    setTimeout(() => { if (geoMap) geoMap.resize(); }, 50);
+    // Resize the canvas to the new box, THEN re-fit to the campaign extent —
+    // otherwise the enlarged viewport keeps the old zoom/centre and the LGAs
+    // get stranded in a corner. Fit runs after resize so the new size is known.
+    setTimeout(() => {
+      if (!geoMap) return;
+      geoMap.resize();
+      try {
+        if (geoLGAfc && geoLGAfc.features && geoLGAfc.features.length) {
+          geoMap.fitBounds(turf_bbox(geoLGAfc), { padding: 40, duration: 500 });
+        }
+      } catch (e) {}
+    }, 60);
   }
   window.toggleGeoFullscreen = toggleGeoFullscreen;
   // ESC key closes geo fullscreen
