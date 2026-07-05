@@ -3695,7 +3695,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         plugins: {
           legend: { display: false },
           datalabels: { ...DL_BASE, anchor: 'center', align: 'center',
-            color: ctx => (ctx.dataset.data[ctx.dataIndex]/maxVal) > 0.18 ? '#fff' : '#334155',
+            color: '#ffffff', textStrokeColor: 'rgba(0,0,0,0.55)', textStrokeWidth: 3,
             font: { size: 10, weight: '700' }, formatter: v => v.toLocaleString() }
         },
         scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
@@ -3759,7 +3759,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             return ' ' + (r.forms || 0).toLocaleString() + ' forms · ' + (r.treated || 0).toLocaleString() + ' treated';
           } } },
           datalabels: { ...DL_BASE, anchor: 'center', align: 'center',
-            color: ctx => (ctx.dataset.data[ctx.dataIndex] / (Math.max(...data.map(r=>r.forms||0),1)) > 0.18) ? '#fff' : '#334155',
+            color: '#ffffff', textStrokeColor: 'rgba(0,0,0,0.55)', textStrokeWidth: 3,
             font: { size: 10, weight: '700' }, formatter: v => v.toLocaleString() }
         },
         scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
@@ -3836,7 +3836,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           legend: { display: false },
           datalabels: noPct
             ? { display: true, anchor: 'center', align: 'center',
-                color: ctx => (ctx.dataset.data[ctx.dataIndex] / (Math.max(...values, 1)) > 0.18) ? '#fff' : '#334155',
+                color: '#ffffff', textStrokeColor: 'rgba(0,0,0,0.55)', textStrokeWidth: 3,
                 font: { size: 10, weight: '700' }, formatter: v => (v || 0).toLocaleString() }
             : { display: true, anchor: 'center', align: 'center', color: '#fff',
                 font: { size: 10.5, weight: '700' }, formatter: v => (v || 0).toFixed(1) + '%' },
