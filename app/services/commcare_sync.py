@@ -193,6 +193,11 @@ HOUSEHOLD_COMMCARE_FIELDS = {
     #     "form village_location settlement_name admin5": "settlement_name",
     "form village_location ward_name admin3":            "ward_name",
     "form village_location ward_name admin3_code":       "admin3_code",
+    # Settlement NAME from the CommCare *select* dropdown (admin5), alongside the
+    # existing admin5_code GUID — lets the settlement drill use the field-entered
+    # settlement instead of an unreliable GPS/spatial join. (The settlement_name
+    # column is added by the main.py startup migration.)
+    "form village_location settlement_name admin5":      "settlement_name",
     "form village_location settlement_name admin5_code": "admin5_code",
     "form trt_day":                 "trt_day",
     "form consent_trt":             "consent_trt",
@@ -776,7 +781,7 @@ def _persist_set(
             "formid", "username", "teamcode", "data_type",
             "data_entry_persons", "data_entry_persons_norm",
             "phone_number_data", "ra_key", "lga",
-            "ward_name", "admin3_code", "admin5_code",
+            "ward_name", "settlement_name", "admin3_code", "admin5_code",
             "trt_day", "date_trt",
             "consent_trt", "reasons_for_refusal", "others_reasons_for_refusal",
             "hh_num", "hh_seq", "serial_number_hh_id", "number_of_treated",
@@ -798,7 +803,7 @@ def _persist_set(
                 h["formid"], h["username"], h["teamcode"], h["data_type"],
                 h["data_entry_persons"], h["data_entry_persons_norm"],
                 h["phone_number_data"], h["ra_key"], h["lga"],
-                h["ward_name"], h["admin3_code"], h["admin5_code"],
+                h["ward_name"], h["settlement_name"], h["admin3_code"], h["admin5_code"],
                 h["trt_day"], h["date_trt"],
                 h["consent_trt"], h["reasons_for_refusal"], h["others_reasons_for_refusal"],
                 h["hh_num"], h["hh_seq"], h["serial_number_hh_id"], h["number_of_treated"],

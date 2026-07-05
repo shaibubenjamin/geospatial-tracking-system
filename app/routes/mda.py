@@ -1558,6 +1558,42 @@ async def submissions_by_ward(
     return [dict(zip(keys, row)) for row in result.fetchall()]
 
 
+@router.get("/submissions/settlement")
+async def submissions_by_settlement(
+    lga:  Optional[str] = None,
+    ward: Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Settlement-level submission counts within an LGA + ward, grouped by the
+    FIELD-ENTERED CommCare ``settlement_name`` (the dropdown value), not a GPS
+    spatial join. Every household is counted under the settlement it reported, so
+    nothing is dropped — this is the authoritative source for the settlement drill.
+    Returns [] until the settlement_name backfill sync has run.
+    """
+    filters = ["h.settlement_name IS NOT NULL", "TRIM(h.settlement_name) <> ''"]
+    params: dict = {}
+    if lga:  filters.append("h.lga = :lga"); params["lga"] = lga
+    if ward:
+        filters.append("REPLACE(LOWER(TRIM(h.ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
+        params["ward"] = ward
+    where = _scoped_where(pid, filters, params, alias="h", lgas=allowed_lgas_of(_u))
+    result = await db.execute(text(f"""
+        SELECT
+          INITCAP(LOWER(TRIM(h.settlement_name))) AS settlement_name,
+          COUNT(*)                                AS forms,
+          COALESCE(SUM(h.number_of_treated), 0)   AS treated,
+          COUNT(DISTINCT h.hq_user)               AS teams
+        FROM mda_households h
+        {where}
+        GROUP BY INITCAP(LOWER(TRIM(h.settlement_name)))
+        ORDER BY forms DESC
+    """), params)
+    keys = ["settlement_name", "forms", "treated", "teams"]
+    return [dict(zip(keys, row)) for row in result.fetchall()]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/qc/teams-summary  — per-team QC error breakdown
 # ─────────────────────────────────────────────────────────────────────────────

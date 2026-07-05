@@ -3714,11 +3714,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // Fetch FIRST — big wards have hundreds of settlements; keep the ward chart
     // on screen while they load (no blank flash) and stay on wards if there's
     // nothing to show.
-    const raw = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
-    if (!raw.length) { showToast('No settlement breakdown for ' + ward + ' - staying on wards'); return; }
+    // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
+    const raw = await api('/api/mda/submissions/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!raw.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
     _formsRerender = () => drillDownToSettlements(lga, ward);
-    const data = _applyHide(raw, 'forms', 'sett');
-    if (!data.length) { showToast('All settlements in ' + ward + ' are unvisited — nothing to show with "Hide empty" on'); return; }
+    const data = _applyHide(raw, 'forms', 'forms');
+    if (!data.length) { showToast('No settlements with submissions in ' + ward + ' - "Hide empty" is on'); return; }
 
     const existing = Chart.getChart(el); if (existing) existing.destroy();
     const lgaEsc = String(lga).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -3744,8 +3745,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       type: 'bar',
       data: {
         labels: data.map(r => r.settlement_name || '(unnamed)'),
-        datasets: [{ label: 'Settlements', data: data.map(r => r.completeness_pct || 0),
-          backgroundColor: data.map(r => (r.point_count > 0 || r.is_visited) ? '#006B2E' : '#CBD5E1'),
+        datasets: [{ label: 'Forms', data: data.map(r => r.forms || 0),
+          backgroundColor: '#006B2E', hoverBackgroundColor: '#005225',
           borderRadius: 5, maxBarThickness: 22 }]
       },
       options: {
@@ -3755,10 +3756,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           legend: { display: false },
           tooltip: { callbacks: { label: ctx => {
             const r = data[ctx.dataIndex] || {};
-            const v = (r.point_count > 0 || r.is_visited);
-            return ' ' + (v ? 'Visited' : 'Not visited') + ' · ' + (r.point_count || 0) + ' pts';
+            return ' ' + (r.forms || 0).toLocaleString() + ' forms · ' + (r.treated || 0).toLocaleString() + ' treated';
           } } },
-          datalabels: { display: false }
+          datalabels: { ...DL_BASE, anchor: 'center', align: 'center',
+            color: ctx => (ctx.dataset.data[ctx.dataIndex] / (Math.max(...data.map(r=>r.forms||0),1)) > 0.18) ? '#fff' : '#334155',
+            font: { size: 10, weight: '700' }, formatter: v => v.toLocaleString() }
         },
         scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 10.5 } } } },
         maintainAspectRatio: false
@@ -3833,14 +3835,16 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         plugins: {
           legend: { display: false },
           datalabels: noPct
-            ? { display: false }
+            ? { display: true, anchor: 'center', align: 'center',
+                color: ctx => (ctx.dataset.data[ctx.dataIndex] / (Math.max(...values, 1)) > 0.18) ? '#fff' : '#334155',
+                font: { size: 10, weight: '700' }, formatter: v => (v || 0).toLocaleString() }
             : { display: true, anchor: 'center', align: 'center', color: '#fff',
                 font: { size: 10.5, weight: '700' }, formatter: v => (v || 0).toFixed(1) + '%' },
           tooltip: { callbacks: { label: ctx => {
             const r = rows[ctx.dataIndex] || {};
             if (noPct) {
-              const visited = (ctx.raw || 0) > 0 || (r.point_count || 0) > 0;
-              return ' ' + (visited ? 'Visited' : 'Not visited') + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
+              // Settlement level = form counts (field-entered CommCare settlement).
+              return ' ' + (r.forms || 0).toLocaleString() + ' forms · ' + (r.treated || 0).toLocaleString() + ' treated';
             }
             return ' ' + (ctx.raw || 0).toFixed(1) + '%' + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
           } } }
@@ -3872,18 +3876,19 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const el = document.getElementById('c_covLgaBar'); if (!el) return;
     // Fetch FIRST — if this ward has no settlement breakdown, stay on the ward
     // view (don't destroy the ward chart and leave a blank canvas).
-    const raw = await api('/api/mda/coverage/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
-    if (!raw.length) { showToast('No settlement breakdown for ' + ward + ' - staying on wards'); return; }
+    // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
+    const raw = await api('/api/mda/submissions/settlement?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!raw.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
     _covRerender = () => covDrillToSettlements(lga, ward);
-    const data = _applyHide(raw, 'cov', 'sett');
-    if (!data.length) { showToast('All settlements in ' + ward + ' are unvisited — nothing to show with "Hide empty" on'); return; }
+    const data = _applyHide(raw, 'cov', 'forms');
+    if (!data.length) { showToast('No settlements with submissions in ' + ward + ' - "Hide empty" is on'); return; }
     const ex = Chart.getChart(el); if (ex) ex.destroy();
     const t = el.closest('.card')?.querySelector('.card-title');
-    // "Settlements" not "coverage" — settlements have no treatment target, so the
-    // bars carry no percentage (visited / not, coloured by whether any GPS landed).
+    // Settlements carry no coverage target, so the bars show FORM counts from the
+    // field-entered settlement (CommCare dropdown), not GPS-derived visitation.
     if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlements - ' + ward + ' &nbsp;' + _covDrillBack(lga, ward);
     _covDrillScroll(el, data.length);
-    _covDrillChart(el, data.map(r => r.settlement_name || '(unnamed)'), data.map(r => r.completeness_pct || 0), data, null, { noPercent: true });
+    _covDrillChart(el, data.map(r => r.settlement_name || '(unnamed)'), data.map(r => r.forms || 0), data, null, { noPercent: true });
   }
   function covDrillUp() {
     const el = document.getElementById('c_covLgaBar');
