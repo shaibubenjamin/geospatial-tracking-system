@@ -1017,7 +1017,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             <div class="kpi-icon-strip"><i class="fa-solid fa-location-crosshairs"></i></div>
             <div class="lbl">GPS Location Anomalies</div>
             <div class="val" id="qc-kpi-gps">-</div>
-            <div class="sub">Forms with location problems - GPS outside the LGA, duplicate coordinates, or weak signal</div>
+            <div class="sub">Forms with location problems — GPS outside the LGA, or stacked with another form's coordinates</div>
           </div>
           <div class="kpi">
             <div class="kpi-icon-strip"><i class="fa-solid fa-clock"></i></div>
@@ -1043,7 +1043,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-hourglass-half"></i></div><div class="qc-val" id="qc-slow-forms">-</div><div class="qc-lbl">Very Slow Forms (&gt;60 min)</div><div class="qc-desc">Took over 1 hour - may indicate poor connectivity, form abandonment, or the device being left idle</div></div>
           <!-- Row 3: Location + outcome -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-location-crosshairs"></i></div><div class="qc-val" id="qc-outside-lga">-</div><div class="qc-lbl">GPS Outside Stated LGA</div><div class="qc-desc">GPS coordinates fall outside the boundary of the LGA the team reported being in</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-crosshairs"></i></div><div class="qc-val" id="qc-poor-gps">-</div><div class="qc-lbl">Weak GPS Signal (&gt;20 m)</div><div class="qc-desc">GPS accuracy radius wider than 20 m - the recorded location may sit outside the settlement grid the team was actually inside, so spatial joins become unreliable</div></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-thumbtack"></i></div><div class="qc-val" id="qc-stacked-points">-</div><div class="qc-lbl">Stacked GPS Points</div><div class="qc-desc" style="margin-bottom:8px">Two or more forms that share the exact same GPS coordinates — a red flag for repeat submissions from a single spot (e.g. a worker sitting at the LGA HQ and generating forms rather than visiting households).</div><button onclick="viewStackedPointsOnMap()" style="border:1px solid var(--line);background:var(--pale);color:var(--deep);font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Jump to the Geographic View with the Duplicate-GPS overlay switched on"><i class="fa-solid fa-map-location-dot" style="font-size:10px"></i> View on map</button></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-ban"></i></div><div class="qc-val" id="qc-refusal-rate">-</div><div class="qc-lbl">Treatment Refusal Rate</div><div class="qc-desc" id="qc-refusal-count">% of households that declined treatment - social mobilisation may be needed in high-refusal LGAs</div></div>
           <!-- Avg form completion time: end - start, averaged across all in-scope forms.
                Sub-line shows median and p90 so users see both the typical visit and the long-tail signal. -->
@@ -1108,7 +1108,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                   <th style="padding:10px 14px;text-align:right;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('error_rate')">Error Rate <span id="qcts-error_rate"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_forms')">Dup Forms <span id="qcts-dup_forms"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('dup_gps')" title="Number of this team's forms that share GPS coordinates with another form in the project (stacked points)">Stacked Points <span id="qcts-dup_gps"></span></th>
-                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('gps_issues')">GPS Issues <span id="qcts-gps_issues"></span></th>
+                  <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('gps_outside_lga')" title="Forms whose GPS point sits &gt;500 m outside the LGA the team reported being in">GPS Outside LGA <span id="qcts-gps_outside_lga"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('after_hours')">After Hours <span id="qcts-after_hours"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('fast_forms')">Fast (&lt;3 min) <span id="qcts-fast_forms"></span></th>
                   <th style="padding:10px 14px;text-align:center;font-weight:700;cursor:pointer;white-space:nowrap" onclick="sortQCTeams('sync_lag')" title="Form sync delay &gt; 48h">Sync Lag <span id="qcts-sync_lag"></span></th>
@@ -3184,8 +3184,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const fmtN = n => (n || 0).toLocaleString();
     setEl('qc-total-forms', fmtN(summary.total_forms));
     setEl('qc-duplicates',  fmtN(summary.duplicates));
-    setEl('qc-outside-lga', fmtN(summary.gps_outside_lga));
-    setEl('qc-poor-gps',    fmtN(summary.gps_poor_accuracy));
+    setEl('qc-outside-lga',   fmtN(summary.gps_outside_lga));
+    setEl('qc-stacked-points', fmtN(summary.duplicate_gps));
     setEl('qc-after-hours', fmtN(summary.after_hours));
     setEl('qc-fast-forms',  fmtN(summary.fast_forms));
     setEl('qc-slow-forms',  fmtN(summary.slow_forms));
@@ -3211,7 +3211,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const flagRate = summary.error_rate_pct != null
       ? summary.error_rate_pct.toFixed(1) + '%'
       : (summary.total_forms > 0 ? ((totalFlags / summary.total_forms) * 100).toFixed(1) + '%' : '-');
-    const gpsAnomalies = (summary.gps_outside_lga||0) + (summary.duplicate_gps||0) + (summary.gps_poor_accuracy||0);
+    // GPS Location Anomalies = points-outside-LGA + stacked-points (duplicate coords).
+    // Weak-GPS-signal (poor accuracy) is no longer counted — the ">20 m accuracy"
+    // threshold wasn't a clean signal in practice (device / satellite quality
+    // varies) and the operator asked for it to be dropped 2026-07-05.
+    const gpsAnomalies = (summary.gps_outside_lga||0) + (summary.duplicate_gps||0);
     const timingIssues = (summary.after_hours||0) + (summary.fast_forms||0) + (summary.slow_forms||0);
     setEl('qc-kpi-total',  totalFlags.toLocaleString());
     setEl('qc-kpi-rate',   flagRate);
@@ -3350,13 +3354,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 
     // ── QC Teams table ──
     if (teamQC && teamQC.length) {
-      // GPS Issues column rolls up misplaced + poor-accuracy points. Stacked
-      // points (dup_gps) now have their own dedicated column so they're
-      // excluded from this rollup — otherwise the team's stacked count would
-      // show twice (once in "Stacked Points" and again inside "GPS Issues").
-      qcTeamsData = teamQC.map(r => ({ ...r,
-        gps_issues: (r.gps_outside_lga||0) + (r.poor_gps||0)
-      }));
+      // The "GPS Outside LGA" and "Stacked Points" columns now stand on their
+      // own (dup_gps / gps_outside_lga are surfaced directly from the API).
+      // Weak-GPS-signal (poor accuracy) is intentionally dropped from the
+      // display — the operator flagged it as poorly defined 2026-07-05.
+      qcTeamsData = [...teamQC];
       renderQCTeamsTable();
     }
   }
@@ -3509,7 +3511,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // (▲ asc, ▼ desc) in navy so it stands out from the muted ones.
     const SORT_COLS = ['hq_user','lga','total_forms','avg_duration_min',
                        'forms_with_error','error_rate','dup_forms','dup_gps',
-                       'gps_issues','after_hours','fast_forms','sync_lag','refusals'];
+                       'gps_outside_lga','after_hours','fast_forms','sync_lag','refusals'];
     SORT_COLS.forEach(c => {
       const el = document.getElementById('qcts-' + c);
       if (!el) return;
@@ -3529,9 +3531,35 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // a data-quality one.
     const avgColour = v => (v == null) ? 'var(--muted)' : (v < 3 ? 'var(--bad)' : v > 60 ? 'var(--warn)' : 'var(--ink)');
     const avgFmt    = v => (v == null) ? '-' : (v.toFixed(1) + ' min');
+    // A tiny inline factory: if a team has >0 stacked points, render the cell
+    // as a clickable blue link with a small map icon. Zero → plain muted.
+    const stackedCell = r => {
+      const n = r.dup_gps || 0;
+      if (!n) return '<td style="padding:10px 14px;text-align:center;color:var(--muted)">0</td>';
+      const hq = String(r.hq_user || '').replace(/'/g, "\\'");
+      return `<td style="padding:10px 14px;text-align:center">
+        <a href="#" onclick="event.preventDefault();viewTeamStackedPointsOnMap('${hq}');return false"
+           title="Show ${n.toLocaleString()} stacked points for ${r.hq_user} on the map"
+           style="color:var(--blue);font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px">
+          <span>${n.toLocaleString()}</span>
+          <i class="fa-solid fa-map-location-dot" style="font-size:10.5px;opacity:.7"></i>
+        </a>
+      </td>`;
+    };
+    // Team name cell: a link that opens the trend-chart modal. Zero-stacked
+    // teams still get the link but the trend will show a flat line.
+    const teamCell = r => {
+      const hq = String(r.hq_user || '').replace(/'/g, "\\'");
+      const label = r.hq_user || '-';
+      return `<td style="padding:10px 14px;font-weight:700;color:var(--navy);white-space:nowrap">
+        <a href="#" onclick="event.preventDefault();showTeamStackedTrend('${hq}');return false"
+           title="Open cumulative stacked-point trend for ${label}"
+           style="color:var(--navy);cursor:pointer;text-decoration:none;border-bottom:1px dotted var(--line)">${label}</a>
+      </td>`;
+    };
     tbody.innerHTML = sorted.map(r => `
       <tr style="border-bottom:1px solid var(--line)">
-        <td style="padding:10px 14px;font-weight:700;color:var(--navy);white-space:nowrap">${r.hq_user || '-'}</td>
+        ${teamCell(r)}
         <td style="padding:10px 14px;color:var(--muted);white-space:nowrap">${r.lga || '-'}</td>
         <td style="padding:10px 14px;text-align:right">${(r.total_forms||0).toLocaleString()}</td>
         <td style="padding:10px 14px;text-align:right;color:${avgColour(r.avg_duration_min)};font-weight:600">${avgFmt(r.avg_duration_min)}</td>
@@ -3540,8 +3568,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <span style="background:${r.error_rate>=30?'var(--bad-bg)':r.error_rate>=15?'var(--warn-bg)':'var(--good-bg)'};color:${errColour(r)};padding:2px 8px;border-radius:99px;font-weight:700;font-size:11.5px">${r.error_rate}%</span>
         </td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_forms||0}</td>
-        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_gps||0}</td>
-        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.gps_issues||0}</td>
+        ${stackedCell(r)}
+        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.gps_outside_lga||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.after_hours||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.fast_forms||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.sync_lag||0}</td>
@@ -6128,6 +6156,171 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   window.geoFilterTeam       = geoFilterTeam;
   window.geoFilterMovement   = geoFilterMovement;
 
+  /* Called from the QC page's "Stacked GPS Points" tile — jumps to the
+     Geographic View and switches the Duplicate-GPS heatmap overlay on.
+     A short delay after switchView is enough to let the map fully build
+     (initOverlaySources runs on first frame after `geo` becomes active). */
+  window.viewStackedPointsOnMap = function() {
+    try { switchView('geo'); } catch (_) {}
+    setTimeout(function() {
+      var trigger = document.getElementById('geo-ovl-hm-dup');
+      // Fall back to the invisible legacy button if the dropdown isn't in the DOM.
+      if (!trigger) trigger = document.getElementById('geo-btn-hm-dup');
+      try { geoHeatmap('duplicate', trigger); } catch (_) {}
+      var toast = (typeof showToast === 'function') ? showToast : null;
+      if (toast) toast('Duplicate-GPS overlay switched on. Use "Clear" on the map to turn it off.');
+    }, 600);
+  };
+
+  /* Called from a team row's Stacked Points cell — flips to the Geographic
+     View and paints ONLY that team's duplicate-GPS clusters, one pin per
+     coord. Click a pin → popup with stack count, teams, LGA, date range.
+     Uses the dedicated overlay layers `stacked-src` / `stacked-pins`
+     created lazily below. */
+  window.viewTeamStackedPointsOnMap = async function(hqUser) {
+    if (!hqUser) return;
+    try { switchView('geo'); } catch (_) {}
+    // Wait for the map to become active before touching sources.
+    for (var i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (typeof geoMap !== 'undefined' && geoMap && geoMap.isStyleLoaded && geoMap.isStyleLoaded()) break;
+    }
+    if (typeof geoMap === 'undefined' || !geoMap) return;
+    var fc;
+    try {
+      fc = await api('/api/mda/qc/stacked-points?hq_user=' + encodeURIComponent(hqUser));
+    } catch (e) { console.error('stacked-points fetch failed', e); return; }
+    if (!fc || !fc.features) return;
+    // Lazily create the source + layer on first use so it doesn't clash with
+    // the existing heatmap overlay used by geoHeatmap('duplicate').
+    if (!geoMap.getSource('stacked-src')) {
+      geoMap.addSource('stacked-src', { type: 'geojson', data: fc });
+      geoMap.addLayer({
+        id: 'stacked-pins',
+        type: 'circle',
+        source: 'stacked-src',
+        paint: {
+          // Radius scales with stack_count so a coord with 50 forms looks
+          // meaningfully worse than a coord with 2.
+          'circle-radius': [
+            'interpolate', ['linear'], ['coalesce', ['get', 'stack_count'], 1],
+            1, 5, 5, 8, 20, 12, 100, 18,
+          ],
+          'circle-color':        '#dc2626',
+          'circle-opacity':      0.6,
+          'circle-stroke-color': '#7f1d1d',
+          'circle-stroke-width': 1.5,
+        },
+      });
+      // Popup wiring — one MapLibre Popup instance re-used across clicks.
+      var stackedPopup = null;
+      geoMap.on('click', 'stacked-pins', function(e) {
+        var f = e.features && e.features[0]; if (!f) return;
+        var p = f.properties || {};
+        var teamList = (function(t) { try { return typeof t === 'string' ? JSON.parse(t) : t; } catch (_) { return []; } })(p.team_list);
+        var lgas     = (function(t) { try { return typeof t === 'string' ? JSON.parse(t) : t; } catch (_) { return []; } })(p.lga_list);
+        var wards    = (function(t) { try { return typeof t === 'string' ? JSON.parse(t) : t; } catch (_) { return []; } })(p.ward_names);
+        var html =
+          '<div style="font-family:Inter,sans-serif;font-size:12px;color:#0c1e10;min-width:220px">' +
+            '<div style="font-weight:700;color:#dc2626;font-size:13.5px;margin-bottom:5px">' +
+              '<i class="fa-solid fa-thumbtack" style="font-size:11px;margin-right:5px"></i>' +
+              (p.stack_count || 1) + ' forms stacked at this coordinate' +
+            '</div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>LGA:</b> ' + (lgas && lgas.length ? lgas.join(', ') : '-') + '</div>' +
+            (wards && wards.length
+              ? '<div style="color:#4A6852;margin-bottom:2px"><b>Ward:</b> ' + wards.join(', ') + '</div>'
+              : '') +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>Team(s):</b> ' + (teamList && teamList.length ? teamList.join(', ') : '-') +
+              (p.teams_count && p.teams_count > (teamList || []).length ? ' <i style="color:#4A6852">(+' + (p.teams_count - teamList.length) + ' more)</i>' : '') +
+            '</div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>First seen:</b> ' + (p.first_seen || '-') + '</div>' +
+            '<div style="color:#4A6852"><b>Last seen:</b> ' + (p.last_seen || '-') + '</div>' +
+          '</div>';
+        if (stackedPopup) stackedPopup.remove();
+        stackedPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px' })
+          .setLngLat(f.geometry.coordinates.slice()).setHTML(html).addTo(geoMap);
+      });
+      geoMap.on('mouseenter', 'stacked-pins', function() { geoMap.getCanvas().style.cursor = 'pointer'; });
+      geoMap.on('mouseleave', 'stacked-pins', function() { geoMap.getCanvas().style.cursor = ''; });
+    } else {
+      geoMap.getSource('stacked-src').setData(fc);
+    }
+    // Zoom to the extent of this team's clusters (if any).
+    if (fc.features.length) {
+      var xs = fc.features.map(f => f.geometry.coordinates[0]);
+      var ys = fc.features.map(f => f.geometry.coordinates[1]);
+      geoMap.fitBounds(
+        [[Math.min.apply(null, xs) - 0.02, Math.min.apply(null, ys) - 0.02],
+         [Math.max.apply(null, xs) + 0.02, Math.max.apply(null, ys) + 0.02]],
+        { padding: 40, maxZoom: 13, duration: 700 },
+      );
+    }
+    var toast = (typeof showToast === 'function') ? showToast : null;
+    if (toast) toast(hqUser + ' — ' + fc.features.length + ' stacked cluster' + (fc.features.length === 1 ? '' : 's') + ' pinned. Click any pin for details.');
+  };
+
+  /* Modal + trend chart triggered from the team-name link. Cumulative
+     stacked count on the primary Y, cumulative forms on the secondary,
+     so operators see the ratio ("stacks growing faster than forms" is the
+     real signal). */
+  var _teamTrendChart = null;
+  window.showTeamStackedTrend = async function(hqUser) {
+    if (!hqUser) return;
+    var backdrop = document.getElementById('team-trend-backdrop');
+    if (backdrop) backdrop.classList.add('open');
+    var title = document.getElementById('team-trend-title');
+    if (title) title.textContent = 'Stacked-point trend — ' + hqUser;
+    var loading = document.getElementById('team-trend-loading');
+    if (loading) loading.textContent = 'Loading…';
+    var canvas = document.getElementById('team-trend-canvas');
+    if (_teamTrendChart) { _teamTrendChart.destroy(); _teamTrendChart = null; }
+    var data;
+    try {
+      data = await api('/api/mda/qc/team-stacked-trend?hq_user=' + encodeURIComponent(hqUser));
+    } catch (e) { if (loading) loading.textContent = 'Failed to load: ' + e; return; }
+    if (!data || !data.length) { if (loading) loading.textContent = 'No dated forms for this team.'; return; }
+    if (loading) loading.textContent = '';
+    _teamTrendChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: data.map(d => d.date),
+        datasets: [
+          {
+            label: 'Cumulative stacked points',
+            data:  data.map(d => d.stacked_cumulative),
+            borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.12)',
+            fill: true, tension: 0.3, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, yAxisID: 'y',
+          },
+          {
+            label: 'Cumulative total forms',
+            data:  data.map(d => d.forms_cumulative),
+            borderColor: '#0c1e10', backgroundColor: 'transparent',
+            fill: false, tension: 0.3, borderWidth: 2, borderDash: [4,3], pointRadius: 0, pointHoverRadius: 4, yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 14 } },
+          datalabels: { display: false },
+          tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + ctx.raw.toLocaleString() } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+          y:  { position: 'left',  grid: { color: '#fee2e2' }, ticks: { font: { size: 10.5 }, callback: v => v.toLocaleString() }, title: { display: true, text: 'Stacked points (cumulative)', color: '#dc2626', font: { size: 11 } } },
+          y1: { position: 'right', grid: { display: false },   ticks: { font: { size: 10.5 }, callback: v => v.toLocaleString() }, title: { display: true, text: 'Total forms (cumulative)',   color: '#0c1e10', font: { size: 11 } } },
+        },
+      },
+    });
+  };
+  window.closeTeamStackedTrend = function() {
+    var backdrop = document.getElementById('team-trend-backdrop');
+    if (backdrop) backdrop.classList.remove('open');
+    if (_teamTrendChart) { _teamTrendChart.destroy(); _teamTrendChart = null; }
+  };
+
   /* ── Geospatial bulk downloads (admin/superadmin only) ── */
   async function _downloadXlsx(url, suggestedName) {
     const token = localStorage.getItem('token') || '';
@@ -6234,8 +6427,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       ['Flag Type','Count'],
       ['Total Forms', document.getElementById('qc-total-forms')?.textContent||''],
       ['Duplicates', document.getElementById('qc-duplicates')?.textContent||''],
-      ['GPS Outside LGA', document.getElementById('qc-outside-lga')?.textContent||''],
-      ['Poor GPS', document.getElementById('qc-poor-gps')?.textContent||''],
+      ['GPS Outside LGA',    document.getElementById('qc-outside-lga')?.textContent||''],
+      ['Stacked GPS Points', document.getElementById('qc-stacked-points')?.textContent||''],
       ['After Hours', document.getElementById('qc-after-hours')?.textContent||''],
       ['Fast Forms', document.getElementById('qc-fast-forms')?.textContent||''],
       ['Slow Forms', document.getElementById('qc-slow-forms')?.textContent||''],
@@ -6579,6 +6772,45 @@ document.addEventListener('keydown', function(e){
   if (e.key === 'Escape') {
     var bd = document.getElementById('rpt-backdrop');
     if (bd && bd.classList.contains('open')) closeReportModal();
+  }
+});
+</script>
+
+<!-- ============ TEAM STACKED-POINT TREND MODAL ============ -->
+<style>
+.tt-backdrop{position:fixed;inset:0;background:rgba(12,30,16,.6);backdrop-filter:blur(2px);z-index:9500;display:none;align-items:center;justify-content:center;padding:20px}
+.tt-backdrop.open{display:flex}
+.tt-modal{background:#fff;border-radius:13px;max-width:820px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.32);overflow:hidden}
+.tt-hdr{padding:14px 20px;background:linear-gradient(135deg,#7f1d1d,#dc2626);color:#fff;display:flex;align-items:center;gap:12px}
+.tt-hdr-icon{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:15px}
+.tt-hdr-title{font-weight:700;font-size:14.5px}
+.tt-hdr-sub{font-size:11px;opacity:.85;margin-top:1px}
+.tt-hdr-close{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.9);font-size:17px;cursor:pointer;padding:4px;line-height:1}
+.tt-hdr-close:hover{color:#fff}
+.tt-body{padding:16px 22px;overflow:auto}
+.tt-canvas-wrap{position:relative;height:340px}
+</style>
+<div class="tt-backdrop" id="team-trend-backdrop" role="dialog" aria-modal="true" aria-labelledby="team-trend-title" onclick="if(event.target===this)closeTeamStackedTrend()">
+  <div class="tt-modal">
+    <div class="tt-hdr">
+      <div class="tt-hdr-icon"><i class="fa-solid fa-chart-line"></i></div>
+      <div>
+        <div class="tt-hdr-title" id="team-trend-title">Stacked-point trend</div>
+        <div class="tt-hdr-sub">Cumulative count over time — the red line rising sharply means the team is generating more stacked points; the black dashed line is total forms for context.</div>
+      </div>
+      <button class="tt-hdr-close" onclick="closeTeamStackedTrend()" title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="tt-body">
+      <div id="team-trend-loading" style="text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0 10px">Loading…</div>
+      <div class="tt-canvas-wrap"><canvas id="team-trend-canvas"></canvas></div>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    var bd = document.getElementById('team-trend-backdrop');
+    if (bd && bd.classList.contains('open')) closeTeamStackedTrend();
   }
 });
 </script>
