@@ -208,10 +208,10 @@
     function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
     function byProp(k){ return function(a,b){ return String((a.properties||{})[k]||'').localeCompare(String((b.properties||{})[k]||'')); }; }
     function fitFeat(f){ try{ map.fitBounds(boundsOf(f),{padding:[22,22],maxZoom: drill.level>=2?15:(drill.level===1?13:11)}); }catch(e){} }
-    function drillRow(name,pct,drillable,onclick){
+    function drillRow(name,pct,drillable,onclick,rightText){
       var row=document.createElement('div'); row.className='drill-row';
       row.innerHTML='<span class="nm">'+esc(name||'-')+'</span>'+
-        '<span class="pc" style="color:'+(pct==null?'#9ca3af':visColor(pct))+'">'+fpct(pct)+'</span>'+
+        '<span class="pc" style="color:'+(pct==null?'#9ca3af':visColor(pct))+'">'+(rightText!=null?esc(rightText):fpct(pct))+'</span>'+
         (drillable?'<span class="ch">&#8250;</span>':'');
       row.onclick=onclick; return row;
     }
@@ -245,11 +245,13 @@
         if(!data){ list.appendChild(drillMsg('Loading settlements…')); return; }
         var wn=String(wp.ward_name||'').toLowerCase();
         var setts=data.filter(function(s){return String((s.properties||{}).ward_name||'').toLowerCase()===wn;})
-          .sort(function(a,b){return ((b.properties||{}).completeness_pct||0)-((a.properties||{}).completeness_pct||0);});
+          .sort(function(a,b){return ((b.properties||{}).forms||0)-((a.properties||{}).forms||0);});
         if(!setts.length) list.appendChild(drillMsg('No settlements for this ward'));
-        setts.forEach(function(f){ var p=f.properties||{};
+        setts.forEach(function(f){ var p=f.properties||{}; var fc=p.forms||0;
+          // Leaf level shows the actual form count reported in the settlement
+          // (CommCare field-entered), coloured by visited/not.
           list.appendChild(drillRow(p.settlement_name, p.completeness_pct, false, function(){
-            fitFeat(f); setDrillOpen(false); })); });
+            fitFeat(f); setDrillOpen(false); }, fc+(fc===1?' form':' forms'))); });
       }
     }
     function loadSettlements(){
