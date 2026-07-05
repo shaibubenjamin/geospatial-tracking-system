@@ -274,7 +274,24 @@ def _map_household(row: Dict[str, Any], set_name: str) -> Dict[str, Any]:
     # Fast-form threshold: 3 min (operator-tuned 5 → 2 → 3). 3 keeps a
     # defensible signal of rushed entry without false-flagging quick honest
     # visits the team observed in practice.
-    out["flag_fast_form"] = bool(fdm is not None and fdm < 3)
+    #
+    # BUT — a short form isn't automatically suspicious. Three legitimate
+    # cases finish quickly and shouldn't be counted (operator agreement
+    # 2026-07-05):
+    #   * Refusal        — consent_trt = '0': household declined; short form is normal
+    #   * Not applicable — consent_trt = '2': nothing to administer; short form is normal
+    #   * Empty household — form.consent_survey.num_reside = '0': no residents to survey
+    # Only forms that clear all three of those exclusions AND are still
+    # under 3 min are treated as rushed data collection.
+    _consent_trt = out.get("consent_trt")
+    _num_reside  = _s(row.get("form consent_survey num_reside"))
+    _real_visit_attempted = _consent_trt not in ("0", "2")
+    _household_populated  = _num_reside not in ("0", "0.0")
+    out["flag_fast_form"] = bool(
+        fdm is not None and fdm < 3
+        and _real_visit_attempted
+        and _household_populated
+    )
     out["flag_slow_form"] = bool(fdm is not None and fdm > 60)
     sl = out["sync_lag_hours"]
     out["flag_sync_lag"]  = bool(sl is not None and sl > 48)
@@ -886,6 +903,17 @@ def _run_spatial_qc(ph_cur, *, project_id: int, boundary_pid: int) -> None:
     dashboard (e.g. duplicate-GPS needs to see every form to flag duplicates
     that span two form sets).
     """
+    # 500 m tolerance on the LGA boundary — GPS accuracy is typically ±10-30 m
+    # in the open and often ±50-100 m near buildings, so a point that sits a
+    # few dozen metres outside the LGA polygon almost always represents the
+    # correct LGA (border households, GPS lag, etc.). Only points > 500 m
+    # from the boundary are flagged, per operator agreement 2026-07-05.
+    #
+    # ST_DWithin with GEOGRAPHY casts is the accurate way to compute the
+    # "within 500 m" check — in EPSG:4326 raw units are degrees, but
+    # GEOGRAPHY math returns metres directly. Uses the ST_Geography GiST index
+    # if one is present; falls back to a nested loop otherwise (state-level
+    # ~40 LGAs × ~300k households runs in a few seconds either way).
     ph_cur.execute("""
         UPDATE mda_households h
         SET flag_gps_outside_lga = TRUE
@@ -895,7 +923,7 @@ def _run_spatial_qc(ph_cur, *, project_id: int, boundary_pid: int) -> None:
               SELECT 1 FROM lgas l
               WHERE l.project_id = %s
                 AND UPPER(TRIM(l.lga_name)) = UPPER(TRIM(h.lga))
-                AND ST_Within(h.geom, l.geom)
+                AND ST_DWithin(h.geom::geography, l.geom::geography, 500)
           )
     """, (project_id, boundary_pid))
     ph_cur.execute("""

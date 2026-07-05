@@ -426,7 +426,18 @@ async def upload_mda(
             local_hour = (started_time + timedelta(hours=1)).hour
             flag_after_hours = local_hour < 6 or local_hour >= 19
 
-        flag_fast_form = bool(form_duration_min is not None and form_duration_min < 3)
+        # Fast-form: <3 min AND a real visit was actually attempted. Refusals
+        # (consent_trt='0') and N/A entries (consent_trt='2') finish quickly
+        # for legitimate reasons and are excluded (operator agreement
+        # 2026-07-05). The CommCare sync path also excludes empty households
+        # via consent_survey.num_reside='0' — this Excel workbook format
+        # doesn't carry num_reside as a mapped cell, so it applies only the
+        # consent_trt guard here.
+        _real_visit_attempted = consent_trt not in ("0", "2")
+        flag_fast_form = bool(
+            form_duration_min is not None and form_duration_min < 3
+            and _real_visit_attempted
+        )
         flag_slow_form = bool(form_duration_min is not None and form_duration_min > 60)
         flag_sync_lag  = bool(sync_lag_hours is not None and sync_lag_hours > 48)
         flag_refusal   = consent_trt == "0"
@@ -2566,8 +2577,8 @@ async def qc_heatmap_geojson(
         FROM mda_households
         WHERE project_id = :pid
           AND latitude IS NOT NULL AND longitude IS NOT NULL
-          AND latitude  BETWEEN 10 AND 16
-          AND longitude BETWEEN  3 AND  8
+          AND latitude  BETWEEN 4 AND 14
+          AND longitude BETWEEN 2 AND 15
           AND {where}{lga_sql}
         LIMIT 15000
     """), params)
@@ -2581,6 +2592,189 @@ async def qc_heatmap_geojson(
         for r in rows
     ]
     return {"type": "FeatureCollection", "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/qc/stacked-points  — clustered duplicate-GPS points as GeoJSON
+#
+# Groups every household flagged with duplicate_gps by its (lat, lon) so each
+# feature returned represents a single "stack" of forms sharing an identical
+# coordinate. The properties include the count and lightweight per-form
+# details so the map popup can show WHY that pin was flagged (how many forms,
+# from which teams, over what date range).
+#
+# Optional filters (hq_user / lga / ward) let the frontend jump straight from
+# a team's Stacked Points cell to a map showing only that team's clusters.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/qc/stacked-points")
+async def qc_stacked_points(
+    hq_user: Optional[str] = None,
+    lga:     Optional[str] = None,
+    ward:    Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Aggregated duplicate-GPS clusters — one feature per (lat, lon) group.
+
+    Feature properties:
+      * ``stack_count``      — number of forms at that coordinate
+      * ``team_list``        — comma-separated hq_user set (top 5)
+      * ``teams_count``      — total distinct teams at the coord
+      * ``lga``              — LGA(s) reported at that stack (typically one)
+      * ``ward_names``       — ward names(s) reported
+      * ``first_seen``       — earliest received_on in local time
+      * ``last_seen``        — latest received_on in local time
+      * ``sample_formids``   — up to 5 formids for spot-checking
+    """
+    # Two-stage logic when hq_user is set:
+    #   1. Find every (lat, lon) where THIS TEAM has at least one flagged form.
+    #   2. Return the full cluster at each of those coords — even if the OTHER
+    #      forms in the cluster belong to different teams. That's the useful
+    #      signal ("this team is stacking with others") rather than "this
+    #      team is stacking only against itself" (which would miss cases
+    #      where a rogue worker sits at one spot alongside a colleague).
+    # Without hq_user, the filter is just "all duplicate-GPS forms".
+    def _build_filters(alias: str) -> str:
+        prefix = f"{alias}." if alias else ""
+        clauses = [
+            f"{prefix}project_id = :pid",
+            f"{prefix}flag_duplicate_gps = TRUE",
+            f"{prefix}latitude IS NOT NULL AND {prefix}longitude IS NOT NULL",
+            f"{prefix}latitude  BETWEEN 4 AND 14",
+            f"{prefix}longitude BETWEEN 2 AND 15",
+        ]
+        if lga:
+            clauses.append(f"UPPER(TRIM({prefix}lga)) = UPPER(TRIM(:lga))")
+        if ward:
+            clauses.append(f"REPLACE(LOWER(TRIM({prefix}ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
+        return " AND ".join(clauses)
+
+    params: dict = {"pid": pid}
+    if lga:  params["lga"]  = lga
+    if ward: params["ward"] = ward
+    lga_scope = _lga_and(allowed_lgas_of(_u), "lga", params)   # returns "" or " AND ..."
+
+    team_coord_cte = ""
+    join_team_coords = ""
+    if hq_user:
+        params["hq_user"] = hq_user
+        team_scope = _lga_and(allowed_lgas_of(_u), "lga", params)  # deterministic — same lgas set
+        # Note: uses no alias so the plain `_build_filters("")` clauses match.
+        team_coord_cte = f"""
+          WITH team_coords AS (
+            SELECT DISTINCT latitude, longitude
+            FROM mda_households
+            WHERE {_build_filters("")} AND hq_user = :hq_user{team_scope}
+          )
+        """
+        join_team_coords = "JOIN team_coords tc ON h.latitude = tc.latitude AND h.longitude = tc.longitude"
+
+    result = await db.execute(text(f"""
+        {team_coord_cte}
+        SELECT
+          h.latitude, h.longitude,
+          COUNT(*)                                         AS stack_count,
+          COUNT(DISTINCT h.hq_user)                        AS teams_count,
+          (ARRAY_AGG(DISTINCT h.hq_user))[1:5]             AS team_list,
+          (ARRAY_AGG(DISTINCT h.lga))[1:3]                 AS lga_list,
+          (ARRAY_AGG(DISTINCT h.ward_name))[1:3]           AS ward_list,
+          MIN((h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS first_seen,
+          MAX((h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS last_seen,
+          (ARRAY_AGG(h.formid))[1:5]                       AS sample_formids
+        FROM mda_households h
+        {join_team_coords}
+        WHERE {_build_filters("h")}{lga_scope}
+        GROUP BY h.latitude, h.longitude
+        HAVING COUNT(*) > 1
+        ORDER BY stack_count DESC
+        LIMIT 5000
+    """), params)
+
+    rows = result.fetchall()
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [float(r.longitude), float(r.latitude)]},
+            "properties": {
+                "stack_count":    int(r.stack_count),
+                "teams_count":    int(r.teams_count or 0),
+                "team_list":      [t for t in (r.team_list or []) if t],
+                "lga":            (r.lga_list[0] if r.lga_list else None),
+                "lga_list":       [x for x in (r.lga_list or []) if x],
+                "ward_names":     [x for x in (r.ward_list or []) if x],
+                "first_seen":     r.first_seen,
+                "last_seen":      r.last_seen,
+                "sample_formids": [x for x in (r.sample_formids or []) if x],
+            },
+        }
+        for r in rows
+    ]
+    return {"type": "FeatureCollection", "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/qc/team-stacked-trend  — daily stacked-point count per team
+#
+# Feeds the team-trend line chart shown when the operator clicks a team's
+# Stacked Points cell. Returns one row per date within the project's window
+# so the chart is dense (zero-days included) — Chart.js just plots them.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/qc/team-stacked-trend")
+async def qc_team_stacked_trend(
+    hq_user: str,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Cumulative stacked-point count over time for a single team.
+
+    * X axis: date (received_on in local time)
+    * Y axis: cumulative number of that team's forms flagged flag_duplicate_gps
+
+    Cumulative rather than daily so the line only ever goes up — makes it
+    obvious at a glance whether a team's stacked-point problem is growing
+    or plateauing.
+    """
+    lgas_scope = allowed_lgas_of(_u)
+    params: dict = {"pid": pid, "hq_user": hq_user}
+    lga_sql = _lga_and(lgas_scope, "lga", params)
+    result = await db.execute(text(f"""
+        WITH daily AS (
+          SELECT
+            (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS d,
+            COUNT(*) FILTER (WHERE flag_duplicate_gps = TRUE) AS stacked_daily,
+            COUNT(*)                                          AS forms_daily
+          FROM mda_households
+          WHERE project_id = :pid
+            AND hq_user   = :hq_user
+            AND received_on IS NOT NULL
+            {lga_sql}
+          GROUP BY 1
+        )
+        SELECT
+          d::text                              AS date,
+          stacked_daily,
+          forms_daily,
+          SUM(stacked_daily) OVER (ORDER BY d) AS stacked_cumulative,
+          SUM(forms_daily)   OVER (ORDER BY d) AS forms_cumulative
+        FROM daily
+        ORDER BY d
+    """), params)
+    return [
+        {
+            "date":                r.date,
+            "stacked_daily":       int(r.stacked_daily or 0),
+            "forms_daily":         int(r.forms_daily or 0),
+            "stacked_cumulative":  int(r.stacked_cumulative or 0),
+            "forms_cumulative":    int(r.forms_cumulative or 0),
+        }
+        for r in result.fetchall()
+    ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2607,7 +2801,7 @@ async def teams_movement_geojson(
     filters = [
         "project_id = :pid",
         "latitude IS NOT NULL", "longitude IS NOT NULL",
-        "latitude BETWEEN 10 AND 16", "longitude BETWEEN 3 AND 8",
+        "latitude BETWEEN 4 AND 14", "longitude BETWEEN 2 AND 15",
         "started_time IS NOT NULL",
     ]
     if hq_user:
