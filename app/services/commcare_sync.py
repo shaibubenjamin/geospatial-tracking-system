@@ -179,7 +179,20 @@ HOUSEHOLD_COMMCARE_FIELDS = {
     "form data_entry_persons":      "data_entry_persons",
     "form phone_number_data":       "phone_number_data",
     "form village_location admin2": "lga",
-    "form village_location ward_name admin3_code":     "admin3_code",
+    # Ward name comes from the CommCare *select* field the field worker
+    # picks from a dropdown (canonical values, no free-text drift). ``admin3``
+    # carries the human-readable NAME; ``admin3_code`` carries the underlying
+    # CommCare GUID and is kept for audit. The dashboard's ward roll-ups now
+    # read this ``ward_name`` — the older GPS-based spatial-join override
+    # (which misfiled ~7% of forms across ward boundaries and produced phantom
+    # wards in Kano R3) has been retired.
+    #
+    # Settlement is deliberately NOT mapped here — the ``settlement_name``
+    # column doesn't exist in prod yet and adding it requires a DB owner
+    # migration. When that lands we can add:
+    #     "form village_location settlement_name admin5": "settlement_name",
+    "form village_location ward_name admin3":            "ward_name",
+    "form village_location ward_name admin3_code":       "admin3_code",
     "form village_location settlement_name admin5_code": "admin5_code",
     "form trt_day":                 "trt_day",
     "form consent_trt":             "consent_trt",
@@ -763,7 +776,8 @@ def _persist_set(
             "formid", "username", "teamcode", "data_type",
             "data_entry_persons", "data_entry_persons_norm",
             "phone_number_data", "ra_key", "lga",
-            "admin3_code", "admin5_code", "trt_day", "date_trt",
+            "ward_name", "admin3_code", "admin5_code",
+            "trt_day", "date_trt",
             "consent_trt", "reasons_for_refusal", "others_reasons_for_refusal",
             "hh_num", "hh_seq", "serial_number_hh_id", "number_of_treated",
             "housemarking_code", "gps_raw", "latitude", "longitude",
@@ -784,7 +798,8 @@ def _persist_set(
                 h["formid"], h["username"], h["teamcode"], h["data_type"],
                 h["data_entry_persons"], h["data_entry_persons_norm"],
                 h["phone_number_data"], h["ra_key"], h["lga"],
-                h["admin3_code"], h["admin5_code"], h["trt_day"], h["date_trt"],
+                h["ward_name"], h["admin3_code"], h["admin5_code"],
+                h["trt_day"], h["date_trt"],
                 h["consent_trt"], h["reasons_for_refusal"], h["others_reasons_for_refusal"],
                 h["hh_num"], h["hh_seq"], h["serial_number_hh_id"], h["number_of_treated"],
                 h["housemarking_code"], h["gps_raw"], h["latitude"], h["longitude"],
@@ -912,14 +927,16 @@ def _run_spatial_qc(ph_cur, *, project_id: int, boundary_pid: int) -> None:
                 AND h2.longitude = h.longitude
           )
     """, (project_id, project_id))
-    ph_cur.execute("""
-        UPDATE mda_households h
-        SET ward_name = w.ward_name
-        FROM wards w
-        WHERE h.project_id = %s AND w.project_id = %s
-          AND ST_Within(h.geom, w.geom)
-          AND h.geom IS NOT NULL AND h.flag_gps_zero = FALSE
-    """, (project_id, boundary_pid))
+    # NOTE (2026-07-05): the GPS point-in-polygon override for ward_name has
+    # been RETIRED. The field workers pick ward and settlement from a
+    # CommCare *select* dropdown (columns W / X / Y in the operator's Excel
+    # download: ``form village_location admin2`` / ``ward_name admin3`` /
+    # ``settlement_name admin5``), so the form-entered values are the
+    # authoritative source. Overwriting them with a GPS-derived value was
+    # misfiling ~7% of Garum Mallam forms across ward boundaries and
+    # producing phantom wards (Kura Sarki / Kurun Sumau / Tanawa) in Kano R3.
+    # The flag_gps_outside_ward QC flag (above) still catches genuine
+    # geo-mismatches without touching the assignment.
 
 
 def _recompute_settlement_analytics(ph_cur, *, project_id: int, boundary_pid: int,
