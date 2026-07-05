@@ -3417,8 +3417,8 @@ async def geo_wards_coverage(
           -- COLOURS by: "where have we actually been?" - the natural question
           -- for a map, and distinct from administrative coverage below.
           SELECT wardcode,
-                 AVG(CASE WHEN is_visited OR COALESCE(completeness_pct, 0) >= 70
-                          THEN 1.0 ELSE 0.0 END) AS frac
+                 -- form-authoritative visited share (consistent with the LGA layer)
+                 AVG(CASE WHEN is_visited THEN 1.0 ELSE 0.0 END) AS frac
           FROM settlement_analytics
           WHERE project_id = :pid
           GROUP BY wardcode
@@ -3501,10 +3501,12 @@ async def geo_lgas_coverage(
     res = await db.execute(text(f"""
         WITH cov AS (
           SELECT lgacode,
-                 AVG(CASE WHEN is_visited OR COALESCE(completeness_pct,0) >= 70 THEN 1.0 ELSE 0.0 END) AS frac,
-                 -- visitation = share of settlements with >=1 GPS point (matches
-                 -- the web map's LGA choropleth; "have we reached here at all?").
-                 AVG(CASE WHEN COALESCE(point_count,0) > 0 THEN 1.0 ELSE 0.0 END) AS visit_frac
+                 -- completeness = mean grid-coverage gradient across the LGA's
+                 -- settlements (how THOROUGHLY covered), 0-1.
+                 AVG(COALESCE(completeness_pct, 0)) / 100.0 AS frac,
+                 -- visitation = share of settlements reported (form-authoritative
+                 -- is_visited) — "have we reached here at all?".
+                 AVG(CASE WHEN is_visited THEN 1.0 ELSE 0.0 END) AS visit_frac
           FROM settlement_analytics WHERE project_id = :pid GROUP BY lgacode
         ),
         campaign AS (
