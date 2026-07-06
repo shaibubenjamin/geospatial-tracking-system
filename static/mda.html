@@ -63,6 +63,18 @@ body.public-mode #nav-ops-section,
 body.public-mode #admin-nav-link,
 body.public-mode #download-settlement-btn { display: none !important; }
 body.public-mode #public-portal-link { display: inline-flex !important; }
+/* Sightsaver stakeholder account: only Overview + Coverage Analysis. Everything
+   else in the sidebar (Quality/Geo/Teams/Trends/Ops section) is hidden, and
+   any deep-link into those views bounces back to Overview (see switchView). */
+body.sightsaver-mode .nav-item[data-view="quality"],
+body.sightsaver-mode .nav-item[data-view="geo"],
+body.sightsaver-mode .nav-item[data-view="teams"],
+body.sightsaver-mode .nav-item[data-view="trends"],
+body.sightsaver-mode .nav-item[data-view="lga"],
+body.sightsaver-mode .nav-item[data-view="supervisor"],
+body.sightsaver-mode .nav-item[data-view="reports"],
+body.sightsaver-mode #nav-ops-section,
+body.sightsaver-mode #admin-nav-link { display: none !important; }
 /* Collapse toggle button */
 .sidebar-toggle{position:absolute;top:18px;left:0;z-index:50;background:var(--blue);color:#fff;border:none;border-radius:0 8px 8px 0;width:20px;height:32px;display:grid;place-items:center;cursor:pointer;font-size:11px;opacity:0;transition:opacity .2s,left .25s}
 .app:hover .sidebar-toggle{opacity:1}
@@ -475,7 +487,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   // parsed), so a public visitor never sees the admin-only nav items
   // (reports/quality/geo/teams/trends/lga/ops) flash in and then disappear.
   // Mirrors `PUBLIC_MODE = !token` in the main script.
-  try { if (!localStorage.getItem('token')) document.body.classList.add('public-mode'); } catch (e) {}
+  try {
+    if (!localStorage.getItem('token')) {
+      document.body.classList.add('public-mode');
+    } else if ((localStorage.getItem('username') || '').trim().toLowerCase() === 'sightsaver') {
+      document.body.classList.add('sightsaver-mode');
+    }
+  } catch (e) {}
 </script>
 <div class="app">
 
@@ -1857,8 +1875,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     throw new Error('Redirecting to landing page');
   }
 
+  const USERNAME     = (localStorage.getItem('username') || '').trim().toLowerCase();
+  const SIGHTSAVER_MODE = !PUBLIC_MODE && USERNAME === 'sightsaver';
+
   if (PUBLIC_MODE) {
     document.body.classList.add('public-mode');
+  } else if (SIGHTSAVER_MODE) {
+    document.body.classList.add('sightsaver-mode');
   } else if (isAdmin) {
     // Show admin nav link if user is admin
     const adminLink = document.getElementById('admin-nav-link');
@@ -2822,11 +2845,9 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           onClick: (evt, elems) => {
             if (!elems.length) return;
             const lga = sorted[elems[0].index]?.lga;
-            if (lga) {
-              const sel=document.getElementById('cov-f-lga'); if(sel) sel.value=lga;
-              loadWardOptions(lga,'cov-f-ward').then(()=>applyCovFilter());
-            }
+            if (lga) covDrillToWards(lga);   // drill: LGA → ward → settlement
           },
+          onHover: (evt, elems) => { const c = document.getElementById('c_covLgaBar'); if (c) c.style.cursor = elems.length ? 'pointer' : 'default'; },
           plugins: {
             legend: { display: false },
             // White label always: the bar background is a vibrant green at
@@ -3528,6 +3549,23 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         </a>
       </td>`;
     };
+    // Same treatment for GPS-outside-LGA — clickable when >0, jumps to the
+    // map filtered to that team, popup on each pin tells the operator which
+    // LGA was reported vs which LGA the point actually falls in, plus the
+    // distance in kilometres from the stated LGA's boundary.
+    const outsideLgaCell = r => {
+      const n = r.gps_outside_lga || 0;
+      if (!n) return '<td style="padding:10px 14px;text-align:center;color:var(--muted)">0</td>';
+      const hq = String(r.hq_user || '').replace(/'/g, "\\'");
+      return `<td style="padding:10px 14px;text-align:center">
+        <a href="#" onclick="event.preventDefault();viewTeamOutsideLGAOnMap('${hq}');return false"
+           title="Show ${n.toLocaleString()} GPS-outside-LGA points for ${r.hq_user} on the map"
+           style="color:var(--blue);font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px">
+          <span>${n.toLocaleString()}</span>
+          <i class="fa-solid fa-map-location-dot" style="font-size:10.5px;opacity:.7"></i>
+        </a>
+      </td>`;
+    };
     // Team name cell: a link that opens the trend-chart modal. Zero-stacked
     // teams still get the link but the trend will show a flat line.
     const teamCell = r => {
@@ -3551,7 +3589,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         </td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.dup_forms||0}</td>
         ${stackedCell(r)}
-        <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.gps_outside_lga||0}</td>
+        ${outsideLgaCell(r)}
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.after_hours||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.fast_forms||0}</td>
         <td style="padding:10px 14px;text-align:center;color:var(--muted)">${r.sync_lag||0}</td>
@@ -3871,11 +3909,18 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               // Settlement level = form counts (field-entered CommCare settlement).
               return ' ' + (r.forms || 0).toLocaleString() + ' forms · ' + (r.treated || 0).toLocaleString() + ' treated';
             }
-            // Ward coverage: show the numbers behind the % (treated + target), so
-            // the percentage is never read in isolation.
-            return [' Coverage: ' + (ctx.raw || 0).toFixed(1) + '%',
-                    ' Treated: ' + Number(r.actual_treated || 0).toLocaleString(),
-                    ' Target (baseline): ' + Number(r.baseline_total || 0).toLocaleString()];
+            // Ward-level rows carry treated + target — show the full formula
+            // the coverage % is derived from, not just the percentage on its own.
+            // (Keep the "(baseline)" label: the operator asked that the target
+            // be spelled out as the baseline so the % is never read in isolation.)
+            if (r.actual_treated != null && r.baseline_total != null) {
+              return [
+                ' Coverage: ' + (ctx.raw || 0).toFixed(1) + '%',
+                ' Treated: '  + Number(r.actual_treated || 0).toLocaleString(),
+                ' Target (baseline): ' + Number(r.baseline_total || 0).toLocaleString(),
+              ];
+            }
+            return ' ' + (ctx.raw || 0).toFixed(1) + '%' + (r.point_count != null ? '  ·  ' + r.point_count + ' pts' : '');
           } } }
         },
         scales: {
@@ -3887,12 +3932,46 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       }
     });
   }
+  // Sync the Coverage page context (filter dropdown, KPIs, LGA-detail table) to
+  // the drilled LGA — mirrors what the Overview drill does for its own page.
+  // Does NOT call applyCovFilter(): that rebuilds the LGA bar chart, which would
+  // undo the ward-bar drill we're about to render.
+  function _covSyncPageToLGA(lga) {
+    COV_FILTER.lga = lga || '';
+    COV_FILTER.ward = '';
+    const lgaSel = document.getElementById('cov-f-lga');
+    if (lgaSel) lgaSel.value = lga || '';
+    if (lga) { try { loadWardOptions(lga, 'cov-f-ward'); } catch (_) {} }
+    const filtered = lga ? lgaCovData.filter(r => r.lga === lga) : lgaCovData;
+    buildLGATable('cov-lga-table-body', filtered, true);
+    const covBase  = filtered.reduce((s, l) => s + (parseFloat(l.baseline_total) || 0), 0);
+    const covTreat = filtered.reduce((s, l) => s + (parseFloat(l.actual_treated) || 0), 0);
+    const covPct   = covBase > 0 ? (covTreat / covBase * 100) : 0;
+    const covGood  = filtered.filter(l => parseFloat(l.coverage_pct) >= 80).length;
+    const covBelow = filtered.filter(l => parseFloat(l.coverage_pct) <  60).length;
+    setEl('cov-kpi-baseline', fmt(covBase));
+    setEl('cov-kpi-treated',  fmt(covTreat));
+    setEl('cov-kpi-pct',      covPct.toFixed(1) + '%');
+    setEl('cov-kpi-good',     covGood + ' / ' + filtered.length);
+    setEl('cov-kpi-below',    covBelow + ' / ' + filtered.length);
+    const label   = document.getElementById('cov-filter-label');
+    const resetBt = document.getElementById('cov-reset-btn');
+    const txt     = document.getElementById('cov-filter-text');
+    if (label)   label.style.display   = lga ? 'inline-flex' : 'none';
+    if (resetBt) resetBt.style.display = lga ? 'inline-flex' : 'none';
+    if (txt)     txt.textContent       = lga || '';
+    renderCoverageByAge(COV_FILTER.lga, COV_FILTER.ward);
+  }
   async function covDrillToWards(lga) {
     const el = document.getElementById('c_covLgaBar'); if (!el) return;
     const ex = Chart.getChart(el); if (ex) ex.destroy();
     const t = el.closest('.card')?.querySelector('.card-title');
     if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Ward coverage - ' + lga + ' &nbsp;' + _covDrillBack(lga, null);
     _covRerender = () => covDrillToWards(lga);
+    // Re-scope the rest of the page (KPIs + LGA-detail table + filter chip) to
+    // the drilled LGA so the whole Coverage view follows the drill, just like
+    // the Overview's Forms-per-LGA chart does.
+    _covSyncPageToLGA(lga);
     const raw = await api('/api/mda/coverage/ward?lga=' + encodeURIComponent(lga)) || [];
     if (!raw.length) { showToast('No ward data for ' + lga); return; }
     const data = _applyHide(raw, 'cov', 'cov');
@@ -3900,6 +3979,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     _covDrillScroll(el, data.length);
     _covDrillChart(el, data.map(r => r.ward_name), data.map(r => parseFloat(r.coverage_pct) || 0), data,
       i => { const w = data[i]?.ward_name; if (w) covDrillToSettlements(lga, w); });
+    showToast('Drilled into ' + lga + ' — showing wards. Click any ward bar or "All LGAs" to go back.');
   }
   async function covDrillToSettlements(lga, ward) {
     const el = document.getElementById('c_covLgaBar'); if (!el) return;
@@ -3927,6 +4007,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const wrap = el?.parentElement; if (wrap) { wrap.style.height = ''; wrap.style.overflow = ''; }
     const t = el?.closest('.card')?.querySelector('.card-title');
     if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Treatment Coverage by LGA (%)';
+    // Restore the whole page (KPIs, LGA table, filter chip) to project-wide.
+    _covSyncPageToLGA(null);
     // Force a rebuild — buildCharts() no-ops when built['coverage'] is already
     // true, which left the LGA bar blank when clicking "All LGAs" to drill back up.
     delete built['coverage'];
@@ -6263,6 +6345,86 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (toast) toast(hqUser + ' — ' + fc.features.length + ' stacked cluster' + (fc.features.length === 1 ? '' : 's') + ' pinned. Click any pin for details.');
   };
 
+  /* Called from a team row's GPS Outside LGA cell — jumps to the Geographic
+     View and paints only that team's misplaced points as red diamonds.
+     Popup on click shows stated vs actual LGA and distance to the correct
+     LGA boundary in kilometres. */
+  window.viewTeamOutsideLGAOnMap = async function(hqUser) {
+    if (!hqUser) return;
+    try { switchView('geo'); } catch (_) {}
+    for (var i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (typeof geoMap !== 'undefined' && geoMap && geoMap.isStyleLoaded && geoMap.isStyleLoaded()) break;
+    }
+    if (typeof geoMap === 'undefined' || !geoMap) return;
+    var fc;
+    try {
+      fc = await api('/api/mda/qc/outside-lga-points?hq_user=' + encodeURIComponent(hqUser));
+    } catch (e) { console.error('outside-lga-points fetch failed', e); return; }
+    if (!fc || !fc.features) return;
+    if (!geoMap.getSource('outside-lga-src')) {
+      geoMap.addSource('outside-lga-src', { type: 'geojson', data: fc });
+      geoMap.addLayer({
+        id: 'outside-lga-pins',
+        type: 'circle',
+        source: 'outside-lga-src',
+        paint: {
+          // Radius scales with distance-from-boundary: the further the point,
+          // the more alarming, so it visually gets bigger. Points inside the
+          // 500 m buffer (distance_km null or 0) still render at min size.
+          'circle-radius': [
+            'interpolate', ['linear'], ['coalesce', ['get', 'distance_km'], 0],
+            0, 6, 1, 8, 5, 11, 20, 15,
+          ],
+          'circle-color':        '#f59e0b',   // amber — distinct from stacked (red)
+          'circle-opacity':      0.75,
+          'circle-stroke-color': '#78350f',
+          'circle-stroke-width': 1.5,
+        },
+      });
+      var outsideLgaPopup = null;
+      geoMap.on('click', 'outside-lga-pins', function(e) {
+        var f = e.features && e.features[0]; if (!f) return;
+        var p = f.properties || {};
+        var dist = (p.distance_km === null || p.distance_km === undefined || p.distance_km === 'null')
+                     ? '—' : (Number(p.distance_km).toFixed(2) + ' km');
+        var actual = (!p.actual_lga || p.actual_lga === 'null')
+                       ? '<i style="color:var(--muted)">outside every LGA polygon</i>' : p.actual_lga;
+        var html =
+          '<div style="font-family:Inter,sans-serif;font-size:12px;color:#0c1e10;min-width:250px">' +
+            '<div style="font-weight:700;color:#f59e0b;font-size:13.5px;margin-bottom:5px">' +
+              '<i class="fa-solid fa-location-crosshairs" style="font-size:11px;margin-right:5px"></i>' +
+              'GPS outside stated LGA' +
+            '</div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>Stated LGA:</b> ' + (p.stated_lga || '—') + '</div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>Actual LGA:</b> ' + actual + '</div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>Distance to stated LGA edge:</b> <b style="color:#78350f">' + dist + '</b></div>' +
+            (p.ward_name ? '<div style="color:#4A6852;margin-bottom:2px"><b>Reported ward:</b> ' + p.ward_name + '</div>' : '') +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>Team:</b> ' + (p.hq_user || '—') + '</div>' +
+            '<div style="color:#4A6852"><b>Date:</b> ' + (p.date || '—') + '</div>' +
+          '</div>';
+        if (outsideLgaPopup) outsideLgaPopup.remove();
+        outsideLgaPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '340px' })
+          .setLngLat(f.geometry.coordinates.slice()).setHTML(html).addTo(geoMap);
+      });
+      geoMap.on('mouseenter', 'outside-lga-pins', function() { geoMap.getCanvas().style.cursor = 'pointer'; });
+      geoMap.on('mouseleave', 'outside-lga-pins', function() { geoMap.getCanvas().style.cursor = ''; });
+    } else {
+      geoMap.getSource('outside-lga-src').setData(fc);
+    }
+    if (fc.features.length) {
+      var xs = fc.features.map(f => f.geometry.coordinates[0]);
+      var ys = fc.features.map(f => f.geometry.coordinates[1]);
+      geoMap.fitBounds(
+        [[Math.min.apply(null, xs) - 0.02, Math.min.apply(null, ys) - 0.02],
+         [Math.max.apply(null, xs) + 0.02, Math.max.apply(null, ys) + 0.02]],
+        { padding: 40, maxZoom: 13, duration: 700 },
+      );
+    }
+    var toast = (typeof showToast === 'function') ? showToast : null;
+    if (toast) toast(hqUser + ' — ' + fc.features.length + ' out-of-LGA point' + (fc.features.length === 1 ? '' : 's') + ' pinned. Click any pin for details.');
+  };
+
   /* Modal + trend chart triggered from the team-name link. Cumulative
      stacked count on the primary Y, cumulative forms on the secondary,
      so operators see the ratio ("stacks growing faster than forms" is the
@@ -6454,6 +6616,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // (or a deep-link) tries to reach a restricted view, silently route them to Overview.
     if (document.body.classList.contains('public-mode')
         && !['overview','coverage','geo'].includes(view)) {
+      view = 'overview';
+    }
+    // Sightsaver stakeholder account: even tighter — only Overview + Coverage.
+    if (document.body.classList.contains('sightsaver-mode')
+        && !['overview','coverage'].includes(view)) {
       view = 'overview';
     }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));

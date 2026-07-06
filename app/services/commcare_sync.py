@@ -247,6 +247,29 @@ def _map_household(row: Dict[str, Any], set_name: str) -> Dict[str, Any]:
     if out["lga"]:
         out["lga"] = out["lga"].title()
 
+    # Ward-name normalisation: CommCare's Kano dropdown ships six ward labels
+    # with a stray space that doesn't exist in the authoritative baseline
+    # target list ("GARUN DANGA" vs baseline's "Garundanga"). The download
+    # export joins on exact name, so unmatched wards return 0 target and
+    # look uncovered. Rewrite the six known variants at ingest so future
+    # syncs stay in sync with the baseline; the join in the coverage/ward
+    # API is space-insensitive and so was unaffected — this is for the
+    # export path. Keyed on (LGA, wrong-ward) so it can't misfire on
+    # same-named wards in other LGAs.
+    _WARD_FIXES = {
+        ("GABASAWA",       "GARUN DANGA"): "GARUNDANGA",
+        ("GARUM MALLAM",   "YADA KWARI"):  "YADAKWARI",
+        ("KANO MUNICIPAL", "KAN KAROFI"):  "KANKAROFI",
+        ("KANO MUNICIPAL", "SHE SHE"):     "SHESHE",
+        ("RIMIN GADO",     "SAKARA TSA"):  "SAKARATSA",
+        ("UNGOGO",         "YADA KUNYA"):  "YADAKUNYA",
+    }
+    if out.get("ward_name") and out.get("lga"):
+        _key = ((out["lga"] or "").strip().upper(), (out["ward_name"] or "").strip().upper())
+        _corrected = _WARD_FIXES.get(_key)
+        if _corrected:
+            out["ward_name"] = _corrected
+
     # RA dedup key
     name = (out.get("data_entry_persons") or "").lower().strip()
     phone = out.get("phone_number_data") or ""
