@@ -2,6 +2,7 @@
 app/routes/mda.py — MDA Data Quality Check System
 Upload endpoint + QC query endpoints for Mass Drug Administration data.
 """
+import functools
 import io
 import logging
 from datetime import datetime, timezone, timedelta
@@ -19,10 +20,61 @@ from app.database import get_db
 from app.models import User
 from app.routes.auth import get_current_user, get_current_user_optional, require_admin, require_superadmin, allowed_states_of, allowed_lgas_of
 from app.config import DATABASE_URL_SYNC
+from app.services import geo_cache
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mda", tags=["mda"])
+
+
+def cache_json(layer: str):
+    """Decorator that caches a read-only aggregate endpoint's JSON result in the
+    shared in-process TTL store (``geo_cache``).
+
+    Why: the dashboard's KPI / coverage / QC / geo-summary endpoints each run a
+    full-table aggregation (often a per-form GROUP-BY join over hundreds of
+    thousands of rows). The payloads are tiny but each query is seconds long, so
+    under concurrent live viewers the DB saturated and every request queued
+    longer (9s → 33s and climbing). The results only change when a sync lands,
+    so a short TTL is safe and turns repeat hits into sub-millisecond serves.
+
+    Key safety: the cache key is built from EVERY scalar parameter the endpoint
+    received (so two different filter combinations can never collide) plus the
+    caller's LGA scope via ``allowed_lgas_of`` (so an LGA-restricted account is
+    only ever served its own scope's data, never the all-LGA view). The DB
+    session, the User object and ``pid`` are excluded from the filter part —
+    ``pid`` becomes the key's project id, the User is reduced to its scope.
+
+    Freshness: entries expire after ``geo_cache.TTL_SECONDS`` (default 300s) and
+    are flushed wholesale by ``geo_cache.clear()`` after a manual recompute —
+    identical semantics to the map layers, which already tolerate this bound.
+
+    Only apply to GET handlers that return a plain dict/list and are a pure
+    function of their parameters + the synced data. Never on mutations, on
+    endpoints returning a streaming/Response object, or on per-request-varying
+    data (raw GPS records, movement tracks, etc.).
+    """
+    def deco(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            # Project id is exposed as `pid` on most handlers and `project_id`
+            # on a few — treat either as the key's project so projects never
+            # share a cache entry.
+            pid = kwargs.get("pid", kwargs.get("project_id"))
+            scope = allowed_lgas_of(kwargs.get("_u"))
+            keyparts = {
+                k: v for k, v in kwargs.items()
+                if k not in ("db", "_u", "pid", "project_id")
+                and isinstance(v, (str, int, float, bool, type(None)))
+            }
+            ck = geo_cache.make_key(layer, pid, scope, **keyparts)
+            hit = geo_cache.obj_get(ck)
+            if hit is not None:
+                return hit
+            res = await fn(*args, **kwargs)
+            return geo_cache.obj_put(ck, res)
+        return wrapper
+    return deco
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -782,6 +834,7 @@ async def upload_mda(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/landing-stats")
+@cache_json("landing_stats")
 async def landing_stats(db: AsyncSession = Depends(get_db)):
     """Lightweight public snapshot for the login page.
 
@@ -870,6 +923,7 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/rounds/summary")
+@cache_json("rounds_summary")
 async def rounds_summary(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
@@ -964,6 +1018,7 @@ async def rounds_summary(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/trends/daily-by-round")
+@cache_json("trends_daily_by_round")
 async def trends_daily_by_round(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
@@ -1036,6 +1091,7 @@ async def trends_daily_by_round(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/rounds/lga-compare")
+@cache_json("rounds_lga_compare")
 async def rounds_lga_compare(
     project_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
@@ -1124,6 +1180,7 @@ async def rounds_lga_compare(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/system/counts")
+@cache_json("system_counts")
 async def system_counts(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
@@ -1172,6 +1229,7 @@ async def system_counts(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/qc/summary")
+@cache_json("qc_summary")
 async def qc_summary(
     lga:       Optional[str] = None,
     ward:      Optional[str] = None,
@@ -1303,6 +1361,7 @@ async def qc_summary(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/qc/ra-performance")
+@cache_json("qc_ra_performance")
 async def qc_ra_performance(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -1350,6 +1409,7 @@ async def qc_ra_performance(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/qc/refusals-by-lga")
+@cache_json("qc_refusals_by_lga")
 async def qc_refusals_by_lga(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
@@ -1392,6 +1452,7 @@ async def qc_refusals_by_lga(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/qc/duration-by-lga")
+@cache_json("qc_duration_by_lga")
 async def qc_duration_by_lga(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
@@ -1442,6 +1503,7 @@ async def qc_duration_by_lga(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/qc/duration-histogram")
+@cache_json("qc_duration_histogram")
 async def qc_duration_histogram(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
@@ -1509,6 +1571,7 @@ async def qc_duration_histogram(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/submissions/ward")
+@cache_json("submissions_by_ward")
 async def submissions_by_ward(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
@@ -1570,6 +1633,7 @@ async def submissions_by_ward(
 
 
 @router.get("/settlement-forms")
+@cache_json("submissions_by_settlement")
 async def submissions_by_settlement(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
@@ -1610,6 +1674,7 @@ async def submissions_by_settlement(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/qc/teams-summary")
+@cache_json("qc_teams_summary")
 async def qc_teams_summary(
     lga:       Optional[str] = None,
     ward:      Optional[str] = None,
@@ -1753,6 +1818,7 @@ async def gps_duplicate(pid: int = Depends(resolve_pid), db: AsyncSession = Depe
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/overview")
+@cache_json("mda_overview")
 async def mda_overview(
     lga:       Optional[str] = None,
     ward:      Optional[str] = None,
@@ -1762,12 +1828,12 @@ async def mda_overview(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
+    lgas = allowed_lgas_of(_u)
     filters, params = [], {}
     if lga:       filters.append("lga = :lga");       params["lga"]  = lga
     if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
     if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
     if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
-    lgas = allowed_lgas_of(_u)
     where = _scoped_where(pid, filters, params, lgas=lgas)
     lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
     result = await db.execute(text(f"""
@@ -1914,6 +1980,7 @@ async def mda_overview(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/trends/daily")
+@cache_json("mda_trends_daily")
 async def mda_trends_daily(
     lga:       Optional[str] = None,
     ward:      Optional[str] = None,
@@ -1948,6 +2015,7 @@ async def mda_trends_daily(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/teams/performance")
+@cache_json("mda_teams")
 async def mda_teams(
     lga:  Optional[str] = None,
     ward: Optional[str] = None,
@@ -1992,6 +2060,7 @@ async def mda_teams(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/coverage/lga")
+@cache_json("mda_coverage_lga")
 async def mda_coverage_lga(
     lga:       Optional[str] = None,
     ward:      Optional[str] = None,
@@ -2140,6 +2209,7 @@ async def mda_coverage_lga(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/coverage/ward")
+@cache_json("mda_coverage_ward")
 async def mda_coverage_ward(
     lga: Optional[str] = None,
     pid: int = Depends(resolve_pid),
@@ -2213,6 +2283,7 @@ async def mda_coverage_ward(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/individuals/age-summary")
+@cache_json("individuals_age_summary")
 async def individuals_age_summary(
     lga:       Optional[str] = None,
     ward:      Optional[str] = None,
@@ -2326,6 +2397,7 @@ async def individuals_age_summary(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/coverage/refusals-analysis")
+@cache_json("coverage_refusals_analysis")
 async def coverage_refusals_analysis(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -2479,6 +2551,7 @@ async def coverage_refusals_analysis(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/coverage/lga-by-age")
+@cache_json("coverage_lga_by_age")
 async def coverage_lga_by_age(
     lga: Optional[str] = None,
     ward: Optional[str] = None,
@@ -2609,6 +2682,7 @@ async def qc_heatmap_geojson(
 
 
 @router.get("/qc/stacked-points")
+@cache_json("qc_stacked_points")
 async def qc_stacked_points(
     hq_user: Optional[str] = None,
     lga:     Optional[str] = None,
@@ -2725,6 +2799,7 @@ async def qc_stacked_points(
 
 
 @router.get("/qc/team-stacked-trend")
+@cache_json("qc_team_stacked_trend")
 async def qc_team_stacked_trend(
     hq_user: str,
     pid: int = Depends(resolve_pid),
@@ -2884,6 +2959,7 @@ async def teams_movement_geojson(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/campaign-dates")
+@cache_json("campaign_dates")
 async def campaign_dates(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -2919,6 +2995,7 @@ async def campaign_dates(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/geo/settlement-breakdown")
+@cache_json("geo_settlement_breakdown")
 async def geo_settlement_breakdown(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -2994,6 +3071,7 @@ async def geo_settlement_breakdown(
 
 
 @router.get("/teams/footprint")
+@cache_json("teams_footprint")
 async def teams_footprint(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -3079,6 +3157,7 @@ async def teams_footprint(
 
 
 @router.get("/geo/mop-up-shortlist")
+@cache_json("geo_mop_up_shortlist")
 async def geo_mop_up_shortlist(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -3175,6 +3254,7 @@ async def geo_mop_up_shortlist(
 
 
 @router.get("/teams/by-lga")
+@cache_json("teams_by_lga")
 async def teams_by_lga(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -3278,6 +3358,7 @@ async def teams_by_lga(
 
 
 @router.get("/geo/coverage-summary")
+@cache_json("geo_coverage_summary")
 async def geo_coverage_summary(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -3351,6 +3432,7 @@ async def geo_coverage_summary(
 
 
 @router.get("/geo/completeness")
+@cache_json("geo_completeness")
 async def geo_completeness(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -3394,6 +3476,7 @@ async def geo_completeness(
 
 
 @router.get("/geo/wards-coverage")
+@cache_json("geo_wards_coverage")
 async def geo_wards_coverage(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
@@ -3487,6 +3570,7 @@ async def geo_wards_coverage(
 
 
 @router.get("/geo/lgas-coverage")
+@cache_json("geo_lgas_coverage")
 async def geo_lgas_coverage(
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
