@@ -2790,6 +2790,105 @@ async def qc_stacked_points(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/qc/outside-lga-points  — misplaced points as GeoJSON, per form
+#
+# Returns every household whose GPS point sits >500 m outside the LGA the
+# team reported being in. Feeds the "GPS Outside LGA" cell click → map
+# drilldown on the QC Teams table. Feature properties tell the operator
+# WHICH LGA the point was supposed to be in, WHICH LGA the point actually
+# falls in (or "outside all LGAs"), and the distance from the point to the
+# nearest edge of the stated LGA — in kilometres, for readability.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/qc/outside-lga-points")
+async def qc_outside_lga_points(
+    hq_user: Optional[str] = None,
+    lga:     Optional[str] = None,
+    ward:    Optional[str] = None,
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """GeoJSON of the individual out-of-LGA households.
+
+    Feature properties:
+      * ``formid``       — CommCare form ID
+      * ``hq_user``      — team ID
+      * ``stated_lga``   — LGA the worker recorded on the form
+      * ``actual_lga``   — LGA polygon the GPS point actually falls in
+                           (or ``None`` when the point is outside every LGA)
+      * ``distance_km``  — kilometres from the point to the nearest edge of
+                           the ``stated_lga`` polygon (0 when point lies inside)
+      * ``ward_name``    — reported ward, for context
+      * ``date``         — received_on in local time (YYYY-MM-DD)
+    """
+    from app.services.spatial_engine import _resolve_boundary_pid  # local — avoids circular
+    boundary_pid = await _resolve_boundary_pid(pid, db)
+    params: dict = {"pid": pid, "boundary_pid": boundary_pid}
+    filters = [
+        "h.project_id = :pid",
+        "h.flag_gps_outside_lga = TRUE",
+        "h.latitude IS NOT NULL AND h.longitude IS NOT NULL",
+        "h.latitude  BETWEEN 4 AND 14",
+        "h.longitude BETWEEN 2 AND 15",
+    ]
+    if hq_user:
+        filters.append("h.hq_user = :hq_user"); params["hq_user"] = hq_user
+    if lga:
+        filters.append("UPPER(TRIM(h.lga)) = UPPER(TRIM(:lga))"); params["lga"] = lga
+    if ward:
+        filters.append("REPLACE(LOWER(TRIM(h.ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
+        params["ward"] = ward
+    lga_scope = _lga_and(allowed_lgas_of(_u), "h.lga", params)
+    where = " AND ".join(filters) + lga_scope
+
+    result = await db.execute(text(f"""
+        SELECT
+          h.formid,
+          h.latitude,
+          h.longitude,
+          h.hq_user,
+          h.lga                                                                  AS stated_lga,
+          h.ward_name,
+          (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date::text AS date,
+          -- Which LGA polygon actually contains this point (NULL if outside every LGA)
+          (SELECT l2.lga_name FROM lgas l2
+             WHERE l2.project_id = :boundary_pid
+               AND ST_Within(h.geom, l2.geom)
+             LIMIT 1)                                                            AS actual_lga,
+          -- Distance in metres from the point to the nearest edge of the stated LGA polygon
+          (SELECT ST_Distance(h.geom::geography, l.geom::geography)
+             FROM lgas l
+             WHERE l.project_id = :boundary_pid
+               AND UPPER(TRIM(l.lga_name)) = UPPER(TRIM(h.lga))
+             LIMIT 1)                                                            AS dist_stated_m
+        FROM mda_households h
+        WHERE {where}
+        ORDER BY dist_stated_m DESC NULLS LAST
+        LIMIT 5000
+    """), params)
+    rows = result.fetchall()
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [float(r.longitude), float(r.latitude)]},
+            "properties": {
+                "formid":      r.formid,
+                "hq_user":     r.hq_user,
+                "stated_lga":  r.stated_lga,
+                "actual_lga":  r.actual_lga,   # None when point falls outside every LGA
+                "distance_km": round(float(r.dist_stated_m) / 1000.0, 2) if r.dist_stated_m is not None else None,
+                "ward_name":   r.ward_name,
+                "date":        r.date,
+            },
+        }
+        for r in rows
+    ]
+    return {"type": "FeatureCollection", "features": features}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/qc/team-stacked-trend  — daily stacked-point count per team
 #
 # Feeds the team-trend line chart shown when the operator clicks a team's

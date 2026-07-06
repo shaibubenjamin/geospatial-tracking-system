@@ -568,6 +568,7 @@ _PUBLIC_GET_PATHS: set[str] = {
     "/api/mda/qc/teams-summary",
     "/api/mda/qc/stacked-points",
     "/api/mda/qc/team-stacked-trend",
+    "/api/mda/qc/outside-lga-points",
     # Geo summaries (aggregate; heatmap GeoJSON and movement tracks stay gated)
     "/api/mda/geo/coverage-summary",
     "/api/mda/geo/completeness",
