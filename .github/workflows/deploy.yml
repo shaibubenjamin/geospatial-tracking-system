@@ -113,8 +113,8 @@ jobs:
                 \"sudo /opt/mda-dashboard/refresh-env.sh\",
                 \"sudo docker compose pull\",
                 \"sudo docker compose up -d --remove-orphans\",
-                \"sleep 8\",
                 \"sudo docker compose ps\",
+                \"for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do if curl -fsS http://localhost:8080/api/health >/dev/null 2>&1; then echo api healthy; break; fi; echo waiting for api to become healthy...; sleep 3; done\",
                 \"curl -fsS http://localhost:8080/api/health\",
                 \"echo Deployment complete\"
               ],\"executionTimeout\":[\"600\"]}" \
