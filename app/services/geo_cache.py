@@ -33,6 +33,46 @@ MAX_ENTRIES = int(os.environ.get("BOUNDARY_CACHE_MAX_ENTRIES", "48"))
 # key -> (expires_at_monotonic, body_bytes, etag)
 _store: "OrderedDict[str, Tuple[float, bytes, str]]" = OrderedDict()
 
+# Separate store for plain Python objects (dicts / lists) returned by the
+# heavy aggregate JSON endpoints — /api/mda/overview, coverage/lga, etc. These
+# are tiny in payload (a few hundred bytes) but murderously expensive to compute
+# (full-table aggregation + per-form GROUP-BY joins over hundreds of thousands
+# of rows). Under concurrent live viewers the DB saturated and each request
+# queued longer. We cache the *result object* so a request never recomputes
+# within the TTL. Same TTL / LRU bound / clear() semantics as the byte store.
+# key -> (expires_at_monotonic, obj)
+_obj_store: "OrderedDict[str, Tuple[float, Any]]" = OrderedDict()
+
+
+def obj_get(key: str) -> Optional[Any]:
+    """Return a cached Python object (dict/list) or None on miss/expiry."""
+    entry = _obj_store.get(key)
+    if not entry:
+        return None
+    expires_at, obj = entry
+    if expires_at < time.monotonic():
+        _obj_store.pop(key, None)
+        return None
+    _obj_store.move_to_end(key)  # LRU touch
+    return obj
+
+
+# The aggregate JSON endpoints are cached per (endpoint × scope × filter combo).
+# A live dashboard with LGA/ward/date drill-downs produces many distinct keys, so
+# the object store gets a much larger LRU cap than the (few, large) geojson byte
+# entries — the payloads here are tiny (a few hundred bytes to low-MB geojson).
+OBJ_MAX_ENTRIES = int(os.environ.get("OBJ_CACHE_MAX_ENTRIES", "512"))
+
+
+def obj_put(key: str, obj: Any) -> Any:
+    """Cache a Python object under the shared TTL; returns it unchanged so
+    callers can `return geo_cache.obj_put(key, result)`."""
+    _obj_store[key] = (time.monotonic() + TTL_SECONDS, obj)
+    _obj_store.move_to_end(key)
+    while len(_obj_store) > OBJ_MAX_ENTRIES:
+        _obj_store.popitem(last=False)  # evict oldest
+    return obj
+
 
 def make_key(layer: str, project_id: int, scope: Optional[set], **filters: Any) -> str:
     """Build a cache key. ``scope`` is the caller's allowed_lgas set (or None for
@@ -69,6 +109,7 @@ def put(key: str, obj: Any) -> Tuple[bytes, str]:
 
 def clear() -> None:
     _store.clear()
+    _obj_store.clear()
 
 
 async def respond(
