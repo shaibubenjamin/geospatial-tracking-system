@@ -701,7 +701,6 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               <div class="card-sub">How many household forms have been submitted from each Local Government Area. <strong>Click any LGA bar to drill down to its wards</strong>; click a ward bar to drill further to settlements. Click the LGA again to return to the all-LGA view.</div>
             </div>
             <div class="card-head-right">
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);cursor:pointer;margin-right:10px;user-select:none" title="Hide LGAs/wards/settlements with no submissions"><input type="checkbox" style="cursor:pointer" onchange="toggleHideEmpty('forms', this)"> Hide empty</label>
               <button class="chart-dl" onclick="dlChart('c_lgaBar','submissions_by_lga')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
             </div>
           </div>
@@ -817,8 +816,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="kpi"><div class="lbl">Baseline Total</div><div class="val" id="cov-kpi-baseline">-</div><div class="sub">Children 1–59 months targeted for treatment this round (from this round's baseline target file)</div></div>
           <div class="kpi accent"><div class="lbl">Total Treated</div><div class="val" id="cov-kpi-treated">-</div><div class="sub">Children treated so far, across all submitted forms</div></div>
           <div class="kpi good"><div class="lbl">Overall Coverage</div><div class="val" id="cov-kpi-pct">-</div><div class="sub">Total treated ÷ baseline target, campaign to date</div></div>
-          <div class="kpi good"><div class="lbl">LGAs on Target &ge;80%</div><div class="val" id="cov-kpi-good">-</div><div class="sub" id="cov-kpi-good-sub">LGAs that have reached the WHO 80% protective threshold</div></div>
-          <div class="kpi bad"><div class="lbl">LGAs Below 60%</div><div class="val" id="cov-kpi-below">-</div><div class="sub" id="cov-kpi-below-sub">LGAs still under 60% coverage - flagged for mop-up</div></div>
+          <div class="kpi good"><div class="lbl" id="cov-kpi-good-lbl">LGAs on Pace</div><div class="val" id="cov-kpi-good">-</div><div class="sub" id="cov-kpi-good-sub">LGAs at or above today's expected coverage on a 5-day campaign (20% per day).</div></div>
+          <div class="kpi bad"><div class="lbl" id="cov-kpi-below-lbl">LGAs Behind Pace</div><div class="val" id="cov-kpi-below">-</div><div class="sub" id="cov-kpi-below-sub">LGAs below today's expected coverage — need catch-up.</div></div>
         </div>
 
         <!-- Treatment Coverage by LGA - full-width so every LGA fits at
@@ -830,7 +829,6 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               <div class="card-sub">Each bar shows how much of the baseline target has been reached in that LGA. Green bars (≥80%) meet the WHO target; shorter bars need follow-up.</div>
             </div>
             <div class="card-head-right">
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);cursor:pointer;margin-right:10px;user-select:none" title="Hide LGAs/wards with 0% coverage"><input type="checkbox" style="cursor:pointer" onchange="toggleHideEmpty('cov', this)"> Hide empty</label>
               <button class="chart-dl" onclick="dlChart('c_covLgaBar','coverage_by_lga')" title="Download"><i class="fa-solid fa-download"></i></button>
             </div>
           </div>
@@ -1750,6 +1748,19 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             </div>
           </div>
 
+          <!-- 6. Team Report - one row per (LGA, Ward, hq_user, phone, name)
+                  so an hq_user with multiple phones or names surfaces on
+                  separate rows. Useful for reconciling team rosters against
+                  what's actually flowing in from CommCare. -->
+          <div class="card report-card" onclick="reportDownloadTeamReport()" style="margin-bottom:0;cursor:pointer">
+            <div class="card-body">
+              <div class="rep-icon" style="background:var(--mist);color:var(--good)"><i class="fa-solid fa-file-excel"></i></div>
+              <div class="rep-title">Team Report</div>
+              <div class="rep-sub">XLSX &bull; Per (LGA, Ward, team): hq_user &middot; distinct phone(s) &middot; distinct name(s) &middot; forms &middot; treated</div>
+              <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();reportDownloadTeamReport()"><i class="fa-solid fa-download"></i> Download XLSX</button>
+            </div>
+          </div>
+
           <!-- 6. Boundary GeoJSON Pack - direct geojson endpoint links so
                   field teams can drop the polygons into QGIS / KoBoCollect. -->
           <div class="card report-card" onclick="reportShowGeoPack()" style="margin-bottom:0;cursor:pointer">
@@ -2365,8 +2376,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const wrap = canvasEl?.parentElement;
     if (!wrap) return;
     // Viewport = content height, capped at fixedHeight (scrolls past that). When
-    // fewer rows remain (e.g. "Hide empty"), the box shrinks to fit instead of
-    // leaving blank scroll space below the last bar.
+    // fewer rows are shown (e.g. a drilled-in LGA), the box shrinks to fit
+    // instead of leaving blank scroll space below the last bar.
     const innerH = Math.max(minInner, rowCount * rowPx + gutterPx);
     wrap.style.height = Math.min(fixedHeight, innerH) + 'px';
     wrap.style.overflowY = 'auto';
@@ -2798,6 +2809,65 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   /* ── Coverage Analysis filter state ── */
   let COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
 
+  // Daily-scaled coverage target: the campaign is planned over N days
+  // (default 5). By day k of N, the expected coverage is (k / N) × 100%,
+  // capped at 100% once the planned window has elapsed. Kano R3 planners
+  // use this "pace" model instead of a flat WHO 80% threshold: an LGA
+  // sitting at 60% on day 3 of 5 (target = 60%) is on-pace even though
+  // the WHO threshold isn't met yet.
+  //
+  // Returns { day, planned, pct } or null when the campaign hasn't started
+  // or the current-day / planned-duration fields are missing from overviewData.
+  function _dailyScaledTarget() {
+    const ov = overviewData || {};
+    const day = Number(ov.current_campaign_day);
+    if (!day || day < 1) return null;
+    const planned = Number(ov.planned_duration_days) > 0 ? Number(ov.planned_duration_days) : 5;
+    const pct = Math.min(100, Math.round((day / planned) * 100));
+    return { day, planned, pct };
+  }
+  window._dailyScaledTarget = _dailyScaledTarget;
+
+  // Shared: split filtered LGAs into on-pace vs behind-pace by today's scaled
+  // target and set both KPI cards on the Coverage Analysis page (labels
+  // include the target %, subs explain the pace model + name the extreme
+  // LGA when a tier is empty). Called from every path that recomputes those
+  // KPIs so the three sites stay in sync.
+  function _setCovPaceKPIs(rows) {
+    const t = _dailyScaledTarget();
+    const cutoff = t ? t.pct : 80;   // pre-campaign fallback = classic WHO
+    const good  = rows.filter(l => parseFloat(l.coverage_pct) >= cutoff).length;
+    const below = rows.filter(l => parseFloat(l.coverage_pct) <  cutoff).length;
+    setEl('cov-kpi-good',  good  + ' / ' + rows.length);
+    setEl('cov-kpi-below', below + ' / ' + rows.length);
+    const goodLbl  = document.getElementById('cov-kpi-good-lbl');
+    const belowLbl = document.getElementById('cov-kpi-below-lbl');
+    if (goodLbl)  goodLbl.innerHTML  = 'LGAs on Pace &ge;' + cutoff + '%';
+    if (belowLbl) belowLbl.innerHTML = 'LGAs Behind Pace &lt;' + cutoff + '%';
+    const goodSub  = document.getElementById('cov-kpi-good-sub');
+    const belowSub = document.getElementById('cov-kpi-below-sub');
+    const paceCtx  = t
+      ? 'Day ' + t.day + ' of ' + t.planned + ' — expected coverage today is ' + t.pct + '%.'
+      : 'Campaign window not set — falling back to WHO 80% threshold.';
+    if (goodSub) {
+      if (good === 0 && rows.length) {
+        const highest = rows.reduce((m, l) => parseFloat(l.coverage_pct) > parseFloat(m.coverage_pct||-1) ? l : m, rows[0]);
+        goodSub.textContent = paceCtx + ' No LGA yet — highest: ' + highest.lga + ' (' + parseFloat(highest.coverage_pct).toFixed(1) + '%).';
+      } else {
+        goodSub.textContent = paceCtx + ' Pacing correctly.';
+      }
+    }
+    if (belowSub) {
+      if (below && rows.length) {
+        const lowest = rows.reduce((m, l) => parseFloat(l.coverage_pct) < parseFloat(m.coverage_pct||101) ? l : m, rows[0]);
+        belowSub.textContent = paceCtx + ' Lowest: ' + lowest.lga + ' (' + parseFloat(lowest.coverage_pct).toFixed(1) + '%) — needs catch-up.';
+      } else {
+        belowSub.textContent = paceCtx + ' All LGAs on pace.';
+      }
+    }
+  }
+  window._setCovPaceKPIs = _setCovPaceKPIs;
+
   async function applyCovFilter() {
     COV_FILTER.lga  = (document.getElementById('cov-f-lga')  || {}).value || '';
     COV_FILTER.ward = (document.getElementById('cov-f-ward') || {}).value || '';
@@ -2866,16 +2936,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // Re-scope the rest of the Coverage Analysis page to the same filter, so a
     // drill-down / dropdown flows through to the KPI cards and the age chart -
     // not just the LGA table and the by-LGA bar.
-    const covGood  = filtered.filter(l => parseFloat(l.coverage_pct) >= 80).length;
-    const covBelow = filtered.filter(l => parseFloat(l.coverage_pct) <  60).length;
     const covBase  = filtered.reduce((s, l) => s + (parseFloat(l.baseline_total) || 0), 0);
     const covTreat = filtered.reduce((s, l) => s + (parseFloat(l.actual_treated) || 0), 0);
     const covPct   = covBase > 0 ? (covTreat / covBase * 100) : 0;
     setEl('cov-kpi-baseline', fmt(covBase));
     setEl('cov-kpi-treated',  fmt(covTreat));
     setEl('cov-kpi-pct',      covPct.toFixed(1) + '%');
-    setEl('cov-kpi-good',     covGood + ' / ' + filtered.length);
-    setEl('cov-kpi-below',    covBelow + ' / ' + filtered.length);
+    _setCovPaceKPIs(filtered);
     // Age-band coverage re-scopes by LGA + ward (the endpoint supports both).
     renderCoverageByAge(COV_FILTER.lga, COV_FILTER.ward);
   }
@@ -3039,26 +3106,6 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   /* ── SHARED CHART DEFAULTS ── */
   const C_BLUE1 = '#006B2E', C_BLUE2 = '#44B568', C_BLUE3 = '#9FDAB5';
   const C_BLUE_ALPHA = 'rgba(0,107,46,.55)', C_GRID = '#E9F7EE';
-  /* "Hide empty" toggle for the Forms + Coverage bar charts. Default OFF, so
-     zero-value LGAs/wards/settlements (the coverage GAPS) stay visible; the
-     toggle just declutters on demand. Each render fn registers a rerender
-     closure so flipping the toggle re-renders whatever drill level is showing. */
-  const _hideEmpty = { forms: false, cov: false };
-  let _formsRerender = null, _covRerender = null;
-  function _hasValue(r, kind) {
-    if (kind === 'cov')  return (parseFloat(r.coverage_pct) || 0) > 0;
-    if (kind === 'sett') return (r.point_count || 0) > 0 || !!r.is_visited || (r.completeness_pct || 0) > 0;
-    return (r.forms || 0) > 0;               // 'forms'
-  }
-  function _applyHide(rows, chart, kind) {
-    return _hideEmpty[chart] ? rows.filter(r => _hasValue(r, kind)) : rows;
-  }
-  function toggleHideEmpty(chart, cb) {
-    _hideEmpty[chart] = !!(cb && cb.checked);
-    const fn = chart === 'forms' ? _formsRerender : _covRerender;
-    if (fn) fn();
-  }
-  window.toggleHideEmpty = toggleHideEmpty;
 
   const DL_BASE = { display: true, font: { size: 10, weight: '600', family: "'Inter','Segoe UI',sans-serif" }, color: '#5B6B82' };
   const DL_WHITE = { display: true, font: { size: 10, weight: '700', family: "'Inter','Segoe UI',sans-serif" }, color: '#ffffff' };
@@ -3691,13 +3738,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Submissions by Ward - ' + lga +
       ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> All LGAs</button>';
 
-    _formsRerender = () => drillDownToWards(lga);
-    const raw = await api('/api/mda/submissions/ward?lga=' + encodeURIComponent(lga)) || [];
-    const data = _applyHide(raw, 'forms', 'forms');
+    const data = await api('/api/mda/submissions/ward?lga=' + encodeURIComponent(lga)) || [];
     if (!data.length) {
       // No submissions for this LGA yet (e.g. campaign not started / no synced
-      // forms), or all wards filtered out by "Hide empty". Draw a clear message
-      // instead of leaving a blank white canvas.
+      // forms). Draw a clear message instead of leaving a blank white canvas.
       const wrap0 = el.parentElement;
       if (wrap0 && wrap0.clientWidth) { el.width = wrap0.clientWidth; el.height = Math.max(160, wrap0.clientHeight || 220); }
       const ctx0 = el.getContext('2d');
@@ -3778,11 +3822,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // on screen while they load (no blank flash) and stay on wards if there's
     // nothing to show.
     // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
-    const raw = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
-    if (!raw.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
-    _formsRerender = () => drillDownToSettlements(lga, ward);
-    const data = _applyHide(raw, 'forms', 'forms');
-    if (!data.length) { showToast('No settlements with submissions in ' + ward + ' - "Hide empty" is on'); return; }
+    const data = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!data.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
 
     const existing = Chart.getChart(el); if (existing) existing.destroy();
     const lgaEsc = String(lga).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -3947,13 +3988,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const covBase  = filtered.reduce((s, l) => s + (parseFloat(l.baseline_total) || 0), 0);
     const covTreat = filtered.reduce((s, l) => s + (parseFloat(l.actual_treated) || 0), 0);
     const covPct   = covBase > 0 ? (covTreat / covBase * 100) : 0;
-    const covGood  = filtered.filter(l => parseFloat(l.coverage_pct) >= 80).length;
-    const covBelow = filtered.filter(l => parseFloat(l.coverage_pct) <  60).length;
     setEl('cov-kpi-baseline', fmt(covBase));
     setEl('cov-kpi-treated',  fmt(covTreat));
     setEl('cov-kpi-pct',      covPct.toFixed(1) + '%');
-    setEl('cov-kpi-good',     covGood + ' / ' + filtered.length);
-    setEl('cov-kpi-below',    covBelow + ' / ' + filtered.length);
+    _setCovPaceKPIs(filtered);
     const label   = document.getElementById('cov-filter-label');
     const resetBt = document.getElementById('cov-reset-btn');
     const txt     = document.getElementById('cov-filter-text');
@@ -3967,15 +4005,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const ex = Chart.getChart(el); if (ex) ex.destroy();
     const t = el.closest('.card')?.querySelector('.card-title');
     if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Ward coverage - ' + lga + ' &nbsp;' + _covDrillBack(lga, null);
-    _covRerender = () => covDrillToWards(lga);
     // Re-scope the rest of the page (KPIs + LGA-detail table + filter chip) to
     // the drilled LGA so the whole Coverage view follows the drill, just like
     // the Overview's Forms-per-LGA chart does.
     _covSyncPageToLGA(lga);
-    const raw = await api('/api/mda/coverage/ward?lga=' + encodeURIComponent(lga)) || [];
-    if (!raw.length) { showToast('No ward data for ' + lga); return; }
-    const data = _applyHide(raw, 'cov', 'cov');
-    if (!data.length) { showToast('All wards in ' + lga + ' are empty — nothing to show with "Hide empty" on'); return; }
+    const data = await api('/api/mda/coverage/ward?lga=' + encodeURIComponent(lga)) || [];
+    if (!data.length) { showToast('No ward data for ' + lga); return; }
     _covDrillScroll(el, data.length);
     _covDrillChart(el, data.map(r => r.ward_name), data.map(r => parseFloat(r.coverage_pct) || 0), data,
       i => { const w = data[i]?.ward_name; if (w) covDrillToSettlements(lga, w); });
@@ -3986,11 +4021,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // Fetch FIRST — if this ward has no settlement breakdown, stay on the ward
     // view (don't destroy the ward chart and leave a blank canvas).
     // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
-    const raw = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
-    if (!raw.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
-    _covRerender = () => covDrillToSettlements(lga, ward);
-    const data = _applyHide(raw, 'cov', 'forms');
-    if (!data.length) { showToast('No settlements with submissions in ' + ward + ' - "Hide empty" is on'); return; }
+    const data = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
+    if (!data.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
     const ex = Chart.getChart(el); if (ex) ex.destroy();
     const t = el.closest('.card')?.querySelector('.card-title');
     // Settlements carry no coverage target, so the bars show FORM counts from the
@@ -4021,18 +4053,17 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   function buildLGABarChart(data, sortBy) {
     const el = document.getElementById('c_lgaBar');
     if (!el) return;
-    // Self-destroy so this is safe to call directly (e.g. the "Hide empty"
-    // rerender), not only via the caller that pre-destroys the chart. Without
-    // this a re-render hits "canvas already in use" and silently no-ops.
+    // Self-destroy so this is safe to call directly, not only via the caller
+    // that pre-destroys the chart. Without this a re-render hits "canvas already
+    // in use" and silently no-ops.
     const _ex = Chart.getChart(el); if (_ex) _ex.destroy();
-    _formsRerender = () => buildLGABarChart(data, sortBy);
     const key = sortBy === 'treated' ? 'actual_treated' : 'forms';
     // Show every LGA in the round (R5 has ~20). Rather than scrolling, grow
     // the chart-wrap itself so each LGA gets a full-thickness bar (~28 px)
     // - the neighbouring card in the grid-2 row simply lets the row get
     // taller. Bars and y-axis ticks stay aligned because Chart.js sizes
     // the canvas to fill the chart-wrap.
-    const sorted = _applyHide([...data], 'forms', 'forms').sort((a,b) => (b[key]||0) - (a[key]||0));
+    const sorted = [...data].sort((a,b) => (b[key]||0) - (a[key]||0));
     applyScrollableChartHeight(el, sorted.length, { rowPx: 30 });
     new Chart(el, {
       type: 'bar',
@@ -4138,8 +4169,17 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
           legend: { position: 'bottom', labels: { font: { size: 11 } } },
-          datalabels: { display: false },
-          tooltip: { callbacks: { label: ctx => ' ' + ctx.raw.toLocaleString() + ' children' } }
+          // Force-show the segment name + value on both slices so the operator
+          // can read "Treated: N" / "Remaining: M" at a glance without needing
+          // to hover. Values format with thousand separators.
+          datalabels: {
+            display: true,
+            color: '#fff',
+            font: { size: 11, weight: '700' },
+            formatter: (v, ctx) => (ctx.chart.data.labels[ctx.dataIndex] || '') + '\n' + Number(v || 0).toLocaleString(),
+            textAlign: 'center',
+          },
+          tooltip: { callbacks: { label: ctx => ' ' + (ctx.chart.data.labels[ctx.dataIndex] || '') + ': ' + Number(ctx.raw || 0).toLocaleString() + ' children' } }
         },
         maintainAspectRatio: false, animation: { duration: 600 }
       }
@@ -4178,7 +4218,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
           datalabels: { ...DL_BASE, anchor: 'end', align: 'top', formatter: v => v.toLocaleString() }
         },
-        scales: { y: { beginAtZero: true, grace: '8%', grid: { display: false }, ticks: { callback: v => v.toLocaleString() } }, x: { grid: { display: false } } },
+        // Y-axis hidden per operator request: the bar labels themselves carry
+        // the exact numbers, and a big axis scale (e.g. 0-3M for Kano R3) just
+        // added visual noise without helping read the value.
+        scales: { y: { display: false, beginAtZero: true, grace: '8%', grid: { display: false } }, x: { grid: { display: false } } },
         maintainAspectRatio: false, animation: { duration: 600 }
       }
     });
@@ -4313,7 +4356,14 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             onHover: (evt, elems) => { el_daily.style.cursor = elems.length ? 'crosshair' : 'default'; },
             plugins: {
               legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 14 } },
-              datalabels: { display: false },
+              // Per-day forms count printed above each point so the operator
+              // can read the daily number without having to hover the line.
+              datalabels: {
+                display: ctx => ctx.dataset.label === 'Forms Submitted',
+                anchor: 'end', align: 'top', offset: 4,
+                color: C_BLUE1, font: { size: 10.5, weight: '700' },
+                formatter: v => Number(v || 0).toLocaleString(),
+              },
               tooltip: {
                 callbacks: {
                   title: ctx => 'Date: ' + ctx[0].label,
@@ -4359,15 +4409,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       _loadTeamsPerLGA();
       _loadMopUpShortlist();
 
-      // LGA level: flipping "Hide empty" rebuilds the coverage view (same path
-      // covDrillUp uses), so the toggle re-applies at this level too. Destroy the
-      // existing chart first (like covDrillUp) or the rebuild hits "canvas in use".
-      _covRerender = () => {
-        const c0 = Chart.getChart(document.getElementById('c_covLgaBar')); if (c0) c0.destroy();
-        delete built['coverage']; buildCharts('coverage');
-      };
       if (lgaCovData.length) {
-        const sorted = _applyHide([...lgaCovData], 'cov', 'cov').sort((a,b)=>b.coverage_pct-a.coverage_pct);
+        const sorted = [...lgaCovData].sort((a,b)=>b.coverage_pct-a.coverage_pct);
         const maxCov = Math.max(...sorted.map(l => parseFloat(l.coverage_pct)||0), 1);
         const covEl = document.getElementById('c_covLgaBar');
         applyScrollableChartHeight(covEl, sorted.length, { rowPx: 30 });
@@ -4423,45 +4466,31 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               },
               onHover: (evt, elems) => { document.getElementById('c_covProgress').style.cursor = elems.length ? 'crosshair' : 'default'; },
               interaction: { mode: 'index', intersect: false },
-              plugins: { legend: { display: false }, datalabels: { display: false } },
-              scales: { y: { grid: { display: false }, ticks: { callback: v=>v+'%' } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+              // Y-axis hidden per operator request; each point now carries the
+              // exact cumulative-coverage % above it, so the axis was redundant.
+              plugins: {
+                legend: { display: false },
+                datalabels: {
+                  display: true,
+                  anchor: 'end', align: 'top', offset: 4,
+                  color: C_BLUE1, font: { size: 10.5, weight: '700' },
+                  formatter: v => (v == null ? '' : Number(v).toFixed(1) + '%'),
+                },
+              },
+              scales: { y: { display: false, grid: { display: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+              layout: { padding: { top: 18 } },
               maintainAspectRatio: false
             }
           });
         }
-        // KPI values are computed as counts (out of total LGAs in this round).
-        // When a tier is empty we surface *why* in the subtitle so the card
-        // doesn't read as "no information" - e.g. "Highest: Gwadabawa (29.8%)".
-        const totalLgas = lgaCovData.length;
-        const covGood  = lgaCovData.filter(l => parseFloat(l.coverage_pct) >= 80).length;
-        const covBelow = lgaCovData.filter(l => parseFloat(l.coverage_pct) <  60).length;
+        // Baseline / Treated / Overall Coverage KPIs. On-pace / behind-pace
+        // KPIs (plus subtitles) are set by _setCovPaceKPIs so the same
+        // pace-based split applies here as in the filter/drill paths.
         const ovPct = overviewData.coverage_pct || 0;
         setEl('cov-kpi-baseline', fmt(overviewData.baseline_total));
         setEl('cov-kpi-treated',  fmt(overviewData.total_treated));
         setEl('cov-kpi-pct',      ovPct.toFixed(1)+'%');
-        setEl('cov-kpi-good',     covGood + ' / ' + totalLgas);
-        setEl('cov-kpi-below',    covBelow + ' / ' + totalLgas);
-        const sortedByCov = [...lgaCovData].sort((a, b) => parseFloat(b.coverage_pct) - parseFloat(a.coverage_pct));
-        const highest = sortedByCov[0];
-        const lowest  = sortedByCov[sortedByCov.length - 1];
-        const goodSub = document.getElementById('cov-kpi-good-sub');
-        if (goodSub) {
-          if (covGood === 0 && highest) {
-            goodSub.textContent = 'No LGA yet - highest: ' + highest.lga + ' (' + parseFloat(highest.coverage_pct).toFixed(1) + '%)';
-          } else if (covGood > 0) {
-            goodSub.textContent = 'Meeting WHO threshold (≥80%)';
-          } else {
-            goodSub.textContent = 'Meeting WHO threshold';
-          }
-        }
-        const belowSub = document.getElementById('cov-kpi-below-sub');
-        if (belowSub) {
-          if (covBelow > 0 && lowest) {
-            belowSub.textContent = 'Lowest: ' + lowest.lga + ' (' + parseFloat(lowest.coverage_pct).toFixed(1) + '%) - needs mop-up';
-          } else if (covBelow === 0) {
-            belowSub.textContent = 'All LGAs ≥60% - good progress';
-          }
-        }
+        _setCovPaceKPIs(lgaCovData);
         buildLGATable('cov-lga-table-body', lgaCovData, true);
         populateCovFilters();
         // Render age-category coverage (1-11 vs 12-59) per LGA. Fetched once
@@ -4707,6 +4736,14 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   // matches what's already produced by the Geographic View download grid.
   function reportDownloadLGAs() { return downloadGeoExport('lgas', 'LGAs'); }
   function reportDownloadWards() { return downloadGeoExport('wards', 'Wards'); }
+  // Team Report — new endpoint, scoped to the selected project.
+  async function reportDownloadTeamReport() {
+    const qs = (typeof SELECTED_PID !== 'undefined' && SELECTED_PID != null)
+                 ? '?project_id=' + SELECTED_PID : '';
+    const fname = 'team_report_' + (new Date().toISOString().slice(0,10)) + '.xlsx';
+    await _downloadXlsx('/api/mda/reports/team-report' + qs, fname);
+  }
+  window.reportDownloadTeamReport = reportDownloadTeamReport;
   function reportDownloadSettlementStatus() { return downloadSettlementStatus(); }
   window.reportDownloadLGAs = reportDownloadLGAs;
   window.reportDownloadWards = reportDownloadWards;
@@ -4898,6 +4935,9 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         },
         center: [5.25, 13.05], zoom: 7,
       });
+      // Standard +/- zoom + compass control. Operators wanted a visible zoom
+      // affordance on the map itself instead of scroll-only zoom.
+      geoMap.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
       geoMap.on('zoom', () => {
         const el = document.getElementById('geo-zoom');
         if (el) el.textContent = geoMap.getZoom().toFixed(1);
@@ -6319,8 +6359,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             '<div style="color:#4A6852;margin-bottom:2px"><b>Team(s):</b> ' + (teamList && teamList.length ? teamList.join(', ') : '-') +
               (p.teams_count && p.teams_count > (teamList || []).length ? ' <i style="color:#4A6852">(+' + (p.teams_count - teamList.length) + ' more)</i>' : '') +
             '</div>' +
-            '<div style="color:#4A6852;margin-bottom:2px"><b>First seen:</b> ' + (p.first_seen || '-') + '</div>' +
-            '<div style="color:#4A6852"><b>Last seen:</b> ' + (p.last_seen || '-') + '</div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>First seen:</b> ' + (p.first_seen || '-') + ' <i style="color:#94a3b8">(local)</i></div>' +
+            '<div style="color:#4A6852"><b>Last seen:</b> ' + (p.last_seen || '-') + ' <i style="color:#94a3b8">(local)</i></div>' +
           '</div>';
         if (stackedPopup) stackedPopup.remove();
         stackedPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px' })
@@ -6338,7 +6378,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       geoMap.fitBounds(
         [[Math.min.apply(null, xs) - 0.02, Math.min.apply(null, ys) - 0.02],
          [Math.max.apply(null, xs) + 0.02, Math.max.apply(null, ys) + 0.02]],
-        { padding: 40, maxZoom: 13, duration: 700 },
+        // Tight zoom for QC drill so a single-cluster team lands right on the
+        // problem coord rather than a whole-LGA view. maxZoom 16 is
+        // "individual-building" scale — enough to eyeball GPS drift.
+        { padding: 40, maxZoom: 16, duration: 700 },
       );
     }
     var toast = (typeof showToast === 'function') ? showToast : null;
@@ -6401,7 +6444,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             '<div style="color:#4A6852;margin-bottom:2px"><b>Distance to stated LGA edge:</b> <b style="color:#78350f">' + dist + '</b></div>' +
             (p.ward_name ? '<div style="color:#4A6852;margin-bottom:2px"><b>Reported ward:</b> ' + p.ward_name + '</div>' : '') +
             '<div style="color:#4A6852;margin-bottom:2px"><b>Team:</b> ' + (p.hq_user || '—') + '</div>' +
-            '<div style="color:#4A6852"><b>Date:</b> ' + (p.date || '—') + '</div>' +
+            '<div style="color:#4A6852"><b>Recorded:</b> ' + (p.date || '—') + ' <i style="color:#94a3b8">(local)</i></div>' +
           '</div>';
         if (outsideLgaPopup) outsideLgaPopup.remove();
         outsideLgaPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '340px' })
@@ -6418,7 +6461,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       geoMap.fitBounds(
         [[Math.min.apply(null, xs) - 0.02, Math.min.apply(null, ys) - 0.02],
          [Math.max.apply(null, xs) + 0.02, Math.max.apply(null, ys) + 0.02]],
-        { padding: 40, maxZoom: 13, duration: 700 },
+        // Tight zoom for QC drill so a single-cluster team lands right on the
+        // problem coord rather than a whole-LGA view. maxZoom 16 is
+        // "individual-building" scale — enough to eyeball GPS drift.
+        { padding: 40, maxZoom: 16, duration: 700 },
       );
     }
     var toast = (typeof showToast === 'function') ? showToast : null;
