@@ -9,6 +9,16 @@ engine = create_async_engine(
     pool_size=10,
     max_overflow=20,
     pool_pre_ping=True,
+    # Backstop against a single slow query holding a pool connection forever.
+    # Under a cold-cache stampede on the big post-sync dataset, heavy aggregate
+    # queries were running 30-90s each and, with no cap, occupied every pool
+    # connection until they finished — starving even /api/health of a
+    # connection (it timed out). A 45s server-side statement_timeout kills any
+    # runaway API query so its connection is returned to the pool instead of
+    # being held hostage. NOTE: this applies only to the async (API) engine —
+    # the sync worker uses its own psycopg2 connection (DATABASE_URL_SYNC), so
+    # long settlement_analytics recomputes are unaffected.
+    connect_args={"server_settings": {"statement_timeout": "45000"}},
 )
 
 AsyncSessionLocal = async_sessionmaker(
