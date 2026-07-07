@@ -80,6 +80,12 @@ services:
       - /opt/mda-dashboard/.env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      # Interim band-aid while the fetch is still full-feed: the CommCare
+      # download over the grown dataset (1.26M households / 3.47M individuals)
+      # exceeds the old 1800s (30 min) cap, so every sync errored. Raise it so a
+      # sync can COMPLETE. The incremental-fetch rework (offset cursor) will make
+      # syncs finish in minutes and this can drop back down.
+      - SYNC_JOB_TIMEOUT_SECS=21600
     depends_on:
       - redis
     command: python -m app.sync_worker

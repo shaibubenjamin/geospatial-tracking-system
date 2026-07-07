@@ -91,8 +91,8 @@ async def _fetch_all_pages(
         payload = resp.json()
         rows.extend(payload.get("value", []) or [])
         next_url = payload.get("@odata.nextLink")
-        if page > 200:  # safety belt against runaway pagination
-            logger.warning("Pagination capped at 200 pages for %s", url)
+        if page > 5000:  # runaway guard only (5000 pages x 2000 = 10M rows)
+            logger.warning("Pagination capped at 5000 pages for %s", url)
             break
     return rows
 
