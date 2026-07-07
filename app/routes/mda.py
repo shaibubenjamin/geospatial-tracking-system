@@ -4022,45 +4022,93 @@ async def download_team_report(
 ):
     """Per-team roster Excel scoped to the active round (admin/superadmin only).
 
-    Grain: one row per distinct (LGA, Ward, hq_user, phone, name). An hq_user
-    who used more than one CommCare handset (multiple phone numbers) or was
-    logged in under more than one enumerator name surfaces as multiple rows,
-    which is exactly the reconciliation view the field coordinators asked
-    for. Forms + treated counts are per row (per team+phone+name combination
-    inside the ward), so the totals across rows for a single hq_user still
-    add up to that user's total activity.
+    Grain: **one row per hq_user**. For each team account the report lists
+    every distinct phone number and name captured on the forms it submitted,
+    along with the LGAs / wards it operated in. Purpose: surface hq_user
+    accounts that have been shared across multiple people — a single team
+    account attached to 5+ distinct phones or names is a red flag.
 
-    Empty strings are coerced to NULL in the GROUP BY so the operator's typed
-    "" vs missing-value aren't split into two rows.
+    Normalisation before dedup:
+      * phone_number_data → non-digits stripped (so "+234 801 234" and
+        "234-801-234" collapse to one entry)
+      * data_entry_persons → whitespace collapsed and upper-cased
+
+    Distinct lists are truncated to the first 15 entries in-cell (with a
+    "…+N more" suffix when it overflows) so Excel can render each cell.
+    The **distinct COUNT** columns carry the true count regardless of the
+    display cap.
     """
     result = await db.execute(text("""
+        WITH norm AS (
+          SELECT
+            h.hq_user,
+            h.lga,
+            h.ward_name,
+            h.number_of_treated,
+            h.received_on,
+            NULLIF(REGEXP_REPLACE(COALESCE(h.phone_number_data, ''), '\\D', '', 'g'), '') AS phone_norm,
+            NULLIF(UPPER(REGEXP_REPLACE(TRIM(COALESCE(h.data_entry_persons, '')), '\\s+', ' ', 'g')), '') AS name_norm
+          FROM mda_households h
+          WHERE h.project_id = :pid
+            AND h.hq_user IS NOT NULL AND TRIM(h.hq_user) <> ''
+        )
         SELECT
-          h.lga,
-          h.ward_name,
-          h.hq_user,
-          NULLIF(TRIM(COALESCE(h.phone_number_data, '')), '')  AS phone_number,
-          NULLIF(TRIM(COALESCE(h.data_entry_persons, '')), '') AS enumerator_name,
+          n.hq_user,
+          -- Distinct LGAs / wards this team touched (limit display, keep true count)
+          ARRAY_LENGTH(ARRAY(SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.lga))       AS x WHERE x IS NOT NULL), 1) AS lga_count,
+          ARRAY(       SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.lga))             AS x WHERE x IS NOT NULL ORDER BY 1) AS lgas,
+          ARRAY_LENGTH(ARRAY(SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.ward_name)) AS x WHERE x IS NOT NULL), 1) AS ward_count,
+          ARRAY(       SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.ward_name))       AS x WHERE x IS NOT NULL ORDER BY 1) AS wards,
+          -- The signal columns: distinct-count then the display list
+          ARRAY_LENGTH(ARRAY(SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.phone_norm)) AS x WHERE x IS NOT NULL), 1) AS phone_count,
+          ARRAY(       SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.phone_norm))       AS x WHERE x IS NOT NULL ORDER BY 1) AS phones,
+          ARRAY_LENGTH(ARRAY(SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.name_norm))  AS x WHERE x IS NOT NULL), 1) AS name_count,
+          ARRAY(       SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.name_norm))        AS x WHERE x IS NOT NULL ORDER BY 1) AS names,
           COUNT(*)                              AS forms,
-          COALESCE(SUM(h.number_of_treated),0)  AS treated,
-          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
+          COALESCE(SUM(n.number_of_treated), 0) AS treated,
+          COUNT(DISTINCT (n.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
                                                 AS days_active,
-          TO_CHAR(MIN(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD') AS first_seen,
-          TO_CHAR(MAX(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD') AS last_seen
-        FROM mda_households h
-        WHERE h.project_id = :pid
-          AND h.hq_user IS NOT NULL AND TRIM(h.hq_user) <> ''
-        GROUP BY h.lga, h.ward_name, h.hq_user, phone_number, enumerator_name
-        ORDER BY h.lga NULLS LAST, h.ward_name NULLS LAST, h.hq_user, forms DESC
+          TO_CHAR(MIN(n.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD') AS first_seen,
+          TO_CHAR(MAX(n.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD') AS last_seen
+        FROM norm n
+        GROUP BY n.hq_user
+        -- Suspicious accounts (multiple phones or names) sort to the top.
+        ORDER BY GREATEST(
+                   COALESCE(ARRAY_LENGTH(ARRAY(SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.phone_norm)) AS x WHERE x IS NOT NULL), 1), 0),
+                   COALESCE(ARRAY_LENGTH(ARRAY(SELECT DISTINCT x FROM UNNEST(ARRAY_AGG(n.name_norm))  AS x WHERE x IS NOT NULL), 1), 0)
+                 ) DESC,
+                 forms DESC, n.hq_user
     """), {"pid": pid})
     rows = result.fetchall()
+
+    def _display_list(xs, cap: int = 15) -> str:
+        if not xs:
+            return ""
+        xs = list(xs)
+        if len(xs) <= cap:
+            return ", ".join(xs)
+        return ", ".join(xs[:cap]) + f", …+{len(xs) - cap} more"
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Teams"
-    ws.append(["LGA", "Ward", "hq_user", "Phone number", "Enumerator name",
-               "Forms", "Treated", "Days active", "First seen", "Last seen"])
+    ws.append([
+        "hq_user",
+        "LGA count", "LGAs",
+        "Ward count", "Wards",
+        "Distinct phone count", "Distinct phones",
+        "Distinct name count", "Distinct names",
+        "Forms", "Treated", "Days active", "First seen", "Last seen",
+    ])
     for r in rows:
-        ws.append(list(r))
+        ws.append([
+            r.hq_user,
+            r.lga_count or 0,   _display_list(r.lgas),
+            r.ward_count or 0,  _display_list(r.wards),
+            r.phone_count or 0, _display_list(r.phones),
+            r.name_count or 0,  _display_list(r.names),
+            r.forms, r.treated, r.days_active, r.first_seen, r.last_seen,
+        ])
     _style_workbook(ws)
     return _xlsx_response(wb, "team_report")
 
