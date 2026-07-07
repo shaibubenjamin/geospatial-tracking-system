@@ -67,22 +67,39 @@ def _feed_url(base_url: str, app_slug: str, form_id: str, record_type: str) -> s
     return f"{base}/a/{app_slug}/api/odata/forms/v1/{form_id}/{suffix}"
 
 
+_ODATA_PAGE_SIZE = 2000  # CommCare's fixed OData page size (also the nextLink step)
+
+
 async def _fetch_all_pages(
     url: str,
     auth: Tuple[str, str],
     since: Optional[datetime],
     client: httpx.AsyncClient,
-) -> List[Dict[str, Any]]:
-    """Walk every page of an OData feed via ``@odata.nextLink``, returning all rows.
+    start_offset: int = 0,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Walk an OData feed via ``@odata.nextLink`` from ``start_offset`` to the end.
 
-    CommCare's OData implementation gates query options (``$top``, ``$filter``,
-    etc.) behind a separate feature flag from basic feed access — for our
-    account these come back "Feature flag not enabled." So we don't pass them.
-    The ``since`` watermark is used for reporting only; deduplication relies on
-    the ``ON CONFLICT (formid) DO UPDATE`` upsert downstream.
+    Returns ``(rows, final_offset)`` where ``final_offset = start_offset +
+    len(rows)`` — i.e. the total number of rows the feed now holds up to and
+    including what we just read. That value is persisted as the resume cursor.
+
+    Incremental fetch: CommCare gates the OData ``$``-options (``$top``,
+    ``$filter``, ``$orderby``) behind a feature flag this account lacks — they're
+    silently ignored. BUT the plain ``limit``/``offset`` params that CommCare's
+    own ``@odata.nextLink`` uses DO work and are stable on refetch, and the feed
+    is append-only + ordered by ``received_on`` ascending. So we resume from the
+    saved ``start_offset`` and only pull the new tail instead of re-walking the
+    whole feed every sync. ``since`` is still used downstream as a client-side
+    watermark; ``ON CONFLICT DO UPDATE`` dedups any overlap rows.
     """
     rows: List[Dict[str, Any]] = []
-    next_url: Optional[str] = url
+    if start_offset > 0:
+        # Resume from the saved offset. CommCare honours limit/offset even though
+        # it ignores the $-prefixed OData options.
+        sep = "&" if "?" in url else "?"
+        next_url: Optional[str] = f"{url}{sep}limit={_ODATA_PAGE_SIZE}&offset={start_offset}"
+    else:
+        next_url = url
     page = 0
     while next_url:
         page += 1
@@ -94,7 +111,7 @@ async def _fetch_all_pages(
         if page > 5000:  # runaway guard only (5000 pages x 2000 = 10M rows)
             logger.warning("Pagination capped at 5000 pages for %s", url)
             break
-    return rows
+    return rows, start_offset + len(rows)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -421,6 +438,14 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+        # 0. Ensure the resume-cursor column exists (idempotent). Incremental
+        #    fetch persists the per-feed OData offset here so subsequent syncs
+        #    pull only the new tail instead of re-walking the whole feed.
+        cur.execute(
+            "ALTER TABLE sync_feed_state ADD COLUMN IF NOT EXISTS feed_offset BIGINT NOT NULL DEFAULT 0"
+        )
+        conn.commit()
+
         # 1. Load config
         cur.execute("SELECT * FROM sync_config WHERE project_id = %s", (project_id,))
         cfg_row = cur.fetchone()
@@ -530,25 +555,38 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                     #     discipline (and the "cancel between sets" semantics)
                     #     don't change.
                     cur.execute("""
-                        SELECT record_type, last_received_on FROM sync_feed_state
+                        SELECT record_type, last_received_on, COALESCE(feed_offset, 0) AS feed_offset
+                        FROM sync_feed_state
                         WHERE project_id=%s AND form_id=%s AND record_type IN ('household','individual')
                     """, (project_id, form_id))
-                    wm_by_rt = {row["record_type"]: row["last_received_on"] for row in cur.fetchall()}
-                    hh_since   = wm_by_rt.get("household")
-                    indv_since = wm_by_rt.get("individual")
+                    wm_by_rt = {row["record_type"]: row for row in cur.fetchall()}
+                    hh_since   = (wm_by_rt.get("household")  or {}).get("last_received_on")
+                    indv_since = (wm_by_rt.get("individual") or {}).get("last_received_on")
+
+                    # Resume offsets. Rewind by a few pages of overlap so no row is
+                    # missed at the boundary; the received_on watermark (households)
+                    # and ON CONFLICT upsert make re-reading those overlap rows a
+                    # no-op. A zero cursor (first sync after this change) starts at
+                    # 0 -> a one-time full walk that seeds the cursors.
+                    _OVERLAP = _ODATA_PAGE_SIZE * 3
+                    hh_cursor   = (wm_by_rt.get("household")  or {}).get("feed_offset", 0) or 0
+                    indv_cursor = (wm_by_rt.get("individual") or {}).get("feed_offset", 0) or 0
+                    hh_start   = max(0, hh_cursor   - _OVERLAP)
+                    indv_start = max(0, indv_cursor - _OVERLAP)
 
                     hh_url   = _feed_url(cfg["base_url"], cfg["app_slug"], form_id, "household")
                     indv_url = _feed_url(cfg["base_url"], cfg["app_slug"], form_id, "individual")
 
                     try:
-                        hh_rows, indv_rows = await asyncio.gather(
-                            _fetch_all_pages(hh_url,   auth, hh_since,   client),
-                            _fetch_all_pages(indv_url, auth, indv_since, client),
+                        (hh_rows, hh_final_offset), (indv_rows, indv_final_offset) = await asyncio.gather(
+                            _fetch_all_pages(hh_url,   auth, hh_since,   client, start_offset=hh_start),
+                            _fetch_all_pages(indv_url, auth, indv_since, client, start_offset=indv_start),
                         )
                     except httpx.HTTPStatusError as e:
                         raise RuntimeError(
                             f"{set_name}/{'household' if e.request.url.path.endswith('/feed') else 'individual'} HTTP {e.response.status_code}: {e.response.text[:200]}"
                         ) from e
+                    final_offset_by_rt = {"household": hh_final_offset, "individual": indv_final_offset}
 
                     # Iterate the two record types using the in-memory results.
                     for rt, rows, since in (("household", hh_rows, hh_since),
@@ -594,14 +632,31 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                             # children touch the DB either.
                             max_received = max_received or datetime.now(timezone.utc)
                             kept_hh = {h["formid"] for h in set_households}
+                            mapped_rows = [_map_individual(r) for r in rows]
+                            # Incremental-fetch safety: with offset resume we only
+                            # pull the feed tail, so an individual's parent may have
+                            # been upserted in a PRIOR sync (already in the DB) and
+                            # not re-fetched this run. Dropping it by kept_hh alone
+                            # would lose that child. So we also accept individuals
+                            # whose parent already exists in mda_households. Bounded
+                            # lookup: only the parents not in this run's fetched set.
+                            allowed_parents = set(kept_hh)
+                            if since is not None:
+                                missing = {m["hh_formid"] for m in mapped_rows
+                                           if m["hh_formid"] and m["hh_formid"] not in kept_hh}
+                                if missing:
+                                    cur.execute(
+                                        "SELECT formid FROM mda_households WHERE project_id=%s AND formid = ANY(%s)",
+                                        (project_id, list(missing)),
+                                    )
+                                    allowed_parents |= {row["formid"] for row in cur.fetchall()}
                             kept_individuals = 0
                             skipped_individuals = 0
-                            for r in rows:
-                                mapped = _map_individual(r)
+                            for mapped in mapped_rows:
                                 if not mapped["hh_formid"]:
                                     continue
-                                if since is not None and mapped["hh_formid"] not in kept_hh:
-                                    # parent household was filtered out
+                                if since is not None and mapped["hh_formid"] not in allowed_parents:
+                                    # parent household not in this run and not in DB
                                     skipped_individuals += 1
                                     continue
                                 set_individuals.append({"_set": set_name, "_form": form_id, **mapped})
@@ -618,6 +673,10 @@ async def run_sync(project_id: int) -> Dict[str, Any]:
                             "record_type": rt,
                             "fetched": len(rows),
                             "next_watermark": max_received.isoformat() if max_received else None,
+                            # Resume cursor for the next sync = total rows the feed
+                            # holds through this walk. Next run starts a few pages
+                            # before this to guarantee no boundary row is skipped.
+                            "feed_offset": final_offset_by_rt[rt],
                         })
 
                         # Advance progress counter + commit so the UI sees the bar fill
@@ -904,19 +963,22 @@ def _persist_set(
             page_size=1000,
         )
 
-    # 3. Advance watermarks for this set's feeds
+    # 3. Advance watermarks + resume cursor for this set's feeds. Always run so
+    #    the offset cursor is saved even when no new rows arrived (next sync then
+    #    resumes from the tail instead of re-walking). COALESCE keeps a good
+    #    watermark if this run produced none.
     for feed in set_feeds:
-        if feed["next_watermark"]:
-            ph_cur.execute("""
-                INSERT INTO sync_feed_state (project_id, form_id, record_type,
-                                             last_received_on, last_synced_at, last_row_count)
-                VALUES (%s, %s, %s, %s, NOW(), %s)
-                ON CONFLICT (project_id, form_id, record_type) DO UPDATE
-                SET last_received_on = EXCLUDED.last_received_on,
-                    last_synced_at   = EXCLUDED.last_synced_at,
-                    last_row_count   = EXCLUDED.last_row_count
-            """, (project_id, feed["form_id"], feed["record_type"],
-                  feed["next_watermark"], feed["fetched"]))
+        ph_cur.execute("""
+            INSERT INTO sync_feed_state (project_id, form_id, record_type,
+                                         last_received_on, last_synced_at, last_row_count, feed_offset)
+            VALUES (%s, %s, %s, %s, NOW(), %s, %s)
+            ON CONFLICT (project_id, form_id, record_type) DO UPDATE
+            SET last_received_on = COALESCE(EXCLUDED.last_received_on, sync_feed_state.last_received_on),
+                last_synced_at   = EXCLUDED.last_synced_at,
+                last_row_count   = EXCLUDED.last_row_count,
+                feed_offset      = EXCLUDED.feed_offset
+        """, (project_id, feed["form_id"], feed["record_type"],
+              feed["next_watermark"], feed["fetched"], feed.get("feed_offset", 0)))
 
 
 def _run_spatial_qc(ph_cur, *, project_id: int, boundary_pid: int) -> None:
