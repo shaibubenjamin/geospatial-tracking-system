@@ -881,11 +881,14 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
     _paused = bool(p[5])
     is_live = bool(start_d and start_d <= _today and (end_d is None or end_d >= _today) and not _paused)
 
-    # Boundary tables are typically loaded under a single project per state
-    # (R4 holds Sokoto's polygons; R5 reuses them) — count distinct codes
-    # across every project that shares this round's state so the tiles still
-    # reflect the real scope even when the active round didn't carry its own
-    # boundary import.
+    # LGA / Ward "in scope" now come from mda_baseline for the active round
+    # only — i.e. LGAs and (LGA, Ward) pairs the current campaign is actually
+    # targeting per its baseline target file. Previously we counted polygon
+    # codes from the lgas / wards tables state-wide, which over-counted for
+    # rounds that don't target every LGA in the state (Sokoto R5 skips 3 LGAs;
+    # Kano R3 covers only 44 of Kano's 44 LGAs across 968 unique wards).
+    # Ward uniqueness is on (lga || '|' || ward) so wards with the same name
+    # in different LGAs are counted separately.
     state_name = p[1]
     res = await db.execute(text("""
         SELECT
@@ -893,10 +896,10 @@ async def landing_stats(db: AsyncSession = Depends(get_db)):
           (SELECT COALESCE(SUM(total_treated),   0) FROM mda_baseline    WHERE project_id = :pid) AS baseline,
           (SELECT COUNT(DISTINCT (received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
                    FROM mda_households WHERE project_id = :pid)                                   AS days_active,
-          (SELECT COUNT(DISTINCT lgacode) FROM lgas
-            WHERE project_id IN (SELECT id FROM geo_projects WHERE state_name = :state OR :state IS NULL))  AS lgas_in_scope,
-          (SELECT COUNT(DISTINCT wardcode) FROM wards
-            WHERE project_id IN (SELECT id FROM geo_projects WHERE state_name = :state OR :state IS NULL)) AS wards_in_scope
+          (SELECT COUNT(DISTINCT UPPER(TRIM(lga))) FROM mda_baseline
+             WHERE project_id = :pid AND lga IS NOT NULL AND TRIM(lga) <> '')                     AS lgas_in_scope,
+          (SELECT COUNT(DISTINCT UPPER(TRIM(lga)) || '|' || UPPER(TRIM(ward))) FROM mda_baseline
+             WHERE project_id = :pid AND ward IS NOT NULL AND TRIM(ward) <> '')                   AS wards_in_scope
     """), {"pid": pid, "state": state_name})
     row = res.fetchone()
     treated  = int(row.treated or 0)
@@ -2755,8 +2758,11 @@ async def qc_stacked_points(
           (ARRAY_AGG(DISTINCT h.hq_user))[1:5]             AS team_list,
           (ARRAY_AGG(DISTINCT h.lga))[1:3]                 AS lga_list,
           (ARRAY_AGG(DISTINCT h.ward_name))[1:3]           AS ward_list,
-          MIN((h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS first_seen,
-          MAX((h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)::text AS last_seen,
+          -- Full local-time timestamps so the popup can show the time-of-day the
+          -- team was at the coord, not just the calendar date. Format keeps
+          -- YYYY-MM-DD HH24:MI so front-end can render as-is without parsing.
+          TO_CHAR(MIN(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD HH24:MI') AS first_seen,
+          TO_CHAR(MAX(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD HH24:MI') AS last_seen,
           (ARRAY_AGG(h.formid))[1:5]                       AS sample_formids
         FROM mda_households h
         {join_team_coords}
@@ -2851,7 +2857,10 @@ async def qc_outside_lga_points(
           h.hq_user,
           h.lga                                                                  AS stated_lga,
           h.ward_name,
-          (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date::text AS date,
+          -- Local date + time-of-day so the popup can show WHEN the team was
+          -- at the misplaced point, not just the calendar day. Front-end
+          -- renders the string as-is.
+          TO_CHAR(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos', 'YYYY-MM-DD HH24:MI') AS date,
           -- Which LGA polygon actually contains this point (NULL if outside every LGA)
           (SELECT l2.lga_name FROM lgas l2
              WHERE l2.project_id = :boundary_pid
@@ -4003,6 +4012,57 @@ async def download_geo_wards(
         ws.append(list(r))
     _style_workbook(ws)
     return _xlsx_response(wb, "ward_coverage")
+
+
+@router.get("/reports/team-report")
+async def download_team_report(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Per-team roster Excel scoped to the active round (admin/superadmin only).
+
+    Grain: one row per distinct (LGA, Ward, hq_user, phone, name). An hq_user
+    who used more than one CommCare handset (multiple phone numbers) or was
+    logged in under more than one enumerator name surfaces as multiple rows,
+    which is exactly the reconciliation view the field coordinators asked
+    for. Forms + treated counts are per row (per team+phone+name combination
+    inside the ward), so the totals across rows for a single hq_user still
+    add up to that user's total activity.
+
+    Empty strings are coerced to NULL in the GROUP BY so the operator's typed
+    "" vs missing-value aren't split into two rows.
+    """
+    result = await db.execute(text("""
+        SELECT
+          h.lga,
+          h.ward_name,
+          h.hq_user,
+          NULLIF(TRIM(COALESCE(h.phone_number_data, '')), '')  AS phone_number,
+          NULLIF(TRIM(COALESCE(h.data_entry_persons, '')), '') AS enumerator_name,
+          COUNT(*)                              AS forms,
+          COALESCE(SUM(h.number_of_treated),0)  AS treated,
+          COUNT(DISTINCT (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date)
+                                                AS days_active,
+          TO_CHAR(MIN(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD') AS first_seen,
+          TO_CHAR(MAX(h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos'), 'YYYY-MM-DD') AS last_seen
+        FROM mda_households h
+        WHERE h.project_id = :pid
+          AND h.hq_user IS NOT NULL AND TRIM(h.hq_user) <> ''
+        GROUP BY h.lga, h.ward_name, h.hq_user, phone_number, enumerator_name
+        ORDER BY h.lga NULLS LAST, h.ward_name NULLS LAST, h.hq_user, forms DESC
+    """), {"pid": pid})
+    rows = result.fetchall()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Teams"
+    ws.append(["LGA", "Ward", "hq_user", "Phone number", "Enumerator name",
+               "Forms", "Treated", "Days active", "First seen", "Last seen"])
+    for r in rows:
+        ws.append(list(r))
+    _style_workbook(ws)
+    return _xlsx_response(wb, "team_report")
 
 
 @router.get("/geo/download/settlements")
