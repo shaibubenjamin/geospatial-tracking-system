@@ -1234,10 +1234,11 @@ async def system_counts(
 @router.get("/qc/summary")
 @cache_json("qc_summary")
 async def qc_summary(
-    lga:       Optional[str] = None,
-    ward:      Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to:   Optional[str] = None,
+    lga:        Optional[str] = None,
+    ward:       Optional[str] = None,
+    settlement: Optional[str] = None,
+    date_from:  Optional[str] = None,
+    date_to:    Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
@@ -1250,6 +1251,9 @@ async def qc_summary(
     if ward:
         filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
         params["ward"] = ward
+    if settlement:
+        filters.append("REPLACE(LOWER(TRIM(settlement_name)), ' ', '') = REPLACE(LOWER(TRIM(:settlement)), ' ', '')")
+        params["settlement"] = settlement
     # Date filter / "days active" both key off received_on — the timestamp at
     # which CommCare HQ accepted the form. Field workers can backfill date_trt
     # / check_treatment_date inconsistently, so received_on is the only column
@@ -1679,21 +1683,23 @@ async def submissions_by_settlement(
 @router.get("/qc/teams-summary")
 @cache_json("qc_teams_summary")
 async def qc_teams_summary(
-    lga:       Optional[str] = None,
-    ward:      Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to:   Optional[str] = None,
+    lga:        Optional[str] = None,
+    ward:       Optional[str] = None,
+    settlement: Optional[str] = None,
+    date_from:  Optional[str] = None,
+    date_to:    Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Per-team: total forms, forms with ≥1 error, error rate, and error type counts."""
+    """Per-team: total forms, forms with >=1 error, error rate, and error type counts."""
     filters: list = ["hq_user IS NOT NULL"]
     params: dict = {}
-    if lga:       filters.append("lga = :lga");       params["lga"]  = lga
-    if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
+    if lga:        filters.append("lga = :lga");       params["lga"]  = lga
+    if ward:       filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
+    if settlement: filters.append("REPLACE(LOWER(TRIM(settlement_name)), ' ', '') = REPLACE(LOWER(TRIM(:settlement)), ' ', '')"); params["settlement"] = settlement
+    if date_from:  filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:    filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     # forms_with_error uses the same definition as /qc/summary and /overview
     # (refusal NOT counted — it's an outcome; sync_lag NOT counted — it's a
@@ -1823,20 +1829,22 @@ async def gps_duplicate(pid: int = Depends(resolve_pid), db: AsyncSession = Depe
 @router.get("/overview")
 @cache_json("mda_overview")
 async def mda_overview(
-    lga:       Optional[str] = None,
-    ward:      Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to:   Optional[str] = None,
+    lga:        Optional[str] = None,
+    ward:       Optional[str] = None,
+    settlement: Optional[str] = None,
+    date_from:  Optional[str] = None,
+    date_to:    Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     lgas = allowed_lgas_of(_u)
     filters, params = [], {}
-    if lga:       filters.append("lga = :lga");       params["lga"]  = lga
-    if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
+    if lga:        filters.append("lga = :lga");       params["lga"]  = lga
+    if ward:       filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
+    if settlement: filters.append("REPLACE(LOWER(TRIM(settlement_name)), ' ', '') = REPLACE(LOWER(TRIM(:settlement)), ' ', '')"); params["settlement"] = settlement
+    if date_from:  filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:    filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=lgas)
     lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
     result = await db.execute(text(f"""
@@ -3744,7 +3752,14 @@ async def geo_settlements_coverage(
 ):
     """Settlement polygons (GeoJSON) coloured visited/not + completeness — the
     core coverage mosaic. Public aggregate. Optional ?lgacode= to scope to one
-    LGA (lighter payload)."""
+    LGA (lighter payload).
+
+    Only settlements whose LGA is part of THIS campaign (implementing LGAs =
+    LGAs with a baseline row or a submitted household in the current project)
+    are returned. Non-implementing LGAs therefore render blank on the map
+    even if the boundary project's settlement_analytics rows exist for them.
+    Matches how the /geo/lgas-coverage endpoint flags in_campaign.
+    """
     params: dict = {"pid": pid}
     where = "sa.project_id = :pid"
     if lgacode:
@@ -3752,17 +3767,25 @@ async def geo_settlements_coverage(
         params["lgacode"] = lgacode
     where += _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
     res = await db.execute(text(f"""
+        WITH campaign AS (
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_baseline
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+          UNION
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_households
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+        )
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
                COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
                COALESCE(sa.point_count, 0) AS point_count,
-               -- Simplify geometry (~33 m) — settlement polygons are tiny at map
-               -- scale, so this sharply cuts the GeoJSON payload (faster load on
-               -- the phone) with no visible change.
+               -- Simplify geometry (~33 m): settlement polygons are tiny at map
+               -- scale, so this sharply cuts the GeoJSON payload (faster load
+               -- on the phone) with no visible change.
                ST_AsGeoJSON(ST_SimplifyPreserveTopology(s.geom, 0.0003)) AS geom
         FROM settlement_analytics sa
         JOIN settlements s ON s.id = sa.settlement_id
         WHERE {where}
+          AND EXISTS (SELECT 1 FROM campaign c WHERE c.lga_u = upper(trim(sa.lga_name)))
     """), params)
     import json as _json
     feats = []

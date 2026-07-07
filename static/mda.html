@@ -307,7 +307,7 @@ tbody tr:hover{background:var(--pale)}
    without any HTML restructuring of the existing markup. */
 /* Detail tiles: even 5-wide grid (10 tiles = 5+5, no orphan) with stretch so
    every tile in a row is the SAME height (no ragged bottoms). Snaps to 2-wide
-   on smaller screens — both counts divide 10 evenly, so there's never a gap. */
+   on smaller screens - both counts divide 10 evenly, so there's never a gap. */
 .qc-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
 .qc-grid .qc-tile{height:100%}
 @media(max-width:1400px){.qc-grid{grid-template-columns:repeat(2,1fr)}}
@@ -426,7 +426,7 @@ tbody tr:hover{background:var(--pale)}
 /* Geo layer eye-btn toggled off */
 .geo-bm-btn.layer-off{opacity:.4}
 /* Geo fullscreen mode */
-/* z-index above the sidebar (1000) so fullscreen truly covers it — otherwise the
+/* z-index above the sidebar (1000) so fullscreen truly covers it - otherwise the
    sidebar overlaps the map's left edge. Kept below the 2000 FABs so Exit/chat stay reachable. */
 .geo-map-card.geo-fullscreen-mode{position:fixed;inset:0;z-index:1500;border-radius:0;margin:0;height:100vh!important}
 .geo-map-card.geo-fullscreen-mode .geo-ctrl-strip{padding:8px 14px}
@@ -587,7 +587,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             </div>
           </div>
           <div class="filter"><label>LGA</label><select id="f-lga" onchange="loadWardOptions(this.value,'f-ward').then(applyFilter)"><option value="">All LGAs</option></select></div>
-          <div class="filter"><label>Ward</label><select id="f-ward" onchange="applyFilter()"><option value="">All Wards</option></select></div>
+          <div class="filter"><label>Ward</label><select id="f-ward" onchange="loadSettlementOptions(document.getElementById('f-lga').value,this.value,'f-settlement').then(applyFilter)"><option value="">All Wards</option></select></div>
+          <div class="filter"><label>Settlement</label><select id="f-settlement" onchange="applyFilter()"><option value="">All Settlements</option></select></div>
           <button class="btn btn-primary" onclick="applyFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost" id="reset-filter-btn" onclick="resetFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
           <span id="active-filter-label" style="display:none" class="filter-active"><i class="fa-solid fa-circle-dot" style="font-size:9px"></i> <span id="active-filter-text"></span></span>
@@ -637,7 +638,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                   <span id="delta-coverage" class="kpi-delta neutral" style="display:none"></span>
                 </div>
                 <div class="lbl">Administrative Coverage</div>
-                <div class="sub">Children treated ÷ baseline target. WHO protective threshold is 80%</div>
+                <div class="sub">Children treated &divide; baseline target.</div>
               </div>
               <div class="kpi-metric">
                 <div class="val" id="kpi-coverage">-</div>
@@ -707,61 +708,50 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="chart-wrap"><canvas id="c_lgaBar"></canvas></div>
         </div>
 
-        <!-- 2 × 2 chart grid.
-             Row 1: Daily trend (line)            | Treatment Progress vs Baseline (donut)
-             Row 2: Children 1–59 Baseline-vs-Treated (bar) | Forms Submitted vs Target (bar) -->
-        <div class="grid-2" style="margin-bottom:16px">
-          <div class="card" style="margin-bottom:0">
-            <div class="card-head">
-              <div>
-                <div class="card-title"><i class="fa-solid fa-chart-line"></i> Daily Form Submissions Over Time</div>
-                <div class="card-sub">Number of forms submitted each day. Peaks show high-activity field days; gaps may indicate rest days or connectivity issues.</div>
-              </div>
-              <div class="card-head-right">
-                <button class="chart-dl" onclick="dlChart('c_dailyLine','daily_trend')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-              </div>
+        <!-- Chart stack, each row full-width.
+             Row 1: Daily submissions (line)
+             Row 2: Children 1-59 Baseline vs Treated (bar)
+             Row 3: Treatment Progress vs Baseline Target (donut, larger + leader-line labels)
+             Forms Submitted vs Target chart removed per operator request. -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-chart-line"></i> Daily Form Submissions Over Time</div>
+              <div class="card-sub">Number of forms submitted each day. Peaks show high-activity field days; gaps may indicate rest days or connectivity issues.</div>
             </div>
-            <div class="chart-wrap"><canvas id="c_dailyLine"></canvas></div>
-          </div>
-          <div class="card" style="margin-bottom:0">
-            <div class="card-head">
-              <div>
-                <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
-                <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
-              </div>
-              <div class="card-head-right">
-                <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-              </div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlChart('c_dailyLine','daily_trend')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
             </div>
-            <div class="chart-wrap"><canvas id="c_donut"></canvas></div>
           </div>
+          <div class="chart-wrap"><canvas id="c_dailyLine"></canvas></div>
         </div>
 
-        <div class="grid-2">
-          <div class="card" style="margin-bottom:0">
-            <div class="card-head">
-              <div>
-                <div class="card-title"><i class="fa-solid fa-children"></i> Children 1&ndash;59: Baseline vs Treated</div>
-                <div class="card-sub">Compares the baseline target for children 1&ndash;59 months in this round against the number actually treated so far.</div>
-              </div>
-              <div class="card-head-right">
-                <button class="chart-dl" onclick="dlChart('c_ageBar','age_band')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-              </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-children"></i> Children 1&ndash;59: Baseline vs Treated</div>
+              <div class="card-sub">Compares the baseline target for children 1&ndash;59 months in this round against the number actually treated so far.</div>
             </div>
-            <div class="chart-wrap"><canvas id="c_ageBar"></canvas></div>
-          </div>
-          <div class="card" style="margin-bottom:0">
-            <div class="card-head">
-              <div>
-                <div class="card-title"><i class="fa-solid fa-chart-column"></i> Forms Submitted vs Target</div>
-                <div class="card-sub">Total forms collected so far vs the campaign-wide target (team capacity × planned campaign days). The target only appears once a campaign window is set and teams are reporting - no proxy value is shown before then.</div>
-              </div>
-              <div class="card-head-right">
-                <button class="chart-dl" onclick="dlChart('c_formsTarget','forms_vs_target')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-              </div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlChart('c_ageBar','age_band')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
             </div>
-            <div class="chart-wrap"><canvas id="c_formsTarget"></canvas></div>
           </div>
+          <div class="chart-wrap"><canvas id="c_ageBar"></canvas></div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
+              <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
+            </div>
+            <div class="card-head-right">
+              <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+            </div>
+          </div>
+          <!-- Taller wrap so the donut renders large; leader-line labels
+               sit in the extra margin without being clipped by the card. -->
+          <div class="chart-wrap" style="height:420px"><canvas id="c_donut"></canvas></div>
         </div>
 
         <div class="card">
@@ -806,7 +796,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             </div>
           </div>
           <div class="filter"><label>LGA</label><select id="cov-f-lga" onchange="loadWardOptions(this.value,'cov-f-ward').then(applyCovFilter)"><option value="">All LGAs</option></select></div>
-          <div class="filter"><label>Ward</label><select id="cov-f-ward" onchange="applyCovFilter()"><option value="">All Wards</option></select></div>
+          <div class="filter"><label>Ward</label><select id="cov-f-ward" onchange="loadSettlementOptions(document.getElementById('cov-f-lga').value,this.value,'cov-f-settlement').then(applyCovFilter)"><option value="">All Wards</option></select></div>
+          <div class="filter"><label>Settlement</label><select id="cov-f-settlement" onchange="applyCovFilter()"><option value="">All Settlements</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyCovFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost btn-sm" id="cov-reset-btn" onclick="resetCovFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
           <span id="cov-filter-label" style="display:none" class="filter-active"><i class="fa-solid fa-circle-dot" style="font-size:9px"></i> <span id="cov-filter-text"></span></span>
@@ -817,7 +808,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="kpi accent"><div class="lbl">Total Treated</div><div class="val" id="cov-kpi-treated">-</div><div class="sub">Children treated so far, across all submitted forms</div></div>
           <div class="kpi good"><div class="lbl">Overall Coverage</div><div class="val" id="cov-kpi-pct">-</div><div class="sub">Total treated ÷ baseline target, campaign to date</div></div>
           <div class="kpi good"><div class="lbl" id="cov-kpi-good-lbl">LGAs on Pace</div><div class="val" id="cov-kpi-good">-</div><div class="sub" id="cov-kpi-good-sub">LGAs at or above today's expected coverage on a 5-day campaign (20% per day).</div></div>
-          <div class="kpi bad"><div class="lbl" id="cov-kpi-below-lbl">LGAs Behind Pace</div><div class="val" id="cov-kpi-below">-</div><div class="sub" id="cov-kpi-below-sub">LGAs below today's expected coverage — need catch-up.</div></div>
+          <div class="kpi bad"><div class="lbl" id="cov-kpi-below-lbl">LGAs Behind Pace</div><div class="val" id="cov-kpi-below">-</div><div class="sub" id="cov-kpi-below-sub">LGAs below today's expected coverage - need catch-up.</div></div>
         </div>
 
         <!-- Treatment Coverage by LGA - full-width so every LGA fits at
@@ -1011,7 +1002,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             </div>
           </div>
           <div class="filter"><label>LGA</label><select id="qc-f-lga" onchange="loadWardOptions(this.value,'qc-f-ward').then(applyQCFilter)"><option value="">All LGAs</option></select></div>
-          <div class="filter"><label>Ward</label><select id="qc-f-ward" onchange="applyQCFilter()"><option value="">All Wards</option></select></div>
+          <div class="filter"><label>Ward</label><select id="qc-f-ward" onchange="loadSettlementOptions(document.getElementById('qc-f-lga').value,this.value,'qc-f-settlement').then(applyQCFilter)"><option value="">All Wards</option></select></div>
+          <div class="filter"><label>Settlement</label><select id="qc-f-settlement" onchange="applyQCFilter()"><option value="">All Settlements</option></select></div>
           <button class="btn btn-primary btn-sm" onclick="applyQCFilter()"><i class="fa-solid fa-filter"></i> Apply</button>
           <button class="btn btn-ghost btn-sm" id="qc-reset-btn" onclick="resetQCFilter()" style="display:none"><i class="fa-solid fa-xmark"></i> Reset</button>
           <span id="qc-filter-label" style="display:none" class="filter-active"><i class="fa-solid fa-circle-dot" style="font-size:9px"></i> <span id="qc-filter-text"></span></span>
@@ -1035,7 +1027,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             <div class="kpi-icon-strip"><i class="fa-solid fa-location-crosshairs"></i></div>
             <div class="lbl">GPS Location Anomalies</div>
             <div class="val" id="qc-kpi-gps">-</div>
-            <div class="sub">Forms with location problems — GPS outside the LGA, or stacked with another form's coordinates</div>
+            <div class="sub">Forms with location problems - GPS outside the LGA, or stacked with another form's coordinates</div>
           </div>
           <div class="kpi">
             <div class="kpi-icon-strip"><i class="fa-solid fa-clock"></i></div>
@@ -1047,7 +1039,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 
         <!-- "Headline + even grid" layout: the 4-card summary band above is the
              headline row; these 10 detail tiles sit in an even 5-wide grid
-             (5+5 — no orphan) with equal heights (no ragged bottoms). Grouped:
+             (5+5 - no orphan) with equal heights (no ragged bottoms). Grouped:
              form integrity, timing patterns, location + outcome. Snaps to 2-wide
              ≤1400px and 1-wide on mobile (both divide 10 evenly → never a gap). -->
         <div class="qc-grid">
@@ -1061,7 +1053,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--blue)"><i class="fa-solid fa-hourglass-half"></i></div><div class="qc-val" id="qc-slow-forms">-</div><div class="qc-lbl">Very Slow Forms (&gt;60 min)</div><div class="qc-desc">Took over 1 hour - may indicate poor connectivity, form abandonment, or the device being left idle</div></div>
           <!-- Row 3: Location + outcome -->
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-location-crosshairs"></i></div><div class="qc-val" id="qc-outside-lga">-</div><div class="qc-lbl">GPS Outside Stated LGA</div><div class="qc-desc">GPS coordinates fall outside the boundary of the LGA the team reported being in</div></div>
-          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-thumbtack"></i></div><div class="qc-val" id="qc-stacked-points">-</div><div class="qc-lbl">Stacked GPS Points</div><div class="qc-desc" style="margin-bottom:8px">Two or more forms that share the exact same GPS coordinates — a red flag for repeat submissions from a single spot (e.g. a worker sitting at the LGA HQ and generating forms rather than visiting households).</div><button onclick="viewStackedPointsOnMap()" style="border:1px solid var(--line);background:var(--pale);color:var(--deep);font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Jump to the Geographic View with the Duplicate-GPS overlay switched on"><i class="fa-solid fa-map-location-dot" style="font-size:10px"></i> View on map</button></div>
+          <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-thumbtack"></i></div><div class="qc-val" id="qc-stacked-points">-</div><div class="qc-lbl">Stacked GPS Points</div><div class="qc-desc" style="margin-bottom:8px">Two or more forms that share the exact same GPS coordinates - a red flag for repeat submissions from a single spot (e.g. a worker sitting at the LGA HQ and generating forms rather than visiting households).</div><button onclick="viewStackedPointsOnMap()" style="border:1px solid var(--line);background:var(--pale);color:var(--deep);font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px" title="Jump to the Geographic View with the Duplicate-GPS overlay switched on"><i class="fa-solid fa-map-location-dot" style="font-size:10px"></i> View on map</button></div>
           <div class="qc-tile"><div class="qc-icon" style="background:var(--mist);color:var(--deep)"><i class="fa-solid fa-ban"></i></div><div class="qc-val" id="qc-refusal-rate">-</div><div class="qc-lbl">Treatment Refusal Rate</div><div class="qc-desc" id="qc-refusal-count">% of households that declined treatment - social mobilisation may be needed in high-refusal LGAs</div></div>
           <!-- Avg form completion time: end - start, averaged across all in-scope forms.
                Sub-line shows median and p90 so users see both the typical visit and the long-tail signal. -->
@@ -1313,7 +1305,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             <!-- QC overlay + Team Movement controls. Each overlay gets its own
                  button on the strip (was briefly consolidated into a "Map
                  Overlays" dropdown but the dropdown obscured the choices when
-                 opened — operators asked for the flat, visible layout back
+                 opened - operators asked for the flat, visible layout back
                  2026-07-05). The Team-Movement selectors (team / date) only
                  appear once that overlay is toggled on. -->
             <div class="geo-ctrl-strip">
@@ -1333,7 +1325,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               <button class="geo-ctrl-btn" id="geo-btn-movement" onclick="geoToggleMovement(this)" title="Per-team GPS breadcrumbs">
                 <i class="fa-solid fa-route" style="color:#005225"></i> Team Movement
               </button>
-              <!-- Inline secondary controls — only relevant once Team Movement is on. -->
+              <!-- Inline secondary controls - only relevant once Team Movement is on. -->
               <select id="geo-team-select" style="display:none;border:1.5px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12px;color:var(--ink);background:#fff;cursor:pointer;max-width:160px" onchange="geoFilterMovement()" title="Filter to a specific team">
                 <option value="">All Teams</option>
               </select>
@@ -2530,7 +2522,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
 
   /* ── FILTER STATE ── */
-  let FILTER = { lga: '', ward: '' };
+  let FILTER = { lga: '', ward: '', settlement: '' };
 
   // For an LGA-scoped login the data (and therefore these dropdowns) only ever
   // contain that one LGA. Auto-select it, hide "All LGAs", and lock the control
@@ -2560,24 +2552,25 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
 
   async function applyFilter() {
-    FILTER.lga  = (document.getElementById('f-lga')  || {}).value || '';
-    FILTER.ward = (document.getElementById('f-ward') || {}).value || '';
+    FILTER.lga        = (document.getElementById('f-lga')        || {}).value || '';
+    FILTER.ward       = (document.getElementById('f-ward')       || {}).value || '';
+    FILTER.settlement = (document.getElementById('f-settlement') || {}).value || '';
     const { date_from: df, date_to: dt } = dpGetDates('f-dates');
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
     const txt = document.getElementById('active-filter-text');
-    const hasFilter = FILTER.lga || FILTER.ward || df || dt;
+    const hasFilter = FILTER.lga || FILTER.ward || FILTER.settlement || df || dt;
     if (hasFilter) {
       if (label) label.style.display = 'inline-flex';
       if (resetBtn) resetBtn.style.display = 'inline-flex';
-      if (txt) txt.textContent = [FILTER.lga, FILTER.ward, df && ('From: '+df), dt && ('To: '+dt)].filter(Boolean).join(' · ');
+      if (txt) txt.textContent = [FILTER.lga, FILTER.ward, FILTER.settlement, df && ('From: '+df), dt && ('To: '+dt)].filter(Boolean).join(' · ');
     } else {
       resetFilter();
       return;
     }
     // When dates are set, re-fetch coverage data from API so charts reflect the date range
     if (df || dt) {
-      const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
+      const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt, FILTER.settlement);
       const fresh = await api('/api/mda/coverage/lga' + qs);
       if (fresh) lgaCovData = fresh;
     }
@@ -2587,11 +2580,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
 
   function resetFilter() {
-    FILTER = { lga: '', ward: '' };
+    FILTER = { lga: '', ward: '', settlement: '' };
     CHART_FILTER = { lga: null, date: null, ageGroup: null };
-    ['f-lga','f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    ['f-lga','f-ward','f-settlement'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
     dpReset('f-dates');
     const wSel = document.getElementById('f-ward'); if (wSel) while (wSel.options.length > 1) wSel.remove(1);
+    const sSel = document.getElementById('f-settlement'); if (sSel) while (sSel.options.length > 1) sSel.remove(1);
     const label = document.getElementById('active-filter-label');
     const resetBtn = document.getElementById('reset-filter-btn');
     if (label) label.style.display = 'none';
@@ -2635,6 +2629,29 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
   window.loadWardOptions  = loadWardOptions;
   window.preloadAllWards  = preloadAllWards;
+
+  // Settlement dropdown loader. Hits /api/mda/submissions/settlement which
+  // returns settlements for the given (lga, ward), then populates the given
+  // select. Returns a Promise so callers can chain the applyFilter step.
+  // When lga or ward is empty the select is reset and no request fires.
+  async function loadSettlementOptions(lgaVal, wardVal, settSelId) {
+    const sel = document.getElementById(settSelId);
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    if (!lgaVal || !wardVal) return;
+    try {
+      const url = '/api/mda/submissions/settlement?lga=' + encodeURIComponent(lgaVal)
+                + '&ward=' + encodeURIComponent(wardVal);
+      const rows = await api(url) || [];
+      const names = Array.from(new Set(rows.map(r => r.settlement_name).filter(Boolean))).sort();
+      names.forEach(n => {
+        const o = document.createElement('option');
+        o.value = n; o.textContent = n;
+        sel.appendChild(o);
+      });
+    } catch (_) { /* leave the dropdown at "All Settlements" on failure */ }
+  }
+  window.loadSettlementOptions = loadSettlementOptions;
 
   /* ── Multi-date picker ── */
   // Populate all date pickers from campaign-dates API
@@ -2807,7 +2824,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   window.navToGeoLGA = navToGeoLGA;
 
   /* ── Coverage Analysis filter state ── */
-  let COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
+  let COV_FILTER = { lga: '', ward: '', settlement: '', date_from: '', date_to: '' };
 
   // Daily-scaled coverage target: the campaign is planned over N days
   // (default 5). By day k of N, the expected coverage is (k / N) × 100%,
@@ -2847,12 +2864,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const goodSub  = document.getElementById('cov-kpi-good-sub');
     const belowSub = document.getElementById('cov-kpi-below-sub');
     const paceCtx  = t
-      ? 'Day ' + t.day + ' of ' + t.planned + ' — expected coverage today is ' + t.pct + '%.'
-      : 'Campaign window not set — falling back to WHO 80% threshold.';
+      ? 'Day ' + t.day + ' of ' + t.planned + ' - expected coverage today is ' + t.pct + '%.'
+      : 'Campaign window not set - falling back to WHO 80% threshold.';
     if (goodSub) {
       if (good === 0 && rows.length) {
         const highest = rows.reduce((m, l) => parseFloat(l.coverage_pct) > parseFloat(m.coverage_pct||-1) ? l : m, rows[0]);
-        goodSub.textContent = paceCtx + ' No LGA yet — highest: ' + highest.lga + ' (' + parseFloat(highest.coverage_pct).toFixed(1) + '%).';
+        goodSub.textContent = paceCtx + ' No LGA yet - highest: ' + highest.lga + ' (' + parseFloat(highest.coverage_pct).toFixed(1) + '%).';
       } else {
         goodSub.textContent = paceCtx + ' Pacing correctly.';
       }
@@ -2860,7 +2877,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (belowSub) {
       if (below && rows.length) {
         const lowest = rows.reduce((m, l) => parseFloat(l.coverage_pct) < parseFloat(m.coverage_pct||101) ? l : m, rows[0]);
-        belowSub.textContent = paceCtx + ' Lowest: ' + lowest.lga + ' (' + parseFloat(lowest.coverage_pct).toFixed(1) + '%) — needs catch-up.';
+        belowSub.textContent = paceCtx + ' Lowest: ' + lowest.lga + ' (' + parseFloat(lowest.coverage_pct).toFixed(1) + '%) - needs catch-up.';
       } else {
         belowSub.textContent = paceCtx + ' All LGAs on pace.';
       }
@@ -2869,22 +2886,23 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   window._setCovPaceKPIs = _setCovPaceKPIs;
 
   async function applyCovFilter() {
-    COV_FILTER.lga  = (document.getElementById('cov-f-lga')  || {}).value || '';
-    COV_FILTER.ward = (document.getElementById('cov-f-ward') || {}).value || '';
+    COV_FILTER.lga        = (document.getElementById('cov-f-lga')        || {}).value || '';
+    COV_FILTER.ward       = (document.getElementById('cov-f-ward')       || {}).value || '';
+    COV_FILTER.settlement = (document.getElementById('cov-f-settlement') || {}).value || '';
     const { date_from, date_to } = dpGetDates('cov-dates');
     COV_FILTER.date_from = date_from || '';
     COV_FILTER.date_to   = date_to   || '';
-    const hasFilter = COV_FILTER.lga || COV_FILTER.ward || COV_FILTER.date_from || COV_FILTER.date_to;
+    const hasFilter = COV_FILTER.lga || COV_FILTER.ward || COV_FILTER.settlement || COV_FILTER.date_from || COV_FILTER.date_to;
     const label = document.getElementById('cov-filter-label');
     const resetBtn = document.getElementById('cov-reset-btn');
     const txt = document.getElementById('cov-filter-text');
     if (label)    label.style.display    = hasFilter ? 'inline-flex' : 'none';
     if (resetBtn) resetBtn.style.display = hasFilter ? 'inline-flex' : 'none';
-    if (txt) txt.textContent = [COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.date_from && ('From ' + COV_FILTER.date_from), COV_FILTER.date_to && ('To ' + COV_FILTER.date_to)].filter(Boolean).join(' · ');
+    if (txt) txt.textContent = [COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.settlement, COV_FILTER.date_from && ('From ' + COV_FILTER.date_from), COV_FILTER.date_to && ('To ' + COV_FILTER.date_to)].filter(Boolean).join(' · ');
     // If date filter active, re-fetch from API; otherwise filter locally
     let filtered;
     if (COV_FILTER.date_from || COV_FILTER.date_to) {
-      const qs = _filterQS(COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.date_from, COV_FILTER.date_to);
+      const qs = _filterQS(COV_FILTER.lga, COV_FILTER.ward, COV_FILTER.date_from, COV_FILTER.date_to, COV_FILTER.settlement);
       const fresh = await api('/api/mda/coverage/lga' + qs);
       filtered = fresh || [];
     } else {
@@ -2948,10 +2966,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
 
   function resetCovFilter() {
-    COV_FILTER = { lga: '', ward: '', date_from: '', date_to: '' };
-    ['cov-f-lga','cov-f-ward'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
+    COV_FILTER = { lga: '', ward: '', settlement: '', date_from: '', date_to: '' };
+    ['cov-f-lga','cov-f-ward','cov-f-settlement'].forEach(id => { const s=document.getElementById(id); if(s) s.value=''; });
     dpReset('cov-dates');
     const cwSel = document.getElementById('cov-f-ward'); if (cwSel) while (cwSel.options.length > 1) cwSel.remove(1);
+    const csSel = document.getElementById('cov-f-settlement'); if (csSel) while (csSel.options.length > 1) csSel.remove(1);
     document.getElementById('cov-filter-label') && (document.getElementById('cov-filter-label').style.display='none');
     document.getElementById('cov-reset-btn')    && (document.getElementById('cov-reset-btn').style.display='none');
     buildLGATable('cov-lga-table-body', lgaCovData, true);
@@ -3214,8 +3233,9 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   async function loadQC() {
     // Build query params from active QC filter
     const params = [];
-    if (qcFilterLGA)  params.push('lga='  + encodeURIComponent(qcFilterLGA));
-    if (qcFilterWard) params.push('ward=' + encodeURIComponent(qcFilterWard));
+    if (qcFilterLGA)        params.push('lga='        + encodeURIComponent(qcFilterLGA));
+    if (qcFilterWard)       params.push('ward='       + encodeURIComponent(qcFilterWard));
+    if (qcFilterSettlement) params.push('settlement=' + encodeURIComponent(qcFilterSettlement));
     const { date_from: qcDf, date_to: qcDt } = dpGetDates('qc-dates');
     if (qcDf) params.push('date_from=' + encodeURIComponent(qcDf));
     if (qcDt) params.push('date_to='   + encodeURIComponent(qcDt));
@@ -3262,7 +3282,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       ? summary.error_rate_pct.toFixed(1) + '%'
       : (summary.total_forms > 0 ? ((totalFlags / summary.total_forms) * 100).toFixed(1) + '%' : '-');
     // GPS Location Anomalies = points-outside-LGA + stacked-points (duplicate coords).
-    // Weak-GPS-signal (poor accuracy) is no longer counted — the ">20 m accuracy"
+    // Weak-GPS-signal (poor accuracy) is no longer counted - the ">20 m accuracy"
     // threshold wasn't a clean signal in practice (device / satellite quality
     // varies) and the operator asked for it to be dropped 2026-07-05.
     const gpsAnomalies = (summary.gps_outside_lga||0) + (summary.duplicate_gps||0);
@@ -3292,7 +3312,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       // 2-column grid (both grow vertically to fit the LGA count).
       const sortedRef = [...refusals].sort((a, b) => (b.refusals||0) - (a.refusals||0));
       const el = document.getElementById('c_refusalBar');
-      applyScrollableChartHeight(el, sortedRef.length, { rowPx: 28 });
+      // Pin the wrap to the same height as the Fast/Slow chart next door so
+      // the two cards line up in the grid-2. Both use fixedHeight=420 with
+      // minInner=420 so a shorter LGA list doesn't shrink one card below
+      // the other.
+      applyScrollableChartHeight(el, sortedRef.length, { rowPx: 28, fixedHeight: 420, minInner: 420 });
       if (el) new Chart(el, {
         type: 'bar',
         data: {
@@ -3342,7 +3366,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       const sortedDur = [...durations].sort((a, b) =>
         ((b.fast_count||0) + (b.slow_count||0)) - ((a.fast_count||0) + (a.slow_count||0)));
       const el = document.getElementById('c_duration');
-      applyScrollableChartHeight(el, sortedDur.length, { rowPx: 30 });
+      // See the paired Refusals chart: both pinned to 420 for row-level parity.
+      applyScrollableChartHeight(el, sortedDur.length, { rowPx: 30, fixedHeight: 420, minInner: 420 });
       if (el) new Chart(el, {
         type: 'bar',
         data: {
@@ -3407,7 +3432,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       // The "GPS Outside LGA" and "Stacked Points" columns now stand on their
       // own (dup_gps / gps_outside_lga are surfaced directly from the API).
       // Weak-GPS-signal (poor accuracy) is intentionally dropped from the
-      // display — the operator flagged it as poorly defined 2026-07-05.
+      // display - the operator flagged it as poorly defined 2026-07-05.
       qcTeamsData = [...teamQC];
       renderQCTeamsTable();
     }
@@ -3596,7 +3621,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         </a>
       </td>`;
     };
-    // Same treatment for GPS-outside-LGA — clickable when >0, jumps to the
+    // Same treatment for GPS-outside-LGA - clickable when >0, jumps to the
     // map filtered to that team, popup on each pin tells the operator which
     // LGA was reported vs which LGA the point actually falls in, plus the
     // distance in kilometres from the stated LGA's boundary.
@@ -3718,12 +3743,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     buildFormsVsTargetChart();
   }
 
-  function _filterQS(lga, ward, dateFrom, dateTo) {
+  function _filterQS(lga, ward, dateFrom, dateTo, settlement) {
     const p = [];
-    if (lga)      p.push('lga='       + encodeURIComponent(lga));
-    if (ward)     p.push('ward='      + encodeURIComponent(ward));
-    if (dateFrom) p.push('date_from=' + encodeURIComponent(dateFrom));
-    if (dateTo)   p.push('date_to='   + encodeURIComponent(dateTo));
+    if (lga)        p.push('lga='        + encodeURIComponent(lga));
+    if (ward)       p.push('ward='       + encodeURIComponent(ward));
+    if (settlement) p.push('settlement=' + encodeURIComponent(settlement));
+    if (dateFrom)   p.push('date_from='  + encodeURIComponent(dateFrom));
+    if (dateTo)     p.push('date_to='    + encodeURIComponent(dateTo));
     return p.length ? '?' + p.join('&') : '';
   }
 
@@ -3818,10 +3844,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   async function drillDownToSettlements(lga, ward) {
     const el = document.getElementById('c_lgaBar');
     if (!el) return;
-    // Fetch FIRST — big wards have hundreds of settlements; keep the ward chart
+    // Fetch FIRST - big wards have hundreds of settlements; keep the ward chart
     // on screen while they load (no blank flash) and stay on wards if there's
     // nothing to show.
-    // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
+    // Field-entered CommCare settlement (dropdown) - forms per settlement, not GPS.
     const data = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
     if (!data.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
 
@@ -3829,7 +3855,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const lgaEsc = String(lga).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const titleEl = el.closest('.card')?.querySelector('.card-title');
     // "Settlements" not "coverage": settlements have no treatment target, so no %
-    // bars — visited / not, which also renders far faster for hundreds of bars.
+    // bars - visited / not, which also renders far faster for hundreds of bars.
     if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Settlements - ' + ward +
       ' &nbsp;<button onclick="drillDownToWards(\'' + lgaEsc + '\')" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-rotate-left" style="font-size:10px"></i> Wards</button>' +
       ' &nbsp;<button onclick="drillUpToLGA()" style="font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--mist);cursor:pointer;color:var(--deep);font-weight:600;display:inline-flex;align-items:center;gap:5px"><i class="fa-solid fa-table-cells-large" style="font-size:10px"></i> All LGAs</button>';
@@ -3950,7 +3976,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               // Settlement level = form counts (field-entered CommCare settlement).
               return ' ' + (r.forms || 0).toLocaleString() + ' forms · ' + (r.treated || 0).toLocaleString() + ' treated';
             }
-            // Ward-level rows carry treated + target — show the full formula
+            // Ward-level rows carry treated + target - show the full formula
             // the coverage % is derived from, not just the percentage on its own.
             // (Keep the "(baseline)" label: the operator asked that the target
             // be spelled out as the baseline so the % is never read in isolation.)
@@ -3974,7 +4000,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     });
   }
   // Sync the Coverage page context (filter dropdown, KPIs, LGA-detail table) to
-  // the drilled LGA — mirrors what the Overview drill does for its own page.
+  // the drilled LGA - mirrors what the Overview drill does for its own page.
   // Does NOT call applyCovFilter(): that rebuilds the LGA bar chart, which would
   // undo the ward-bar drill we're about to render.
   function _covSyncPageToLGA(lga) {
@@ -4014,13 +4040,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     _covDrillScroll(el, data.length);
     _covDrillChart(el, data.map(r => r.ward_name), data.map(r => parseFloat(r.coverage_pct) || 0), data,
       i => { const w = data[i]?.ward_name; if (w) covDrillToSettlements(lga, w); });
-    showToast('Drilled into ' + lga + ' — showing wards. Click any ward bar or "All LGAs" to go back.');
+    showToast('Drilled into ' + lga + ' - showing wards. Click any ward bar or "All LGAs" to go back.');
   }
   async function covDrillToSettlements(lga, ward) {
     const el = document.getElementById('c_covLgaBar'); if (!el) return;
-    // Fetch FIRST — if this ward has no settlement breakdown, stay on the ward
+    // Fetch FIRST - if this ward has no settlement breakdown, stay on the ward
     // view (don't destroy the ward chart and leave a blank canvas).
-    // Field-entered CommCare settlement (dropdown) — forms per settlement, not GPS.
+    // Field-entered CommCare settlement (dropdown) - forms per settlement, not GPS.
     const data = await api('/api/mda/settlement-forms?lga=' + encodeURIComponent(lga) + '&ward=' + encodeURIComponent(ward)) || [];
     if (!data.length) { showToast('No settlement submissions for ' + ward + ' - staying on wards'); return; }
     const ex = Chart.getChart(el); if (ex) ex.destroy();
@@ -4041,7 +4067,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (t) t.innerHTML = '<i class="fa-solid fa-chart-bar"></i> Treatment Coverage by LGA (%)';
     // Restore the whole page (KPIs, LGA table, filter chip) to project-wide.
     _covSyncPageToLGA(null);
-    // Force a rebuild — buildCharts() no-ops when built['coverage'] is already
+    // Force a rebuild - buildCharts() no-ops when built['coverage'] is already
     // true, which left the LGA bar blank when clicking "All LGAs" to drill back up.
     delete built['coverage'];
     buildCharts('coverage');
@@ -4140,6 +4166,51 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     });
   }
 
+  // Custom Chart.js plugin that draws a leader line + outside label for each
+  // doughnut slice. Registered locally on the donut chart so it doesn't
+  // pollute the default plugin set (bar/line charts should never grow lines).
+  const _donutLeaderLines = {
+    id: 'donutLeaderLines',
+    afterDatasetsDraw(chart, args, opts) {
+      const { ctx, chartArea } = chart;
+      const meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data || !meta.data.length) return;
+      const cx = (chartArea.left + chartArea.right)  / 2;
+      const cy = (chartArea.top  + chartArea.bottom) / 2;
+      ctx.save();
+      ctx.font = '12px Inter, "Segoe UI", sans-serif';
+      ctx.textBaseline = 'middle';
+      meta.data.forEach((arc, i) => {
+        const val = chart.data.datasets[0].data[i] || 0;
+        if (val <= 0) return;
+        const label = chart.data.labels[i] || '';
+        // Point on the arc where the leader starts
+        const midAngle = (arc.startAngle + arc.endAngle) / 2;
+        const outerR   = arc.outerRadius;
+        const x0 = cx + Math.cos(midAngle) * outerR;
+        const y0 = cy + Math.sin(midAngle) * outerR;
+        // Elbow point (short radial extension)
+        const elbowR = outerR + 18;
+        const x1 = cx + Math.cos(midAngle) * elbowR;
+        const y1 = cy + Math.sin(midAngle) * elbowR;
+        // Horizontal segment out to the label
+        const rightSide = Math.cos(midAngle) >= 0;
+        const x2 = rightSide ? x1 + 34 : x1 - 34;
+        const y2 = y1;
+        // Draw the leader (light navy)
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        // Label text
+        const txt = label + ': ' + Number(val).toLocaleString();
+        ctx.fillStyle = '#0c1e10';
+        ctx.textAlign = rightSide ? 'left' : 'right';
+        ctx.fillText(txt, rightSide ? x2 + 4 : x2 - 4, y2);
+      });
+      ctx.restore();
+    },
+  };
+
   function buildDonutChart(data) {
     const el = document.getElementById('c_donut');
     if (!el) return;
@@ -4148,19 +4219,23 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     new Chart(el, {
       type: 'doughnut',
       data: {
-        labels: ['Treated', 'Remaining (gap to target)'],
+        labels: ['Treated', 'Remaining'],
         // Treated = deep green, remaining gap = light vivid green (C_BLUE3)
         // - previously '#E9F7EE' was so pale the gap was barely visible.
         datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, C_BLUE3], borderWidth: 0, hoverOffset: 8 }]
       },
+      plugins: [_donutLeaderLines],
       options: {
-        cutout: '68%',
+        // Tighter cutout ratio + a large layout padding on all sides so the
+        // outside labels drawn by the leader-line plugin have room to sit
+        // beyond the arc without clipping against the card.
+        cutout: '55%',
+        layout: { padding: 56 },
         onClick: (evt, elems) => {
           if (!elems.length) return;
           const idx = elems[0].index;
           if (idx === 1) {
-            // Clicked "Remaining" → navigate to coverage to see which LGAs need mop-up
-            showToast('Showing LGAs below target in Coverage Analysis →');
+            showToast('Showing LGAs below target in Coverage Analysis');
             setTimeout(() => switchView('coverage'), 600);
           } else {
             showToast('Treated: ' + a.toLocaleString() + ' of ' + (overviewData.baseline_total||0).toLocaleString() + ' target');
@@ -4168,17 +4243,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         },
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 11 } } },
-          // Force-show the segment name + value on both slices so the operator
-          // can read "Treated: N" / "Remaining: M" at a glance without needing
-          // to hover. Values format with thousand separators.
-          datalabels: {
-            display: true,
-            color: '#fff',
-            font: { size: 11, weight: '700' },
-            formatter: (v, ctx) => (ctx.chart.data.labels[ctx.dataIndex] || '') + '\n' + Number(v || 0).toLocaleString(),
-            textAlign: 'center',
-          },
+          legend: { position: 'bottom', labels: { font: { size: 12 } } },
+          // Datalabels plugin turned off for this chart: the custom leader-line
+          // plugin handles the outside labels + arrows. Otherwise both would
+          // draw and overlap.
+          datalabels: { display: false },
           tooltip: { callbacks: { label: ctx => ' ' + (ctx.chart.data.labels[ctx.dataIndex] || '') + ': ' + Number(ctx.raw || 0).toLocaleString() + ' children' } }
         },
         maintainAspectRatio: false, animation: { duration: 600 }
@@ -4191,7 +4260,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (!el) return;
     const existing = Chart.getChart(el); if (existing) existing.destroy();
     // Single comparison: total baseline target for 1–59 months vs total treated 1–59.
-    // Use treated_reported (SUM of number_of_treated — the same source as the
+    // Use treated_reported (SUM of number_of_treated - the same source as the
     // "Children Treated" KPI and Treatment Coverage %) so this bar matches them;
     // total_treated (per-child repeat-group rows) runs slightly lower due to
     // under-filled repeat groups. Fall back to total_treated if the field is absent.
@@ -4379,10 +4448,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
                 }
               }
             },
+            // Y-axis hidden: the per-point labels above each dot already
+            // carry the daily number, so the axis just added noise.
             scales: {
-              y: { grid: { display: false }, ticks: { callback: v => v.toLocaleString() } },
+              y: { display: false, grid: { display: false } },
               x: { grid: { display: false }, ticks: { font: { size: 10 } } }
             },
+            layout: { padding: { top: 18 } },
             maintainAspectRatio: false, animation: { duration: 600 }
           }
         });
@@ -4736,7 +4808,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   // matches what's already produced by the Geographic View download grid.
   function reportDownloadLGAs() { return downloadGeoExport('lgas', 'LGAs'); }
   function reportDownloadWards() { return downloadGeoExport('wards', 'Wards'); }
-  // Team Report — new endpoint, scoped to the selected project.
+  // Team Report - new endpoint, scoped to the selected project.
   async function reportDownloadTeamReport() {
     const qs = (typeof SELECTED_PID !== 'undefined' && SELECTED_PID != null)
                  ? '?project_id=' + SELECTED_PID : '';
@@ -4959,6 +5031,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       paint: {
         'fill-color': [
           'case',
+          // Non-implementing LGAs (not in the campaign's baseline or households)
+          // render hollow: transparent fill, outline only. Everything else is
+          // graded by visitation_pct just as before.
+          ['!', ['coalesce', ['get', 'in_campaign'], false]], 'rgba(0,0,0,0)',
           ['==', ['get', 'visitation_pct'], null], '#E5E7EB',
           ['>=', ['to-number', ['get', 'visitation_pct']], 70], '#16a34a',
           ['>=', ['to-number', ['get', 'visitation_pct']], 40], '#f59e0b',
@@ -5819,7 +5895,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       const p = e.features[0].properties;
       const r = geoNavData.lga.find(l => l.lgacode === p.lgacode);
       if (!r) {
-        // Grey LGA — not one of this campaign's in-scope LGAs.
+        // Grey LGA - not one of this campaign's in-scope LGAs.
         popup.setLngLat(e.lngLat).setHTML(
           '<div style="font-size:13px;padding:2px;font-family:Inter,system-ui,sans-serif">' +
           '<b style="color:#003D1A">' + (p.lga_name || '-') + '</b><br>' +
@@ -6006,7 +6082,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     if (icon) icon.className = geoIsFullscreen ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
     const btn = document.getElementById('geo-fs-btn');
     if (btn) btn.classList.toggle('active', geoIsFullscreen);
-    // Resize the canvas to the new box, THEN re-fit to the campaign extent —
+    // Resize the canvas to the new box, THEN re-fit to the campaign extent -
     // otherwise the enlarged viewport keeps the old zoom/centre and the LGAs
     // get stranded in a corner. Fit runs after resize so the new size is known.
     setTimeout(() => {
@@ -6280,7 +6356,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   window.geoFilterTeam       = geoFilterTeam;
   window.geoFilterMovement   = geoFilterMovement;
 
-  /* Called from the QC page's "Stacked GPS Points" tile — jumps to the
+  /* Called from the QC page's "Stacked GPS Points" tile - jumps to the
      Geographic View and switches the Duplicate-GPS heatmap overlay on.
      A short delay after switchView is enough to let the map fully build
      (initOverlaySources runs on first frame after `geo` becomes active). */
@@ -6298,7 +6374,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     }, 600);
   };
 
-  /* Called from a team row's Stacked Points cell — flips to the Geographic
+  /* Called from a team row's Stacked Points cell - flips to the Geographic
      View and paints ONLY that team's duplicate-GPS clusters, one pin per
      coord. Click a pin → popup with stack count, teams, LGA, date range.
      Uses the dedicated overlay layers `stacked-src` / `stacked-pins`
@@ -6338,7 +6414,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           'circle-stroke-width': 1.5,
         },
       });
-      // Popup wiring — one MapLibre Popup instance re-used across clicks.
+      // Popup wiring - one MapLibre Popup instance re-used across clicks.
       var stackedPopup = null;
       geoMap.on('click', 'stacked-pins', function(e) {
         var f = e.features && e.features[0]; if (!f) return;
@@ -6380,15 +6456,15 @@ body.app-mode .kpi-spark-wrap{display:none!important}
          [Math.max.apply(null, xs) + 0.02, Math.max.apply(null, ys) + 0.02]],
         // Tight zoom for QC drill so a single-cluster team lands right on the
         // problem coord rather than a whole-LGA view. maxZoom 16 is
-        // "individual-building" scale — enough to eyeball GPS drift.
+        // "individual-building" scale - enough to eyeball GPS drift.
         { padding: 40, maxZoom: 16, duration: 700 },
       );
     }
     var toast = (typeof showToast === 'function') ? showToast : null;
-    if (toast) toast(hqUser + ' — ' + fc.features.length + ' stacked cluster' + (fc.features.length === 1 ? '' : 's') + ' pinned. Click any pin for details.');
+    if (toast) toast(hqUser + ' - ' + fc.features.length + ' stacked cluster' + (fc.features.length === 1 ? '' : 's') + ' pinned. Click any pin for details.');
   };
 
-  /* Called from a team row's GPS Outside LGA cell — jumps to the Geographic
+  /* Called from a team row's GPS Outside LGA cell - jumps to the Geographic
      View and paints only that team's misplaced points as red diamonds.
      Popup on click shows stated vs actual LGA and distance to the correct
      LGA boundary in kilometres. */
@@ -6419,7 +6495,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             'interpolate', ['linear'], ['coalesce', ['get', 'distance_km'], 0],
             0, 6, 1, 8, 5, 11, 20, 15,
           ],
-          'circle-color':        '#f59e0b',   // amber — distinct from stacked (red)
+          'circle-color':        '#f59e0b',   // amber - distinct from stacked (red)
           'circle-opacity':      0.75,
           'circle-stroke-color': '#78350f',
           'circle-stroke-width': 1.5,
@@ -6430,7 +6506,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         var f = e.features && e.features[0]; if (!f) return;
         var p = f.properties || {};
         var dist = (p.distance_km === null || p.distance_km === undefined || p.distance_km === 'null')
-                     ? '—' : (Number(p.distance_km).toFixed(2) + ' km');
+                     ? '-' : (Number(p.distance_km).toFixed(2) + ' km');
         var actual = (!p.actual_lga || p.actual_lga === 'null')
                        ? '<i style="color:var(--muted)">outside every LGA polygon</i>' : p.actual_lga;
         var html =
@@ -6439,12 +6515,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
               '<i class="fa-solid fa-location-crosshairs" style="font-size:11px;margin-right:5px"></i>' +
               'GPS outside stated LGA' +
             '</div>' +
-            '<div style="color:#4A6852;margin-bottom:2px"><b>Stated LGA:</b> ' + (p.stated_lga || '—') + '</div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>Stated LGA:</b> ' + (p.stated_lga || '-') + '</div>' +
             '<div style="color:#4A6852;margin-bottom:2px"><b>Actual LGA:</b> ' + actual + '</div>' +
             '<div style="color:#4A6852;margin-bottom:2px"><b>Distance to stated LGA edge:</b> <b style="color:#78350f">' + dist + '</b></div>' +
             (p.ward_name ? '<div style="color:#4A6852;margin-bottom:2px"><b>Reported ward:</b> ' + p.ward_name + '</div>' : '') +
-            '<div style="color:#4A6852;margin-bottom:2px"><b>Team:</b> ' + (p.hq_user || '—') + '</div>' +
-            '<div style="color:#4A6852"><b>Recorded:</b> ' + (p.date || '—') + ' <i style="color:#94a3b8">(local)</i></div>' +
+            '<div style="color:#4A6852;margin-bottom:2px"><b>Team:</b> ' + (p.hq_user || '-') + '</div>' +
+            '<div style="color:#4A6852"><b>Recorded:</b> ' + (p.date || '-') + ' <i style="color:#94a3b8">(local)</i></div>' +
           '</div>';
         if (outsideLgaPopup) outsideLgaPopup.remove();
         outsideLgaPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '340px' })
@@ -6463,12 +6539,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
          [Math.max.apply(null, xs) + 0.02, Math.max.apply(null, ys) + 0.02]],
         // Tight zoom for QC drill so a single-cluster team lands right on the
         // problem coord rather than a whole-LGA view. maxZoom 16 is
-        // "individual-building" scale — enough to eyeball GPS drift.
+        // "individual-building" scale - enough to eyeball GPS drift.
         { padding: 40, maxZoom: 16, duration: 700 },
       );
     }
     var toast = (typeof showToast === 'function') ? showToast : null;
-    if (toast) toast(hqUser + ' — ' + fc.features.length + ' out-of-LGA point' + (fc.features.length === 1 ? '' : 's') + ' pinned. Click any pin for details.');
+    if (toast) toast(hqUser + ' - ' + fc.features.length + ' out-of-LGA point' + (fc.features.length === 1 ? '' : 's') + ' pinned. Click any pin for details.');
   };
 
   /* Modal + trend chart triggered from the team-name link. Cumulative
@@ -6481,7 +6557,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     var backdrop = document.getElementById('team-trend-backdrop');
     if (backdrop) backdrop.classList.add('open');
     var title = document.getElementById('team-trend-title');
-    if (title) title.textContent = 'Stacked-point trend — ' + hqUser;
+    if (title) title.textContent = 'Stacked-point trend - ' + hqUser;
     var loading = document.getElementById('team-trend-loading');
     if (loading) loading.textContent = 'Loading…';
     var canvas = document.getElementById('team-trend-canvas');
@@ -6582,7 +6658,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   window.toggleSidebar = toggleSidebar;
 
   /* ── QC FILTER ── */
-  let qcFilterLGA = '', qcFilterWard = '';
+  let qcFilterLGA = '', qcFilterWard = '', qcFilterSettlement = '';
   let qcLGAList = [], qcWardMap = {};  // ward map: { lgaName: [wardName,...] }
 
   function populateQCFilters(lgaNames) {
@@ -6599,18 +6675,20 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
 
   function applyQCFilter() {
-    const lgaSel = document.getElementById('qc-f-lga');
+    const lgaSel  = document.getElementById('qc-f-lga');
     const wardSel = document.getElementById('qc-f-ward');
-    qcFilterLGA  = lgaSel  ? lgaSel.value  : '';
-    qcFilterWard = wardSel ? wardSel.value : '';
+    const settSel = document.getElementById('qc-f-settlement');
+    qcFilterLGA        = lgaSel  ? lgaSel.value  : '';
+    qcFilterWard       = wardSel ? wardSel.value : '';
+    qcFilterSettlement = settSel ? settSel.value : '';
     const { date_from: qcDf, date_to: qcDt } = dpGetDates('qc-dates');
     const label    = document.getElementById('qc-filter-label');
     const resetBtn = document.getElementById('qc-reset-btn');
     const txt      = document.getElementById('qc-filter-text');
-    const hasFilter = qcFilterLGA || qcFilterWard || qcDf || qcDt;
+    const hasFilter = qcFilterLGA || qcFilterWard || qcFilterSettlement || qcDf || qcDt;
     if (label)    label.style.display    = hasFilter ? 'inline-flex' : 'none';
     if (resetBtn) resetBtn.style.display = hasFilter ? 'inline-flex' : 'none';
-    if (txt) txt.textContent = [qcFilterLGA, qcFilterWard, qcDf && ('From ' + qcDf), qcDt && ('To ' + qcDt)].filter(Boolean).join(' · ');
+    if (txt) txt.textContent = [qcFilterLGA, qcFilterWard, qcFilterSettlement, qcDf && ('From ' + qcDf), qcDt && ('To ' + qcDt)].filter(Boolean).join(' · ');
     // Destroy and reload QC charts with new params
     ['c_refusalBar','c_duration','c_durationBell'].forEach(id => { const c = Chart.getChart(document.getElementById(id)); if(c) c.destroy(); });
     delete built['quality'];
@@ -6618,11 +6696,13 @@ body.app-mode .kpi-spark-wrap{display:none!important}
   }
 
   function resetQCFilter() {
-    qcFilterLGA = ''; qcFilterWard = '';
-    const lgaSel = document.getElementById('qc-f-lga');
+    qcFilterLGA = ''; qcFilterWard = ''; qcFilterSettlement = '';
+    const lgaSel  = document.getElementById('qc-f-lga');
     const wardSel = document.getElementById('qc-f-ward');
+    const settSel = document.getElementById('qc-f-settlement');
     if (lgaSel)  lgaSel.value  = '';
     if (wardSel) { wardSel.value = ''; while (wardSel.options.length > 1) wardSel.remove(1); }
+    if (settSel) { settSel.value = ''; while (settSel.options.length > 1) settSel.remove(1); }
     dpReset('qc-dates');
     document.getElementById('qc-filter-label') && (document.getElementById('qc-filter-label').style.display = 'none');
     document.getElementById('qc-reset-btn')    && (document.getElementById('qc-reset-btn').style.display = 'none');
@@ -6664,7 +6744,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         && !['overview','coverage','geo'].includes(view)) {
       view = 'overview';
     }
-    // Sightsaver stakeholder account: even tighter — only Overview + Coverage.
+    // Sightsaver stakeholder account: even tighter - only Overview + Coverage.
     if (document.body.classList.contains('sightsaver-mode')
         && !['overview','coverage'].includes(view)) {
       view = 'overview';
@@ -7013,7 +7093,7 @@ document.addEventListener('keydown', function(e){
       <div class="tt-hdr-icon"><i class="fa-solid fa-chart-line"></i></div>
       <div>
         <div class="tt-hdr-title" id="team-trend-title">Stacked-point trend</div>
-        <div class="tt-hdr-sub">Cumulative count over time — the red line rising sharply means the team is generating more stacked points; the black dashed line is total forms for context.</div>
+        <div class="tt-hdr-sub">Cumulative count over time - the red line rising sharply means the team is generating more stacked points; the black dashed line is total forms for context.</div>
       </div>
       <button class="tt-hdr-close" onclick="closeTeamStackedTrend()" title="Close"><i class="fa-solid fa-xmark"></i></button>
     </div>
