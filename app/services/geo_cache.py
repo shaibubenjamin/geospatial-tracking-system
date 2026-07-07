@@ -17,6 +17,7 @@ requests. The TTL bounds how stale the coverage baked into a layer can be;
 recompute runs in a separate process, so its changes surface on the next TTL
 expiry — at most ``TTL_SECONDS`` later.)
 """
+import asyncio
 import hashlib
 import json
 import os
@@ -112,6 +113,14 @@ def clear() -> None:
     _obj_store.clear()
 
 
+# In-flight producers for single-flight geojson generation. The settlement
+# layer alone is ~22 MB and tens of seconds to build; without this, N concurrent
+# map loads after a cache flush each ran the full producer, saturating CPU/DB and
+# cascading into timeouts. Now only the first caller runs the producer; the rest
+# await the same result.
+_inflight: "dict[str, asyncio.Future]" = {}
+
+
 async def respond(
     request: Request,
     cache_key: str,
@@ -119,11 +128,29 @@ async def respond(
 ) -> Response:
     """Serve a GeoJSON layer from cache (generating on a miss), with an ETag +
     private Cache-Control so the browser/app caches it too. Honours
-    If-None-Match with a 304 (no body). GZip middleware compresses the body."""
+    If-None-Match with a 304 (no body). GZip middleware compresses the body.
+
+    Single-flight: concurrent misses for the same key share one producer run."""
     cached = get(cache_key)
     if cached is None:
-        data = await producer()
-        body, etag = put(cache_key, data)
+        pending = _inflight.get(cache_key)
+        if pending is not None:
+            body, etag = await pending
+        else:
+            loop = asyncio.get_event_loop()
+            fut = loop.create_future()
+            _inflight[cache_key] = fut
+            try:
+                data = await producer()
+                body, etag = put(cache_key, data)
+                if not fut.done():
+                    fut.set_result((body, etag))
+            except Exception as e:
+                if not fut.done():
+                    fut.set_exception(e)
+                raise
+            finally:
+                _inflight.pop(cache_key, None)
     else:
         body, etag = cached
     headers = {"Cache-Control": f"private, max-age={TTL_SECONDS}", "ETag": etag}

@@ -726,32 +726,36 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="chart-wrap"><canvas id="c_dailyLine"></canvas></div>
         </div>
 
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-head">
-            <div>
-              <div class="card-title"><i class="fa-solid fa-children"></i> Children 1&ndash;59: Baseline vs Treated</div>
-              <div class="card-sub">Compares the baseline target for children 1&ndash;59 months in this round against the number actually treated so far.</div>
+        <!-- Children 1-59 (bar) and Treatment Progress (donut) share one row,
+             two columns - the operator asked for these two side-by-side rather
+             than each stranded on its own full-width row. -->
+        <div class="grid-2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><i class="fa-solid fa-children"></i> Children 1&ndash;59: Baseline vs Treated</div>
+                <div class="card-sub">Compares the baseline target for children 1&ndash;59 months in this round against the number actually treated so far.</div>
+              </div>
+              <div class="card-head-right">
+                <button class="chart-dl" onclick="dlChart('c_ageBar','age_band')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+              </div>
             </div>
-            <div class="card-head-right">
-              <button class="chart-dl" onclick="dlChart('c_ageBar','age_band')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-            </div>
+            <div class="chart-wrap" style="height:380px"><canvas id="c_ageBar"></canvas></div>
           </div>
-          <div class="chart-wrap"><canvas id="c_ageBar"></canvas></div>
-        </div>
 
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-head">
-            <div>
-              <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
-              <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="card-title"><i class="fa-solid fa-chart-pie"></i> Treatment Progress vs Baseline Target</div>
+                <div class="card-sub">How many children have been treated (blue) vs the remaining gap to reach the baseline target population. Full circle = 100% coverage achieved.</div>
+              </div>
+              <div class="card-head-right">
+                <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
+              </div>
             </div>
-            <div class="card-head-right">
-              <button class="chart-dl" onclick="dlChart('c_donut','age_distribution')" title="Download CSV"><i class="fa-solid fa-download"></i></button>
-            </div>
+            <!-- leader-line labels sit in the padding around the donut. -->
+            <div class="chart-wrap" style="height:380px"><canvas id="c_donut"></canvas></div>
           </div>
-          <!-- Taller wrap so the donut renders large; leader-line labels
-               sit in the extra margin without being clipped by the card. -->
-          <div class="chart-wrap" style="height:420px"><canvas id="c_donut"></canvas></div>
         </div>
 
         <div class="card">
@@ -2464,11 +2468,21 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // Tables
     buildLGATable('lga-table-body', lgaCovData);
 
-    // Populate LGA filters and pre-load all wards at startup
+    // Populate LGA filters
     populateLGAFilter();
     populateCovFilters();
-    await preloadAllWards();
-    await preloadCampaignDates();
+
+    // Build the overview charts NOW, from the core data already loaded. The
+    // ward + campaign-date preloads below can be slow on a large dataset / cold
+    // cache and must NOT gate chart rendering — otherwise the KPIs show while
+    // the charts sit blank until the preloads finish (the "metrics up, charts
+    // not coming up" bug). Fire the preloads in the background (no await) so
+    // loadOverview resolves immediately and the charts paint right away; the
+    // ward dropdowns fill in a moment later.
+    buildCharts('overview');
+    updateDeltaBadges();
+    preloadAllWards();
+    preloadCampaignDates();
   }
 
   function setEl(id, val) {
@@ -2483,7 +2497,9 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     rows.forEach(r => {
       const cov = parseFloat(r.coverage_pct) || 0;
       const lgaName = r.lga || '';
-      const geoBtn = showGeoLink !== false
+      // The map "eye" jump is hidden on the public dashboard — the Geographic
+      // View is not exposed publicly, so a link into it is a dead end there.
+      const geoBtn = (showGeoLink !== false && !PUBLIC_MODE)
         ? '<button class="lga-nav-btn" data-lga-nav title="View this LGA on the map"><i class="fa-solid fa-eye"></i></button>'
         : '';
       const tr = document.createElement('tr');
@@ -5209,6 +5225,16 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       d.forEach(r => { if (r.lgacode) byCode[r.lgacode] = r; });
       const byName = {};
       d.forEach(r => { if (r.lga_name) byName[r.lga_name.trim().toLowerCase()] = r; });
+      // Campaign LGA set = the LGAs the round actually targets. lgaCovData comes
+      // from /coverage/lga, which is already scoped to the campaign's LGAs (36
+      // for Kano R3). The lga-fill paint hollows out any LGA whose in_campaign
+      // is falsy, so we MUST stamp it here or every polygon paints transparent
+      // (that was the "coloring gone" regression: the paint required in_campaign
+      // but this merge never set it). Fail-safe: if the campaign set is empty
+      // (e.g. geo view opened before the overview loaded), treat all LGAs as
+      // in-campaign so we colour everything rather than hiding the whole map.
+      const campaignSet = new Set((lgaCovData || [])
+        .filter(r => r && r.lga).map(r => r.lga.trim().toLowerCase()));
       geoLGAfc.features.forEach(f => {
         const p = f.properties || (f.properties = {});
         const m = byCode[p.lgacode]
@@ -5218,6 +5244,8 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           p.completeness_pct = m.completeness_pct != null ? Number(m.completeness_pct) : null;
           p.visitation_pct   = m.visitation_pct   != null ? Number(m.visitation_pct)   : null;
         }
+        const nm = (p.lga_name || '').trim().toLowerCase();
+        p.in_campaign = campaignSet.size ? campaignSet.has(nm) : true;
       });
       if (geoMap.getSource('lga-src')) geoMap.getSource('lga-src').setData(geoLGAfc);
     }

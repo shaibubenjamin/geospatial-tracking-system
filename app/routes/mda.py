@@ -2,6 +2,7 @@
 app/routes/mda.py — MDA Data Quality Check System
 Upload endpoint + QC query endpoints for Mass Drug Administration data.
 """
+import asyncio
 import functools
 import io
 import logging
@@ -25,6 +26,11 @@ from app.services import geo_cache
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mda", tags=["mda"])
+
+# In-flight computations for single-flight caching (see cache_json). Keyed by
+# the same cache key as geo_cache; holds the Future of the one request currently
+# computing a cold entry so concurrent callers await it instead of stampeding.
+_INFLIGHT: "dict[str, asyncio.Future]" = {}
 
 
 def cache_json(layer: str):
@@ -71,8 +77,30 @@ def cache_json(layer: str):
             hit = geo_cache.obj_get(ck)
             if hit is not None:
                 return hit
-            res = await fn(*args, **kwargs)
-            return geo_cache.obj_put(ck, res)
+            # Single-flight: if another request is already computing this exact
+            # key, await its result instead of running the heavy query again.
+            # This is what stops a cold-cache stampede — after a deploy/sync/TTL
+            # expiry, N concurrent viewers would otherwise each run the same
+            # 30-90s aggregate, exhausting the DB pool. Now only the first runs;
+            # the rest share its result.
+            inflight = _INFLIGHT.get(ck)
+            if inflight is not None:
+                return await inflight
+            loop = asyncio.get_event_loop()
+            fut = loop.create_future()
+            _INFLIGHT[ck] = fut
+            try:
+                res = await fn(*args, **kwargs)
+                geo_cache.obj_put(ck, res)
+                if not fut.done():
+                    fut.set_result(res)
+                return res
+            except Exception as e:
+                if not fut.done():
+                    fut.set_exception(e)
+                raise
+            finally:
+                _INFLIGHT.pop(ck, None)
         return wrapper
     return deco
 
