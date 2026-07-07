@@ -3752,7 +3752,14 @@ async def geo_settlements_coverage(
 ):
     """Settlement polygons (GeoJSON) coloured visited/not + completeness — the
     core coverage mosaic. Public aggregate. Optional ?lgacode= to scope to one
-    LGA (lighter payload)."""
+    LGA (lighter payload).
+
+    Only settlements whose LGA is part of THIS campaign (implementing LGAs =
+    LGAs with a baseline row or a submitted household in the current project)
+    are returned. Non-implementing LGAs therefore render blank on the map
+    even if the boundary project's settlement_analytics rows exist for them.
+    Matches how the /geo/lgas-coverage endpoint flags in_campaign.
+    """
     params: dict = {"pid": pid}
     where = "sa.project_id = :pid"
     if lgacode:
@@ -3760,17 +3767,25 @@ async def geo_settlements_coverage(
         params["lgacode"] = lgacode
     where += _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
     res = await db.execute(text(f"""
+        WITH campaign AS (
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_baseline
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+          UNION
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_households
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+        )
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
                COALESCE(sa.completeness_pct, 0)::float AS completeness_pct,
                COALESCE(sa.point_count, 0) AS point_count,
-               -- Simplify geometry (~33 m) — settlement polygons are tiny at map
-               -- scale, so this sharply cuts the GeoJSON payload (faster load on
-               -- the phone) with no visible change.
+               -- Simplify geometry (~33 m): settlement polygons are tiny at map
+               -- scale, so this sharply cuts the GeoJSON payload (faster load
+               -- on the phone) with no visible change.
                ST_AsGeoJSON(ST_SimplifyPreserveTopology(s.geom, 0.0003)) AS geom
         FROM settlement_analytics sa
         JOIN settlements s ON s.id = sa.settlement_id
         WHERE {where}
+          AND EXISTS (SELECT 1 FROM campaign c WHERE c.lga_u = upper(trim(sa.lga_name)))
     """), params)
     import json as _json
     feats = []

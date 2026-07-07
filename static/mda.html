@@ -5031,6 +5031,10 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       paint: {
         'fill-color': [
           'case',
+          // Non-implementing LGAs (not in the campaign's baseline or households)
+          // render hollow: transparent fill, outline only. Everything else is
+          // graded by visitation_pct just as before.
+          ['!', ['coalesce', ['get', 'in_campaign'], false]], 'rgba(0,0,0,0)',
           ['==', ['get', 'visitation_pct'], null], '#E5E7EB',
           ['>=', ['to-number', ['get', 'visitation_pct']], 70], '#16a34a',
           ['>=', ['to-number', ['get', 'visitation_pct']], 40], '#f59e0b',
