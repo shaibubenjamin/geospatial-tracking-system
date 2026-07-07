@@ -1234,10 +1234,11 @@ async def system_counts(
 @router.get("/qc/summary")
 @cache_json("qc_summary")
 async def qc_summary(
-    lga:       Optional[str] = None,
-    ward:      Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to:   Optional[str] = None,
+    lga:        Optional[str] = None,
+    ward:       Optional[str] = None,
+    settlement: Optional[str] = None,
+    date_from:  Optional[str] = None,
+    date_to:    Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
@@ -1250,6 +1251,9 @@ async def qc_summary(
     if ward:
         filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')")
         params["ward"] = ward
+    if settlement:
+        filters.append("REPLACE(LOWER(TRIM(settlement_name)), ' ', '') = REPLACE(LOWER(TRIM(:settlement)), ' ', '')")
+        params["settlement"] = settlement
     # Date filter / "days active" both key off received_on — the timestamp at
     # which CommCare HQ accepted the form. Field workers can backfill date_trt
     # / check_treatment_date inconsistently, so received_on is the only column
@@ -1679,21 +1683,23 @@ async def submissions_by_settlement(
 @router.get("/qc/teams-summary")
 @cache_json("qc_teams_summary")
 async def qc_teams_summary(
-    lga:       Optional[str] = None,
-    ward:      Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to:   Optional[str] = None,
+    lga:        Optional[str] = None,
+    ward:       Optional[str] = None,
+    settlement: Optional[str] = None,
+    date_from:  Optional[str] = None,
+    date_to:    Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Per-team: total forms, forms with ≥1 error, error rate, and error type counts."""
+    """Per-team: total forms, forms with >=1 error, error rate, and error type counts."""
     filters: list = ["hq_user IS NOT NULL"]
     params: dict = {}
-    if lga:       filters.append("lga = :lga");       params["lga"]  = lga
-    if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
+    if lga:        filters.append("lga = :lga");       params["lga"]  = lga
+    if ward:       filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
+    if settlement: filters.append("REPLACE(LOWER(TRIM(settlement_name)), ' ', '') = REPLACE(LOWER(TRIM(:settlement)), ' ', '')"); params["settlement"] = settlement
+    if date_from:  filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:    filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=allowed_lgas_of(_u))
     # forms_with_error uses the same definition as /qc/summary and /overview
     # (refusal NOT counted — it's an outcome; sync_lag NOT counted — it's a
@@ -1823,20 +1829,22 @@ async def gps_duplicate(pid: int = Depends(resolve_pid), db: AsyncSession = Depe
 @router.get("/overview")
 @cache_json("mda_overview")
 async def mda_overview(
-    lga:       Optional[str] = None,
-    ward:      Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to:   Optional[str] = None,
+    lga:        Optional[str] = None,
+    ward:       Optional[str] = None,
+    settlement: Optional[str] = None,
+    date_from:  Optional[str] = None,
+    date_to:    Optional[str] = None,
     pid: int = Depends(resolve_pid),
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
     lgas = allowed_lgas_of(_u)
     filters, params = [], {}
-    if lga:       filters.append("lga = :lga");       params["lga"]  = lga
-    if ward:      filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
-    if date_from: filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
-    if date_to:   filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
+    if lga:        filters.append("lga = :lga");       params["lga"]  = lga
+    if ward:       filters.append("REPLACE(LOWER(TRIM(ward_name)), ' ', '') = REPLACE(LOWER(TRIM(:ward)), ' ', '')"); params["ward"] = ward
+    if settlement: filters.append("REPLACE(LOWER(TRIM(settlement_name)), ' ', '') = REPLACE(LOWER(TRIM(:settlement)), ' ', '')"); params["settlement"] = settlement
+    if date_from:  filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date >= :date_from"); params["date_from"] = _as_date(date_from)
+    if date_to:    filters.append("(received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date <= :date_to");   params["date_to"]   = _as_date(date_to)
     where = _scoped_where(pid, filters, params, lgas=lgas)
     lga_bl = _lga_and(lgas, "lga", params)  # for the mda_baseline sub-query below
     result = await db.execute(text(f"""
