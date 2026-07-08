@@ -1762,7 +1762,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
             <div class="card-body">
               <div class="rep-icon" style="background:var(--mist);color:var(--good)"><i class="fa-solid fa-file-excel"></i></div>
               <div class="rep-title">Settlement Visit Status</div>
-              <div class="rep-sub">XLSX &bull; Per-settlement: visited (yes/no), grid completeness, GPS points</div>
+              <div class="rep-sub">XLSX &bull; Every planned settlement: LGA, Ward, Settlement, Settlement code, and Visited / Not Visited</div>
               <button class="btn btn-ghost" style="margin-top:14px" onclick="event.stopPropagation();reportDownloadSettlementStatus()"><i class="fa-solid fa-download"></i> Download XLSX</button>
             </div>
           </div>
@@ -4234,7 +4234,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         // the outside labels room to breathe without overrunning the card
         // title above.
         cutout: '58%',
-        layout: { padding: { top: 6, bottom: 6, left: 90, right: 90 } },
+        layout: { padding: { top: 24, bottom: 24, left: 90, right: 90 } },
         onClick: (evt, elems) => {
           if (!elems.length) return;
           const idx = elems[0].index;
@@ -4247,7 +4247,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         },
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 12 } } },
+          // Legend removed: the datalabels below already print each slice's
+          // name + value ("Treated: N" / "Remaining: M"), so a bottom legend was
+          // redundant AND the near-full "Treated" slice's arc-tip label landed
+          // on top of it. Dropping the legend clears the overlap.
+          legend: { display: false },
           // Outside labels via datalabels — anchor:end + align:end places the
           // text just outside each slice's arc-tip on the sliced ring, so the
           // labels sit at each side of the donut instead of floating up to

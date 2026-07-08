@@ -3967,17 +3967,26 @@ async def download_settlement_status(
     loaded for this project yet (run scripts/load_planned_settlements.py).
     Admin/superadmin only.
     """
+    # Precompute the set of visited settlement codes in ONE pass over households,
+    # then LEFT JOIN. The original per-row correlated EXISTS re-scanned the ~1M
+    # household rows for each of the 28k planned settlements (no admin5_code
+    # index) → >60s, which blew the 45s statement_timeout and 500'd the download
+    # (and, by holding a pool connection, cascaded timeouts onto other requests).
+    # This form runs in ~2s.
     result = await db.execute(text("""
+        WITH visited AS (
+            SELECT DISTINCT admin5_code
+            FROM mda_households
+            WHERE project_id = :pid AND admin5_code IS NOT NULL
+        )
         SELECT
             p.lga,
             p.ward_name,
             p.settlement_name,
             p.admin5_code AS settlement_code,
-            CASE WHEN EXISTS (
-                SELECT 1 FROM mda_households h
-                WHERE h.project_id = p.project_id AND h.admin5_code = p.admin5_code
-            ) THEN 'Visited' ELSE 'Not Visited' END AS visit_status
+            CASE WHEN v.admin5_code IS NOT NULL THEN 'Visited' ELSE 'Not Visited' END AS visit_status
         FROM mda_planned_settlements p
+        LEFT JOIN visited v ON v.admin5_code = p.admin5_code
         WHERE p.project_id = :pid
         ORDER BY p.lga, p.ward_name, p.settlement_name
     """), {"pid": pid})
