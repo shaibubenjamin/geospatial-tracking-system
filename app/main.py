@@ -568,6 +568,8 @@ _PUBLIC_GET_PATHS: set[str] = {
     "/api/mda/system/counts",
     "/api/mda/trends/daily",
     "/api/mda/trends/daily-by-round",
+    # Planned-vs-reached (settlement plan) — shown on the public Coverage page
+    "/api/mda/planned-settlements/summary",
     # Coverage aggregates (per LGA / ward / age)
     "/api/mda/coverage/lga",
     "/api/mda/coverage/ward",

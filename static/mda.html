@@ -2463,18 +2463,31 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // calendar day regardless of whether forms have arrived yet. Falls
     // back to the count of submission days when no start date is set.
     const calDay = overviewData.current_campaign_day;
-    setEl('kpi-days', (calDay != null ? calDay : days));
+    const phase = overviewData.campaign_phase;
     const subEl = document.getElementById('kpi-days-sub');
-    if (subEl) {
-      if (calDay != null && overviewData.planned_start_date) {
-        const subSuffix = (days != null && days !== calDay)
-          ? ' · ' + days + ' submission day' + (days === 1 ? '' : 's') + ' so far'
+    if (phase === 'mop_up') {
+      // Planned window is over — show the mop-up phase, not "Day N+1".
+      setEl('kpi-days', 'Mop-Up');
+      if (subEl) {
+        const mu = overviewData.mop_up_day || 1;
+        const span = (overviewData.planned_start_date && overviewData.planned_end_date)
+          ? ' · campaign ran ' + overviewData.planned_start_date + ' to ' + overviewData.planned_end_date
           : '';
-        subEl.textContent = 'Day ' + calDay + ' (starts ' + overviewData.planned_start_date + ')' + subSuffix;
-      } else if (overviewData.planned_start_date) {
-        subEl.textContent = 'Day ' + days + ' (starts ' + overviewData.planned_start_date + ')';
-      } else {
-        subEl.textContent = 'Unique submission dates within the campaign window';
+        subEl.textContent = 'Mop-up day ' + mu + span;
+      }
+    } else {
+      setEl('kpi-days', (calDay != null ? calDay : days));
+      if (subEl) {
+        if (calDay != null && overviewData.planned_start_date) {
+          const subSuffix = (days != null && days !== calDay)
+            ? ' · ' + days + ' submission day' + (days === 1 ? '' : 's') + ' so far'
+            : '';
+          subEl.textContent = 'Day ' + calDay + ' (starts ' + overviewData.planned_start_date + ')' + subSuffix;
+        } else if (overviewData.planned_start_date) {
+          subEl.textContent = 'Day ' + days + ' (starts ' + overviewData.planned_start_date + ')';
+        } else {
+          subEl.textContent = 'Unique submission dates within the campaign window';
+        }
       }
     }
     setEl('kpi-flags', Number(qcFlags || 0).toLocaleString());
@@ -4234,7 +4247,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         // the outside labels room to breathe without overrunning the card
         // title above.
         cutout: '58%',
-        layout: { padding: { top: 24, bottom: 24, left: 90, right: 90 } },
+        layout: { padding: { top: 26, bottom: 28, left: 20, right: 12 } },
         onClick: (evt, elems) => {
           if (!elems.length) return;
           const idx = elems[0].index;
@@ -4247,11 +4260,11 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         },
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
-          // Legend removed: the datalabels below already print each slice's
-          // name + value ("Treated: N" / "Remaining: M"), so a bottom legend was
-          // redundant AND the near-full "Treated" slice's arc-tip label landed
-          // on top of it. Dropping the legend clears the overlap.
-          legend: { display: false },
+          // Legend on the RIGHT, not the bottom: the near-full "Treated" slice's
+          // arc-tip datalabel sits at 6 o'clock, so a bottom legend collided
+          // with it. The datalabels land top/bottom, so a right-side legend has
+          // clear space and no overlap.
+          legend: { position: 'right', labels: { font: { size: 12 }, boxWidth: 14, padding: 12 } },
           // Outside labels via datalabels — anchor:end + align:end places the
           // text just outside each slice's arc-tip on the sliced ring, so the
           // labels sit at each side of the donut instead of floating up to
