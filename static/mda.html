@@ -815,6 +815,40 @@ body.app-mode .kpi-spark-wrap{display:none!important}
           <div class="kpi bad"><div class="lbl" id="cov-kpi-below-lbl">LGAs Behind Pace</div><div class="val" id="cov-kpi-below">-</div><div class="sub" id="cov-kpi-below-sub">LGAs below today's expected coverage - need catch-up.</div></div>
         </div>
 
+        <!-- Planned vs Reached (settlement-code match). Reads
+             /planned-settlements/summary. Reached = at least one household
+             form for that LGA/ward/settlement code appears in mda_households.
+             Hidden until the planned list is loaded for this round (avoids
+             three "0 / 0" tiles on projects without a plan). -->
+        <div class="card" id="cov-planned-card" style="margin-bottom:16px;display:none">
+          <div class="card-head">
+            <div>
+              <div class="card-title"><i class="fa-solid fa-map-pin"></i> Planned vs Reached (settlement-code match)</div>
+              <div class="card-sub">From the campaign planning workbook. A settlement is "reached" when at least one household form carries its settlement code (admin5_code); wards and LGAs roll up from the settlement level.</div>
+            </div>
+          </div>
+          <div class="kpi-grid cols-3">
+            <div class="kpi">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-map"></i></div>
+              <div class="lbl">LGA Planned / Reached</div>
+              <div class="val" id="cov-planned-lga">-</div>
+              <div class="sub"><span id="cov-planned-lga-pct">-</span> - <span id="cov-planned-lga-sub">- of - LGAs have at least one submitted form</span></div>
+            </div>
+            <div class="kpi accent">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-diagram-project"></i></div>
+              <div class="lbl">Ward Planned / Reached</div>
+              <div class="val" id="cov-planned-ward">-</div>
+              <div class="sub"><span id="cov-planned-ward-pct">-</span> - <span id="cov-planned-ward-sub">- of - wards have at least one submitted form</span></div>
+            </div>
+            <div class="kpi good">
+              <div class="kpi-icon-strip"><i class="fa-solid fa-house-chimney"></i></div>
+              <div class="lbl">Settlement Planned / Reached</div>
+              <div class="val" id="cov-planned-settlement">-</div>
+              <div class="sub"><span id="cov-planned-settlement-pct">-</span> - <span id="cov-planned-settlement-sub">- of - settlements have at least one submitted form</span></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Treatment Coverage by LGA - full-width so every LGA fits at
              full bar thickness, matching the Overview "Forms per LGA" card. -->
         <div class="card" style="margin-bottom:16px">
@@ -3718,7 +3752,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 
   async function _reloadOverviewKPIs() {
     const { date_from: df, date_to: dt } = dpGetDates('f-dates');
-    const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt);
+    const qs = _filterQS(FILTER.lga, FILTER.ward, df, dt, FILTER.settlement);
     const [ov, daily] = await Promise.all([
       api('/api/mda/overview' + qs),
       api('/api/mda/trends/daily' + qs),
@@ -4182,51 +4216,6 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     });
   }
 
-  // Custom Chart.js plugin that draws a leader line + outside label for each
-  // doughnut slice. Registered locally on the donut chart so it doesn't
-  // pollute the default plugin set (bar/line charts should never grow lines).
-  const _donutLeaderLines = {
-    id: 'donutLeaderLines',
-    afterDatasetsDraw(chart, args, opts) {
-      const { ctx, chartArea } = chart;
-      const meta = chart.getDatasetMeta(0);
-      if (!meta || !meta.data || !meta.data.length) return;
-      const cx = (chartArea.left + chartArea.right)  / 2;
-      const cy = (chartArea.top  + chartArea.bottom) / 2;
-      ctx.save();
-      ctx.font = '12px Inter, "Segoe UI", sans-serif';
-      ctx.textBaseline = 'middle';
-      meta.data.forEach((arc, i) => {
-        const val = chart.data.datasets[0].data[i] || 0;
-        if (val <= 0) return;
-        const label = chart.data.labels[i] || '';
-        // Point on the arc where the leader starts
-        const midAngle = (arc.startAngle + arc.endAngle) / 2;
-        const outerR   = arc.outerRadius;
-        const x0 = cx + Math.cos(midAngle) * outerR;
-        const y0 = cy + Math.sin(midAngle) * outerR;
-        // Elbow point (short radial extension)
-        const elbowR = outerR + 18;
-        const x1 = cx + Math.cos(midAngle) * elbowR;
-        const y1 = cy + Math.sin(midAngle) * elbowR;
-        // Horizontal segment out to the label
-        const rightSide = Math.cos(midAngle) >= 0;
-        const x2 = rightSide ? x1 + 34 : x1 - 34;
-        const y2 = y1;
-        // Draw the leader (light navy)
-        ctx.strokeStyle = '#334155';
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        // Label text
-        const txt = label + ': ' + Number(val).toLocaleString();
-        ctx.fillStyle = '#0c1e10';
-        ctx.textAlign = rightSide ? 'left' : 'right';
-        ctx.fillText(txt, rightSide ? x2 + 4 : x2 - 4, y2);
-      });
-      ctx.restore();
-    },
-  };
-
   function buildDonutChart(data) {
     const el = document.getElementById('c_donut');
     if (!el) return;
@@ -4240,13 +4229,12 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         // - previously '#E9F7EE' was so pale the gap was barely visible.
         datasets: [{ data: [a, Math.max(0,b)], backgroundColor: [C_BLUE1, C_BLUE3], borderWidth: 0, hoverOffset: 8 }]
       },
-      plugins: [_donutLeaderLines],
       options: {
-        // Tighter cutout ratio + a large layout padding on all sides so the
-        // outside labels drawn by the leader-line plugin have room to sit
-        // beyond the arc without clipping against the card.
-        cutout: '55%',
-        layout: { padding: 56 },
+        // Cutout kept moderate so slice thickness is generous; padding gives
+        // the outside labels room to breathe without overrunning the card
+        // title above.
+        cutout: '58%',
+        layout: { padding: { top: 6, bottom: 6, left: 90, right: 90 } },
         onClick: (evt, elems) => {
           if (!elems.length) return;
           const idx = elems[0].index;
@@ -4260,10 +4248,20 @@ body.app-mode .kpi-spark-wrap{display:none!important}
         onHover: (evt, elems) => { el.style.cursor = elems.length ? 'pointer' : 'default'; },
         plugins: {
           legend: { position: 'bottom', labels: { font: { size: 12 } } },
-          // Datalabels plugin turned off for this chart: the custom leader-line
-          // plugin handles the outside labels + arrows. Otherwise both would
-          // draw and overlap.
-          datalabels: { display: false },
+          // Outside labels via datalabels — anchor:end + align:end places the
+          // text just outside each slice's arc-tip on the sliced ring, so the
+          // labels sit at each side of the donut instead of floating up to
+          // the card title. No custom leader-line plugin needed.
+          datalabels: {
+            display: true,
+            anchor: 'end',
+            align: 'end',
+            offset: 8,
+            clip: false,
+            color: '#0c1e10',
+            font: { size: 12, weight: '700' },
+            formatter: (v, ctx) => (ctx.chart.data.labels[ctx.dataIndex] || '') + ': ' + Number(v || 0).toLocaleString(),
+          },
           tooltip: { callbacks: { label: ctx => ' ' + (ctx.chart.data.labels[ctx.dataIndex] || '') + ': ' + Number(ctx.raw || 0).toLocaleString() + ' children' } }
         },
         maintainAspectRatio: false, animation: { duration: 600 }
@@ -4496,6 +4494,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
       renderRefusalsAnalysis();
       _loadTeamsPerLGA();
       _loadMopUpShortlist();
+      _loadPlannedVsReached();
 
       if (lgaCovData.length) {
         const sorted = [...lgaCovData].sort((a,b)=>b.coverage_pct-a.coverage_pct);
@@ -5281,6 +5280,30 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     setEl('geo-coverage-pct', pct.toFixed(1) + '%');
     setEl('geo-sett-visited-count', visited.toLocaleString());
     setEl('geo-sett-total-count', total.toLocaleString());
+  }
+
+  // Planned vs Reached (settlement-code match). Fired from the coverage
+  // tab; hides itself when the planned list hasn't been loaded for this
+  // project (returns settlement_planned = 0). Value cell is "reached / planned"
+  // - reads left-to-right the way an operator does: "so far, of the total".
+  async function _loadPlannedVsReached() {
+    const card = document.getElementById('cov-planned-card');
+    if (!card) return;
+    let d = null;
+    try { d = await api('/api/mda/planned-settlements/summary'); } catch (_) {}
+    if (!d || !d.settlement_planned) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    const fmt = n => Number(n || 0).toLocaleString();
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('cov-planned-lga',            fmt(d.lga_reached)        + ' / ' + fmt(d.lga_planned));
+    set('cov-planned-ward',           fmt(d.ward_reached)       + ' / ' + fmt(d.ward_planned));
+    set('cov-planned-settlement',     fmt(d.settlement_reached) + ' / ' + fmt(d.settlement_planned));
+    set('cov-planned-lga-pct',        (d.lga_pct        || 0) + '%');
+    set('cov-planned-ward-pct',       (d.ward_pct       || 0) + '%');
+    set('cov-planned-settlement-pct', (d.settlement_pct || 0) + '%');
+    set('cov-planned-lga-sub',        fmt(d.lga_reached)        + ' of ' + fmt(d.lga_planned)        + ' LGAs have >=1 submitted form');
+    set('cov-planned-ward-sub',       fmt(d.ward_reached)       + ' of ' + fmt(d.ward_planned)       + ' wards have >=1 submitted form');
+    set('cov-planned-settlement-sub', fmt(d.settlement_reached) + ' of ' + fmt(d.settlement_planned) + ' settlements have >=1 submitted form');
   }
 
   // Teams per LGA - Coverage Analysis page. One row per LGA showing how

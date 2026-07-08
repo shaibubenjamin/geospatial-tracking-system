@@ -3738,12 +3738,20 @@ async def geo_lgas_coverage(
           FROM settlement_analytics WHERE project_id = :pid GROUP BY lgacode
         ),
         campaign AS (
-          -- LGAs actually part of THIS round: a baseline target OR submitted
-          -- households. Project-dynamic, so it's correct for any state/round
-          -- (not just whichever LGAs happen to have settlement_analytics rows).
-          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_baseline   WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
-          UNION
-          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_households  WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+          -- LGAs the campaign planned to visit (from mda_planned_settlements,
+          -- loaded from the operator's planning workbook). Falls back to the
+          -- old baseline+households UNION so projects without a loaded plan
+          -- still render sensibly.
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_planned_settlements
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+          UNION ALL
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_baseline
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+              AND NOT EXISTS (SELECT 1 FROM mda_planned_settlements WHERE project_id = :pid LIMIT 1)
+          UNION ALL
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_households
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+              AND NOT EXISTS (SELECT 1 FROM mda_planned_settlements WHERE project_id = :pid LIMIT 1)
         )
         SELECT l.lga_name, l.lgacode,
                ST_AsGeoJSON(l.geom) AS geom,
@@ -3796,11 +3804,20 @@ async def geo_settlements_coverage(
     where += _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
     res = await db.execute(text(f"""
         WITH campaign AS (
+          -- Prefer the planned list (mda_planned_settlements) as the
+          -- authoritative set of implementing LGAs; fall back to baseline +
+          -- households on projects without a loaded plan (same fallback
+          -- shape as /geo/lgas-coverage).
+          SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_planned_settlements
+            WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+          UNION ALL
           SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_baseline
             WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
-          UNION
+              AND NOT EXISTS (SELECT 1 FROM mda_planned_settlements WHERE project_id = :pid LIMIT 1)
+          UNION ALL
           SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_households
             WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
+              AND NOT EXISTS (SELECT 1 FROM mda_planned_settlements WHERE project_id = :pid LIMIT 1)
         )
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
@@ -3870,6 +3887,61 @@ async def mda_coverage_settlement(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mda/planned-settlements/summary
+#
+# Returns the planned-vs-reached counts at LGA, ward, and settlement grain
+# for the active round. Drives the "Planned vs Reached" tile on the Quality
+# Checks page. A settlement is "reached" when at least one household form
+# for the same project carries its admin5_code. A ward is "reached" when
+# any of its planned settlements is reached. Same for LGA.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/planned-settlements/summary")
+@cache_json("planned_settlements_summary")
+async def planned_settlements_summary(
+    pid: int = Depends(resolve_pid),
+    db: AsyncSession = Depends(get_db),
+    _u: Optional[User] = Depends(get_current_user_optional),
+):
+    """Planned / Reached rollup at LGA, ward, and settlement level."""
+    result = await db.execute(text("""
+        WITH visited AS (
+          -- The set of planned admin5_codes that have at least one household
+          -- form in mda_households for THIS project. One SELECT so we can reuse
+          -- it three times without hammering the join.
+          SELECT DISTINCT p.admin5_code, p.admin3_code, p.lga
+          FROM mda_planned_settlements p
+          WHERE p.project_id = :pid
+            AND EXISTS (
+              SELECT 1 FROM mda_households h
+              WHERE h.project_id = :pid AND h.admin5_code = p.admin5_code
+            )
+        )
+        SELECT
+          (SELECT COUNT(DISTINCT lga)         FROM mda_planned_settlements WHERE project_id = :pid) AS lga_planned,
+          (SELECT COUNT(DISTINCT lga)         FROM visited)                                          AS lga_reached,
+          (SELECT COUNT(DISTINCT admin3_code) FROM mda_planned_settlements WHERE project_id = :pid) AS ward_planned,
+          (SELECT COUNT(DISTINCT admin3_code) FROM visited)                                          AS ward_reached,
+          (SELECT COUNT(*)                    FROM mda_planned_settlements WHERE project_id = :pid) AS settlement_planned,
+          (SELECT COUNT(*)                    FROM visited)                                          AS settlement_reached
+    """), {"pid": pid})
+    row = result.fetchone()
+    def _pct(a, b): return round(100.0 * a / b, 1) if b else 0.0
+    lp, lr, wp, wr, sp, sr = row
+    return {
+        "lga_planned":         int(lp or 0),
+        "lga_reached":         int(lr or 0),
+        "lga_pct":             _pct(lr or 0, lp or 0),
+        "ward_planned":        int(wp or 0),
+        "ward_reached":        int(wr or 0),
+        "ward_pct":            _pct(wr or 0, wp or 0),
+        "settlement_planned":  int(sp or 0),
+        "settlement_reached":  int(sr or 0),
+        "settlement_pct":      _pct(sr or 0, sp or 0),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/mda/settlement-status/download
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -3879,28 +3951,42 @@ async def download_settlement_status(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """Download Excel file for the selected round: LGA, Ward, Settlement,
-    Visited (Yes/No), Completeness %. Admin/superadmin only."""
+    """Download Excel file for the selected round: LGA, Ward, Settlement, Status.
+
+    Grain: one row per planned settlement in ``mda_planned_settlements``.
+    Status is derived by matching the planned ``admin5_code`` against the
+    CommCare-entered ``admin5_code`` on ``mda_households``:
+
+        * "Visited"     - at least one household form for this project
+                          carries that admin5_code
+        * "Not Visited" - no household form carries that admin5_code
+
+    Match is by code, not by name - so a spelling drift on the settlement
+    label between the planning workbook and CommCare's dropdown can't
+    misclassify a row. Returns 0 rows if the planned list hasn't been
+    loaded for this project yet (run scripts/load_planned_settlements.py).
+    Admin/superadmin only.
+    """
     result = await db.execute(text("""
         SELECT
-            sa.lga_name,
-            sa.ward_name,
-            sa.settlement_name,
-            CASE WHEN sa.is_visited THEN 'Visited' ELSE 'Not Visited' END AS visit_status,
-            ROUND(sa.completeness_pct::numeric, 1) AS completeness_pct,
-            sa.visited_grids,
-            sa.total_grids,
-            sa.point_count
-        FROM settlement_analytics sa
-        WHERE sa.project_id = :pid
-        ORDER BY sa.lga_name, sa.ward_name, sa.settlement_name
+            p.lga,
+            p.ward_name,
+            p.settlement_name,
+            p.admin5_code AS settlement_code,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM mda_households h
+                WHERE h.project_id = p.project_id AND h.admin5_code = p.admin5_code
+            ) THEN 'Visited' ELSE 'Not Visited' END AS visit_status
+        FROM mda_planned_settlements p
+        WHERE p.project_id = :pid
+        ORDER BY p.lga, p.ward_name, p.settlement_name
     """), {"pid": pid})
     rows = result.fetchall()
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Settlement Status"
-    headers = ["LGA", "Ward", "Settlement", "Status", "Completeness %", "Grids Visited", "Total Grids", "GPS Points"]
+    headers = ["LGA name", "Ward name", "Settlement name", "Settlement code", "Status"]
     ws.append(headers)
 
     # Style header row
@@ -3914,10 +4000,11 @@ async def download_settlement_status(
 
     green_fill = PatternFill("solid", fgColor="DCFCE7")
     red_fill   = PatternFill("solid", fgColor="FEE2E2")
+    # Status is column 5 now (was 4 before the Settlement code column was added).
     for row_data in rows:
         ws.append(list(row_data))
         last_row = ws.max_row
-        status_cell = ws.cell(row=last_row, column=4)
+        status_cell = ws.cell(row=last_row, column=5)
         status_cell.fill = green_fill if status_cell.value == "Visited" else red_fill
 
     # Auto-width columns
