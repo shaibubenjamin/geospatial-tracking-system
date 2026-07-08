@@ -177,6 +177,23 @@ def main() -> None:
     print("Ensuring table + indexes exist...")
     cur.execute(DDL)
 
+    # The loader connects as the table owner (app_dev via the dev tunnel), so a
+    # freshly-created table is NOT readable by the live app role (app_prod) until
+    # explicitly granted. Without this, the geo endpoints + planned-vs-reached
+    # endpoints 500 in production ("permission denied for table
+    # mda_planned_settlements"). Grant read to app_prod here so it can never
+    # recur on a re-create or a new environment. Guarded so it's a no-op where
+    # the app_prod role doesn't exist (e.g. a local-only dev DB).
+    print("Granting SELECT to app_prod (if the role exists)...")
+    cur.execute("""
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_prod') THEN
+            GRANT SELECT ON mda_planned_settlements TO app_prod;
+          END IF;
+        END $$;
+    """)
+
     print(f"Upserting {len(rows):,} rows...")
     payload = [(args.project_id, lga, ward, a3, sett, a5)
                for (lga, ward, a3, sett, a5) in rows]
