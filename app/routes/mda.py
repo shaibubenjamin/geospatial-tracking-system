@@ -1949,14 +1949,27 @@ async def mda_overview(
         if proj_row[0]:
             today = proj_row[2]
             raw_day = (today - proj_row[0]).days + 1
+            dur = d.get("planned_duration_days")
             if raw_day < 1:
-                d["current_campaign_day"] = 0  # campaign hasn't started yet
-            elif d.get("planned_duration_days"):
-                d["current_campaign_day"] = min(raw_day, d["planned_duration_days"])
+                # Campaign hasn't started yet.
+                d["current_campaign_day"] = 0
+                d["campaign_phase"] = "not_started"
+                d["mop_up_day"] = 0
+            elif dur and raw_day > dur:
+                # Past the planned window → MOP-UP. The day counter stays pinned
+                # to the last campaign day (so it never reads "Day N+1"); the
+                # calendar days beyond the window are counted as mop-up days.
+                d["current_campaign_day"] = dur
+                d["campaign_phase"] = "mop_up"
+                d["mop_up_day"] = raw_day - dur
             else:
                 d["current_campaign_day"] = raw_day
+                d["campaign_phase"] = "active"
+                d["mop_up_day"] = 0
         else:
             d["current_campaign_day"] = None
+            d["campaign_phase"] = None
+            d["mop_up_day"] = 0
 
     # Forms-target estimator. The dashboard's "Forms Submitted vs Target"
     # column chart needs a campaign-wide target form count. We derive it
@@ -2458,29 +2471,53 @@ async def coverage_refusals_analysis(
     lgas = allowed_lgas_of(_u)
     params_r: dict = {"pid": pid}
     lga_h = _lga_and(lgas, "h.lga", params_r)  # each round sub-query is on mda_households h
+    # Single grouped pass instead of 4 correlated subqueries per project. The
+    # old form full-scanned households 3x and individuals 1x FOR EACH project in
+    # the state (with a per-row tz conversion recomputed every time) → ~76s and
+    # blowing the statement_timeout. This computes the Lagos-date window once per
+    # row, aggregates households in one scan (FILTER) and individuals in one
+    # scan, then joins back to the round list → ~29s, identical results.
     rounds_res = await db.execute(text(f"""
+        WITH proj AS (
+          SELECT id, round_number, campaign_start_date
+          FROM geo_projects
+          WHERE state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)
+        ),
+        hh AS (
+          SELECT project_id,
+            COUNT(*) FILTER (WHERE in_window)                      AS total_forms,
+            COUNT(*) FILTER (WHERE in_window AND flag_refusal)     AS refusals,
+            COUNT(*) FILTER (WHERE in_window AND NOT flag_refusal) AS consenting_households
+          FROM (
+            SELECT h.project_id, h.flag_refusal,
+                   ((h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
+                     >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS in_window
+            FROM mda_households h
+            JOIN proj p ON p.id = h.project_id
+            WHERE TRUE{lga_h}
+          ) s
+          GROUP BY project_id
+        ),
+        ind AS (
+          SELECT h.project_id, COUNT(*) AS consenting_individuals
+          FROM mda_individuals i
+          JOIN mda_households h ON h.formid = i.hh_formid AND h.project_id = i.project_id
+          JOIN proj p ON p.id = h.project_id
+          WHERE NOT h.flag_refusal{lga_h}
+            AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
+                >= COALESCE(p.campaign_start_date, '1900-01-01'::date)
+          GROUP BY h.project_id
+        )
         SELECT
           p.id, p.round_number,
           (p.id = :pid) AS is_selected,
-          (SELECT COUNT(*) FROM mda_households h
-             WHERE h.project_id = p.id{lga_h}
-               AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-                   >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS total_forms,
-          (SELECT COUNT(*) FROM mda_households h
-             WHERE h.project_id = p.id AND h.flag_refusal{lga_h}
-               AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-                   >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS refusals,
-          (SELECT COUNT(*) FROM mda_individuals i
-              JOIN mda_households h ON h.formid = i.hh_formid AND h.project_id = i.project_id
-              WHERE h.project_id = p.id AND NOT h.flag_refusal{lga_h}
-                AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-                    >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS consenting_individuals,
-          (SELECT COUNT(*) FROM mda_households h
-             WHERE h.project_id = p.id AND NOT h.flag_refusal{lga_h}
-               AND (h.received_on AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date
-                   >= COALESCE(p.campaign_start_date, '1900-01-01'::date)) AS consenting_households
-        FROM geo_projects p
-        WHERE p.state_name = (SELECT state_name FROM geo_projects WHERE id = :pid)
+          COALESCE(hh.total_forms, 0)             AS total_forms,
+          COALESCE(hh.refusals, 0)                AS refusals,
+          COALESCE(ind.consenting_individuals, 0) AS consenting_individuals,
+          COALESCE(hh.consenting_households, 0)   AS consenting_households
+        FROM proj p
+        LEFT JOIN hh  ON hh.project_id  = p.id
+        LEFT JOIN ind ON ind.project_id = p.id
         ORDER BY p.round_number NULLS LAST, p.id
     """), params_r)
     rounds_rows = []
