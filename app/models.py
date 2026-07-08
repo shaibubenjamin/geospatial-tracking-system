@@ -282,6 +282,36 @@ class MdaBaseline(Base):
     uploaded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class MdaPlannedSettlement(Base):
+    """Authoritative list of settlements a campaign plans to visit.
+
+    One row per (project_id, admin5_code). Loaded from the operator's
+    planning workbook. The Settlement Visit Status report LEFT JOINs
+    this table against ``mda_households`` on ``admin5_code`` to produce
+    the Visited / Not Visited column - a settlement is "Visited" when
+    at least one household form in ``mda_households`` for the same
+    project carries that admin5_code.
+
+    admin3_code / admin5_code come from CommCare's village_location
+    dropdown UUIDs (form village_location ward_name admin3_code and
+    form village_location settlement_name admin5_code), so the match
+    is code-based rather than name-based - no spelling drift.
+    """
+    __tablename__ = "mda_planned_settlements"
+    __table_args__ = (
+        UniqueConstraint("project_id", "admin5_code", name="uq_planned_settlement_project_code"),
+    )
+
+    id               = Column(Integer, primary_key=True)
+    project_id       = Column(Integer, ForeignKey("geo_projects.id"), index=True, nullable=False)
+    lga              = Column(Text, index=True)          # form village_location admin2
+    ward_name        = Column(Text)                       # form village_location ward_name admin3
+    admin3_code      = Column(Text, index=True)           # form village_location ward_name admin3_code
+    settlement_name  = Column(Text)                       # form village_location settlement_name admin5
+    admin5_code      = Column(Text, index=True, nullable=False)  # form village_location settlement_name admin5_code
+    uploaded_at      = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class MdaIndividual(Base):
     __tablename__ = "mda_individuals"
 
