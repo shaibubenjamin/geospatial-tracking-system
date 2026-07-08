@@ -207,8 +207,32 @@ async def sync_health(
             "minutes_since_last_success": round(float(r.mins_since_success), 1) if r.mins_since_success is not None else None,
             "last_error": r.error_message,
         })
+    # DB responsiveness probe — rising query_ms is an early warning of DB
+    # slowness / pool pressure (the root of today's cascades). If the DB were
+    # fully saturated this endpoint would itself slow past the monitor's HTTP
+    # timeout, which the watchdog also treats as an alert.
+    import time as _time
+    db_ok, db_ms, db_err = True, None, None
+    try:
+        _t0 = _time.monotonic()
+        await db.execute(text("SELECT 1"))
+        db_ms = round((_time.monotonic() - _t0) * 1000)
+    except Exception as e:  # noqa: BLE001
+        db_ok, db_err = False, str(e)[:120]
+
+    # Recent 5xx errors — the shared signal behind download timeouts, the APK
+    # cascade, endpoint 500s. > threshold in the window => platform is degraded.
+    from app.services import health_metrics
+    errors = health_metrics.summary()
+    ERROR_SPIKE_THRESHOLD = 5
+    errors_ok = errors["count"] <= ERROR_SPIKE_THRESHOLD
+
+    healthy = db_ok and errors_ok and not any(p["status"] == "error" for p in projects)
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
+        "healthy": healthy,
+        "database": {"ok": db_ok, "query_ms": db_ms, **({"error": db_err} if db_err else {})},
+        "errors_5xx": {"ok": errors_ok, "threshold": ERROR_SPIKE_THRESHOLD, **errors},
         "any_error": any(p["status"] == "error" for p in projects),
         "projects": projects,
     }

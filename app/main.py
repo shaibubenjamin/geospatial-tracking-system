@@ -450,12 +450,24 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
-# Tag every request with a correlation ID so logs can be threaded.
+# Tag every request with a correlation ID so logs can be threaded. Also record
+# 5xx responses / unhandled errors into the rolling health metric so the external
+# watchdog (n8n via /api/sync/health) can alert on error spikes — the shared
+# signal behind every incident (slow query -> statement_timeout, pool
+# saturation, endpoint 500, app cascade).
 @app.middleware("http")
 async def add_request_id(request, call_next):
     import uuid
+    from app.services import health_metrics
     rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Unhandled error → will surface to the client as a 500; count it.
+        health_metrics.record_error(request.method, request.url.path, 500)
+        raise
+    if response.status_code >= 500:
+        health_metrics.record_error(request.method, request.url.path, response.status_code)
     response.headers["X-Request-ID"] = rid
     return response
 
