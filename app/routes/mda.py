@@ -2471,6 +2471,12 @@ async def coverage_refusals_analysis(
     lgas = allowed_lgas_of(_u)
     params_r: dict = {"pid": pid}
     lga_h = _lga_and(lgas, "h.lga", params_r)  # each round sub-query is on mda_households h
+    # This is an inherently heavy analytical scan (whole state's households +
+    # individuals): ~29s in isolation but 40s+ cold under live load, which brushes
+    # the global 45s statement_timeout and occasionally 500s the first hit. It's
+    # cached (300s) + single-flight, so at most ONE cold compute runs per window
+    # and it can't stampede — so give just this transaction a longer ceiling.
+    await db.execute(text("SET LOCAL statement_timeout = '90000'"))
     # Single grouped pass instead of 4 correlated subqueries per project. The
     # old form full-scanned households 3x and individuals 1x FOR EACH project in
     # the state (with a per-row tz conversion recomputed every time) → ~76s and
