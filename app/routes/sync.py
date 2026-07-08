@@ -4,7 +4,7 @@ All endpoints are superadmin-only. Passwords are encrypted at rest using
 ``app.services.crypto`` (Fernet) and never returned by the GET endpoint.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -144,6 +144,74 @@ async def get_config(
         auto_sync_enabled=bool(getattr(cfg, "auto_sync_enabled", False)),
         auto_sync_interval_minutes=int(getattr(cfg, "auto_sync_interval_minutes", 60) or 60),
     )
+
+
+@router.get("/health")
+async def sync_health(
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public, credential-free sync-health probe for external monitors (n8n etc.).
+
+    Per project it reports the latest sync's status and how long since the last
+    SUCCESSFUL sync, so a watchdog can alert on failures or staleness WITHOUT
+    holding any platform secret. Deliberately public + read-only: it exposes only
+    sync metadata (status + timestamps), never campaign data or PII. Optional
+    ``?project_id=`` narrows to one project.
+
+    Response shape (stable for the monitor):
+        {
+          "checked_at": ISO8601,
+          "any_error": bool,                # any project's latest run errored
+          "projects": [ {
+              "project_id", "name", "status",          # ok | running | error
+              "last_started_at", "last_ended_at",
+              "last_success_at",
+              "minutes_since_last_success",            # null if never succeeded
+              "last_error"
+          } ]
+        }
+    """
+    result = await db.execute(text("""
+        WITH latest AS (
+          SELECT DISTINCT ON (project_id)
+                 project_id, status, started_at, ended_at, error_message
+          FROM sync_history
+          ORDER BY project_id, id DESC
+        ),
+        last_ok AS (
+          SELECT project_id, MAX(ended_at) AS last_success_at
+          FROM sync_history
+          WHERE status = 'ok'
+          GROUP BY project_id
+        )
+        SELECT l.project_id, p.name, l.status, l.started_at, l.ended_at,
+               l.error_message, o.last_success_at,
+               EXTRACT(EPOCH FROM (NOW() - o.last_success_at)) / 60.0 AS mins_since_success
+        FROM latest l
+        LEFT JOIN last_ok o USING (project_id)
+        LEFT JOIN geo_projects p ON p.id = l.project_id
+        ORDER BY l.project_id
+    """))
+    projects = []
+    for r in result.fetchall():
+        if project_id is not None and r.project_id != project_id:
+            continue
+        projects.append({
+            "project_id": r.project_id,
+            "name": r.name,
+            "status": r.status,
+            "last_started_at": r.started_at.isoformat() if r.started_at else None,
+            "last_ended_at": r.ended_at.isoformat() if r.ended_at else None,
+            "last_success_at": r.last_success_at.isoformat() if r.last_success_at else None,
+            "minutes_since_last_success": round(float(r.mins_since_success), 1) if r.mins_since_success is not None else None,
+            "last_error": r.error_message,
+        })
+    return {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "any_error": any(p["status"] == "error" for p in projects),
+        "projects": projects,
+    }
 
 
 @router.get("/history")

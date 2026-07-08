@@ -546,6 +546,7 @@ _PROTECTED_PREFIXES = (
 _PUBLIC_GET_PATHS: set[str] = {
     # Always-public utility endpoints
     "/api/health",
+    "/api/sync/health",  # credential-free sync watchdog probe (external monitors, e.g. n8n)
     "/api/mda/landing-stats",
     # Campaign-level summaries
     "/api/mda/overview",
