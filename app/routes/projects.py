@@ -224,6 +224,9 @@ async def start_campaign(
     project.show_on_dashboard = True
     # Starting (or restarting) clears any prior pause so the round is Running.
     project.campaign_paused = False
+    # Reopen: starting also clears the ended flag (a round mis-ended, or a new
+    # round reusing the record, reads Running again — not Ended).
+    project.campaign_ended = False
     await db.execute(
         text("UPDATE geo_projects SET is_active = FALSE WHERE id != :pid").bindparams(pid=project_id)
     )
@@ -239,17 +242,22 @@ async def end_campaign(
     db: AsyncSession = Depends(get_db),
     _super: User = Depends(require_superadmin),
 ):
-    """End a round's campaign.
+    """End a round's campaign — the explicit wrap-up.
 
-    Stamps today as the end date. Auto-sync stops because the round is no longer
-    in the running window. The round stays on the dashboard so results remain
-    viewable after the round wraps up.
+    Sets ``campaign_ended = True``. This is what actually finishes the round: it
+    stops mop-up, hides the round from the field app, and the dashboard reads
+    "Ended". It is DISTINCT from ``campaign_end_date`` (the planned window end):
+    once the planned end passes the round is in MOP-UP (still visible + ingesting)
+    and only THIS action ends it. If no planned end was ever set we stamp today
+    so the record has one, but we never overwrite an existing planned end.
     """
     result = await db.execute(select(GeoProject).where(GeoProject.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    project.campaign_end_date = date.today()
+    project.campaign_ended = True
+    if project.campaign_end_date is None:
+        project.campaign_end_date = date.today()
     await db.commit()
     await db.refresh(project)
     return project

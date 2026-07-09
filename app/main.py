@@ -87,6 +87,10 @@ async def lifespan(app: FastAPI):
             # Phase 4a — state + round on geo_projects, project_id on MDA tables
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS state_name TEXT",
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS round_number INTEGER",
+            # Explicit "campaign wrapped up" flag, separate from campaign_end_date
+            # (which is only the planned window end). After the planned end the
+            # round enters mop-up and stays visible/ingesting until this is set.
+            "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS campaign_ended BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE mda_households ADD COLUMN IF NOT EXISTS project_id INTEGER",
             "ALTER TABLE mda_individuals ADD COLUMN IF NOT EXISTS project_id INTEGER",
             "ALTER TABLE mda_baseline ADD COLUMN IF NOT EXISTS project_id INTEGER",

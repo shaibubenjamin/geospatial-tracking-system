@@ -94,6 +94,7 @@ class ProjectOut(BaseModel):
     campaign_start_date: Optional[date] = None
     campaign_end_date: Optional[date] = None
     campaign_paused: bool = False
+    campaign_ended: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
