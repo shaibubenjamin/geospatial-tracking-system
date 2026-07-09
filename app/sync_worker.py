@@ -173,7 +173,12 @@ async def _scheduler_tick() -> None:
             WHERE sc.auto_sync_enabled = TRUE
               AND gp.campaign_start_date IS NOT NULL
               AND gp.campaign_start_date <= CURRENT_DATE
-              AND (gp.campaign_end_date IS NULL OR gp.campaign_end_date >= CURRENT_DATE)
+              -- Keep auto-syncing through MOP-UP: a passed campaign_end_date only
+              -- means the planned window closed, NOT that the round is done. Data
+              -- is still collected until an admin explicitly ends it, so gate on
+              -- campaign_ended, not the end date. (Gating on end_date here stopped
+              -- pulling mop-up submissions the day after the planned end.)
+              AND NOT COALESCE(gp.campaign_ended, FALSE)
               AND NOT COALESCE(gp.campaign_paused, FALSE)
         """))).mappings().all()
 
