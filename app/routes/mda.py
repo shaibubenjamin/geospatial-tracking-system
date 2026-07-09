@@ -1935,13 +1935,15 @@ async def mda_overview(
     # submission days) is preserved for callers that still want it.
     proj_res = await db.execute(text("""
         SELECT campaign_start_date, campaign_end_date,
-               (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS today_lagos
+               (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Lagos')::date AS today_lagos,
+               COALESCE(campaign_ended, FALSE) AS campaign_ended
         FROM geo_projects WHERE id = :pid
     """), {"pid": pid})
     proj_row = proj_res.fetchone()
     if proj_row:
         d["planned_start_date"] = proj_row[0].isoformat() if proj_row[0] else None
         d["planned_end_date"]   = proj_row[1].isoformat() if proj_row[1] else None
+        d["campaign_ended"]     = bool(proj_row[3])
         if proj_row[0] and proj_row[1]:
             d["planned_duration_days"] = (proj_row[1] - proj_row[0]).days + 1
         else:
@@ -1950,15 +1952,22 @@ async def mda_overview(
             today = proj_row[2]
             raw_day = (today - proj_row[0]).days + 1
             dur = d.get("planned_duration_days")
-            if raw_day < 1:
+            if proj_row[3]:
+                # Admin has explicitly ended the round. Pin the counter to the
+                # last planned day; the round reads "Ended".
+                d["current_campaign_day"] = dur if dur else raw_day
+                d["campaign_phase"] = "ended"
+                d["mop_up_day"] = max(0, raw_day - dur) if dur else 0
+            elif raw_day < 1:
                 # Campaign hasn't started yet.
                 d["current_campaign_day"] = 0
                 d["campaign_phase"] = "not_started"
                 d["mop_up_day"] = 0
             elif dur and raw_day > dur:
-                # Past the planned window → MOP-UP. The day counter stays pinned
-                # to the last campaign day (so it never reads "Day N+1"); the
-                # calendar days beyond the window are counted as mop-up days.
+                # Past the planned window but NOT ended → MOP-UP. Still visible,
+                # still ingesting. Day counter pinned to the last campaign day
+                # (never "Day N+1"); calendar days beyond the window count as
+                # mop-up days.
                 d["current_campaign_day"] = dur
                 d["campaign_phase"] = "mop_up"
                 d["mop_up_day"] = raw_day - dur

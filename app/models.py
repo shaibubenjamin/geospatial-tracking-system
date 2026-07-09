@@ -39,6 +39,14 @@ class GeoProject(Base):
     # still in-window (start reached, not ended) but auto-sync stops and it
     # reads "Paused" instead of "live". Cleared on Resume. Distinct from End.
     campaign_paused = Column(Boolean, default=False)
+    # Explicit "the campaign is finished" flag, set by the admin End button —
+    # SEPARATE from campaign_end_date. campaign_end_date is the PLANNED window end
+    # (drives the Day-N counter and when mop-up begins); campaign_ended is whether
+    # the round has actually been wrapped up. After the planned end passes, the
+    # round enters MOP-UP: it stays visible in the field app and keeps ingesting
+    # data until an admin toggles campaign_ended. Only then is it hidden from the
+    # field app and shown as "Ended".
+    campaign_ended = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     lgas = relationship("LGA", back_populates="project", cascade="all, delete-orphan")

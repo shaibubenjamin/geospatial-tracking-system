@@ -74,7 +74,7 @@
     // ── OVERVIEW ─────────────────────────────────────────────────────────────
     RENDER.overview=function(){ Promise.all([cget('/api/app/overview'+q), cget('/api/app/trends/daily'+q).catch(function(){return[];})])
       .then(function(r){ var d=r[0]||{},daily=r[1]||[]; var cov=+d.coverage_pct||0;
-        var day=(d.current_campaign_day!=null)?(d.planned_duration_days!=null?d.current_campaign_day+' / '+d.planned_duration_days:String(d.current_campaign_day)):'-';
+        var day=(d.campaign_phase==='mop_up')?('Mop-Up'+(d.mop_up_day?' d'+d.mop_up_day:'')):(d.campaign_phase==='ended')?'Ended':((d.current_campaign_day!=null)?(d.planned_duration_days!=null?d.current_campaign_day+' / '+d.planned_duration_days:String(d.current_campaign_day)):'-');
         var avg=d.teams_active>0?Math.round(d.total_forms/d.teams_active):'-';
         var ks=[['Children treated',fmt(d.total_treated)],['Forms submitted',fmt(d.total_forms)],['Teams active',fmt(d.teams_active)],
           ['LGAs covered',String(d.lgas_covered||0)],['Campaign day',day],['Campaign duration',(d.planned_duration_days!=null?d.planned_duration_days+' days':'-')],
@@ -98,7 +98,7 @@
       .then(function(r){ var d=r[0]||{}, rows=(r[1]||[]).slice().sort(function(a,b){return b.coverage_pct-a.coverage_pct;});
         var good=rows.filter(function(l){return l.coverage_pct>=80;}).length, below=rows.filter(function(l){return l.coverage_pct<60;}).length;
         W.innerHTML='<div class="grid">'+kpi('Overall coverage',pc(d.coverage_pct)+'%')+kpi('Baseline target',fmt(d.baseline_total))+kpi('Treated',fmt(d.total_treated))+
-          kpi('LGAs ≥80%',good+' / '+rows.length)+kpi('LGAs <60%',below+' / '+rows.length)+kpi('Campaign day',(d.current_campaign_day||'-'))+'</div>'+
+          kpi('LGAs ≥80%',good+' / '+rows.length)+kpi('LGAs <60%',below+' / '+rows.length)+kpi('Campaign day',(d.campaign_phase==='mop_up'?'Mop-Up':d.campaign_phase==='ended'?'Ended':(d.current_campaign_day||'-')))+'</div>'+
           '<div class="card"><h3>Treatment coverage by LGA</h3><div class="csub">Treated ÷ baseline · sorted</div><div id="lgalist"></div></div>';
         var L=document.getElementById('lgalist');
         L.innerHTML=rows.map(function(l){var c=covColor(l.coverage_pct),w=Math.max(0,Math.min(100,l.coverage_pct));

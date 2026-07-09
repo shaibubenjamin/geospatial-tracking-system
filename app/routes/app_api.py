@@ -73,8 +73,13 @@ async def app_projects(
         from datetime import date as _date
         _t = _date.today()
         def _in_window(p):
-            s, e = p.campaign_start_date, p.campaign_end_date
-            return bool(s and s <= _t and (e is None or e >= _t))
+            # Visible while running OR in mop-up: started and not explicitly
+            # ended by an admin. A PASSED campaign_end_date only means mop-up
+            # (still collecting) — NOT hidden. Keying off campaign_end_date here
+            # was hiding the live round from field users the day after its planned
+            # end, even though mop-up data was still coming in.
+            s = p.campaign_start_date
+            return bool(s and s <= _t and not bool(getattr(p, "campaign_ended", False)))
         projects = [p for p in projects if _in_window(p)]
     return [
         {
