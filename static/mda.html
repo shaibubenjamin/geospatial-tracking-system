@@ -5102,7 +5102,7 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     // so ward borders read cleanly at every zoom. 2.5 px width + 1.0 opacity
     // for a bolder line that survives the state-wide zoom-out.
     geoMap.addLayer({ id: 'ward-line', type: 'line', source: 'ward-src', minzoom: 8, maxzoom: 13,
-      paint: { 'line-color': '#7c3aed', 'line-width': 2.5, 'line-opacity': 1.0 } });
+      paint: { 'line-color': '#7c3aed', 'line-width': 2.2, 'line-opacity': 1.0 } });
     geoMap.addLayer({ id: 'ward-label', type: 'symbol', source: 'ward-src', minzoom: 9, maxzoom: 12,
       layout: { 'text-field': ['get', 'ward_name'], 'text-size': 9, 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'] },
       paint: { 'text-color': '#78350f', 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 } });

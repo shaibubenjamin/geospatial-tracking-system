@@ -302,8 +302,56 @@ async def get_settlement_geojson(
         project_id, db, "s.geom", params, boundary_pid=boundary_pid,
     )
 
+    # Second-stage clip: even after the centroid filter above drops settlements
+    # WHOLLY inside a hollow LGA, ~111 Kano-R3 settlements have their centroid
+    # just inside a planned LGA but their polygon edge crosses the boundary and
+    # spills into a neighbouring hollow LGA. That leaves a thin fringe of
+    # green/red painting inside the hollow LGA on the map.
+    #
+    # Approach: compute the union of the HOLLOW LGA polygons (8-9 for Kano R3
+    # vs 36 planned - materially cheaper), then use ST_Difference to subtract
+    # any spillover for settlements that actually touch the hollow area. A
+    # ``ST_Intersects`` fast-path lets settlements not near any hollow LGA
+    # (~99% of them) skip the expensive Difference call entirely.
+    #
+    # ST_CollectionExtract(..., 3) keeps only polygon geometry so a shared
+    # edge coming back as a LineString/Point doesn't slip into the
+    # FeatureCollection.
+    #
+    # Skipped entirely when the project has no in-scope list (fallback shape
+    # for projects without a hardcoded scope).
+    from app.services.project_scope import in_scope_lgas_for
+    _proj_row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :pid"),
+        {"pid": project_id},
+    )).fetchone()
+    _scope = in_scope_lgas_for(_proj_row[0], _proj_row[1]) if _proj_row else None
+    if _scope:
+        clip_cte = (
+            "WITH hollow_area AS ("
+            "  SELECT ST_Union(l.geom) AS geom FROM lgas l"
+            "   WHERE l.project_id = :camp_boundary_pid"
+            "     AND NOT (lower(trim(l.lga_name)) = ANY(:camp_scope))"
+            ") "
+        )
+        # Uses the same :camp_boundary_pid + :camp_scope params that
+        # _campaign_scope_spatial_and just bound - no rebinding needed.
+        geom_expr = (
+            " CASE WHEN ST_Intersects(s.geom, (SELECT geom FROM hollow_area))"
+            "      THEN ST_CollectionExtract("
+            "             ST_Difference(s.geom, (SELECT geom FROM hollow_area)),"
+            "             3"
+            "           )"
+            "      ELSE s.geom"
+            " END "
+        )
+    else:
+        clip_cte = ""
+        geom_expr = "s.geom"
+
     result = await db.execute(
         text(f"""
+            {clip_cte}
             SELECT
                 s.id,
                 s.unique_cod,
@@ -313,7 +361,7 @@ async def get_settlement_geojson(
                 s.lga_name,
                 s.ward_name,
                 ST_AsGeoJSON(
-                    ST_SimplifyPreserveTopology(s.geom, :simplify_tol),
+                    ST_SimplifyPreserveTopology({geom_expr}, :simplify_tol),
                     {GEOJSON_PRECISION}
                 )::json AS geometry,
                 COALESCE(sa.total_grids, 0) AS total_grids,
