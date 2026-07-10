@@ -75,7 +75,7 @@ async def _campaign_scope_and(project_id: int, db: AsyncSession, col: str,
     """SQL fragment restricting a boundary query to the round's in-scope campaign
     LGAs (``project_scope``). Returns '' when the project has no in-scope set, so
     states/rounds without a planned-LGA list are unaffected. This keeps
-    non-campaign LGAs completely empty on the map — no stray settlements, wards or
+    non-campaign LGAs completely empty on the map - no stray settlements, wards or
     points rendered inside an LGA that isn't part of the round (e.g. Sumaila for
     Kano R3, which is greyed out at LGA level)."""
     from app.services.project_scope import in_scope_lgas_for
@@ -88,6 +88,48 @@ async def _campaign_scope_and(project_id: int, db: AsyncSession, col: str,
         return ""
     params[key] = [n.strip().lower() for n in scope]
     return f" AND lower(trim({col})) = ANY(:{key})"
+
+
+async def _campaign_scope_spatial_and(
+    project_id: int,
+    db: AsyncSession,
+    geom_col: str,
+    params: Dict[str, Any],
+    key: str = "camp_scope",
+    boundary_pid: Optional[int] = None,
+) -> str:
+    """Same intent as ``_campaign_scope_and`` but SPATIAL: only rows whose
+    ``ST_Centroid(geom_col)`` sits inside an in-scope LGA polygon come through.
+
+    Motivation: the Kano-R3 boundary GeoJSON has ~780 settlement polygons whose
+    ``lga_name`` label points at a planned LGA (e.g. "Rano", "Garko",
+    "Tudun Wada") but whose geometry actually sits inside a neighbouring
+    non-planned LGA (Kibiya, Sumaila, Bagwai, ...). A name-based filter passes
+    those through, and the map draws them inside "hollow" LGAs. A spatial
+    filter refuses them regardless of any label drift in the source GeoJSON.
+
+    Returns '' when the project has no in-scope set.
+    """
+    from app.services.project_scope import in_scope_lgas_for
+    row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :pid"),
+        {"pid": project_id},
+    )).fetchone()
+    scope = in_scope_lgas_for(row[0], row[1]) if row else None
+    if not scope:
+        return ""
+    params[key] = [n.strip().lower() for n in scope]
+    if boundary_pid is None:
+        boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params["camp_boundary_pid"] = boundary_pid
+    return (
+        f" AND EXISTS ("
+        f"  SELECT 1 FROM lgas _camp_l"
+        f"   WHERE _camp_l.project_id = :camp_boundary_pid"
+        f"     AND lower(trim(_camp_l.lga_name)) = ANY(:{key})"
+        f"     AND ST_Within(ST_Centroid({geom_col}), _camp_l.geom)"
+        f")"
+    )
 
 
 async def get_lga_geojson(project_id: int, db: AsyncSession, allowed_lgas: Optional[set] = None) -> Dict[str, Any]:
@@ -167,7 +209,11 @@ async def get_ward_geojson(
         where_extra = "AND w.lgacode = :lgacode"
         params["lgacode"] = lgacode
     where_extra += _scope_lga_names(allowed_lgas, "w.lga_name", params)
-    where_extra += await _campaign_scope_and(project_id, db, "w.lga_name", params)
+    # Spatial scope for the same reason as get_settlement_geojson: name-based
+    # filtering would let border-mislabelled wards slip inside hollow LGAs.
+    where_extra += await _campaign_scope_spatial_and(
+        project_id, db, "w.geom", params, boundary_pid=boundary_pid,
+    )
 
     # Ward metrics use the same "visited = ≥1 GPS point" rule and per-settlement
     # capped completeness (≥70 → 100). Ward completeness is mean of those caps.
@@ -248,10 +294,64 @@ async def get_settlement_geojson(
 
     where_extra = ("AND " + " AND ".join(filters)) if filters else ""
     where_extra += _scope_lga_names(allowed_lgas, "s.lga_name", params)
-    where_extra += await _campaign_scope_and(project_id, db, "s.lga_name", params)
+    # SPATIAL scope, not name-based: keeps ~780 border-mislabelled settlements
+    # (labelled with a planned LGA name but polygon inside a hollow LGA) from
+    # painting inside supposedly-empty LGAs on the map. See
+    # _campaign_scope_spatial_and for full rationale.
+    where_extra += await _campaign_scope_spatial_and(
+        project_id, db, "s.geom", params, boundary_pid=boundary_pid,
+    )
+
+    # Second-stage clip: even after the centroid filter above drops settlements
+    # WHOLLY inside a hollow LGA, ~111 Kano-R3 settlements have their centroid
+    # just inside a planned LGA but their polygon edge crosses the boundary and
+    # spills into a neighbouring hollow LGA. That leaves a thin fringe of
+    # green/red painting inside the hollow LGA on the map.
+    #
+    # Approach: compute the union of the HOLLOW LGA polygons (8-9 for Kano R3
+    # vs 36 planned - materially cheaper), then use ST_Difference to subtract
+    # any spillover for settlements that actually touch the hollow area. A
+    # ``ST_Intersects`` fast-path lets settlements not near any hollow LGA
+    # (~99% of them) skip the expensive Difference call entirely.
+    #
+    # ST_CollectionExtract(..., 3) keeps only polygon geometry so a shared
+    # edge coming back as a LineString/Point doesn't slip into the
+    # FeatureCollection.
+    #
+    # Skipped entirely when the project has no in-scope list (fallback shape
+    # for projects without a hardcoded scope).
+    from app.services.project_scope import in_scope_lgas_for
+    _proj_row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :pid"),
+        {"pid": project_id},
+    )).fetchone()
+    _scope = in_scope_lgas_for(_proj_row[0], _proj_row[1]) if _proj_row else None
+    if _scope:
+        clip_cte = (
+            "WITH hollow_area AS ("
+            "  SELECT ST_Union(l.geom) AS geom FROM lgas l"
+            "   WHERE l.project_id = :camp_boundary_pid"
+            "     AND NOT (lower(trim(l.lga_name)) = ANY(:camp_scope))"
+            ") "
+        )
+        # Uses the same :camp_boundary_pid + :camp_scope params that
+        # _campaign_scope_spatial_and just bound - no rebinding needed.
+        geom_expr = (
+            " CASE WHEN ST_Intersects(s.geom, (SELECT geom FROM hollow_area))"
+            "      THEN ST_CollectionExtract("
+            "             ST_Difference(s.geom, (SELECT geom FROM hollow_area)),"
+            "             3"
+            "           )"
+            "      ELSE s.geom"
+            " END "
+        )
+    else:
+        clip_cte = ""
+        geom_expr = "s.geom"
 
     result = await db.execute(
         text(f"""
+            {clip_cte}
             SELECT
                 s.id,
                 s.unique_cod,
@@ -261,7 +361,7 @@ async def get_settlement_geojson(
                 s.lga_name,
                 s.ward_name,
                 ST_AsGeoJSON(
-                    ST_SimplifyPreserveTopology(s.geom, :simplify_tol),
+                    ST_SimplifyPreserveTopology({geom_expr}, :simplify_tol),
                     {GEOJSON_PRECISION}
                 )::json AS geometry,
                 COALESCE(sa.total_grids, 0) AS total_grids,
@@ -532,14 +632,36 @@ async def compute_settlement_analytics(
     db: AsyncSession,
 ) -> int:
     """
-    Recompute settlement_analytics using MDA household GPS points (mda_households.geom).
+    Recompute ``settlement_analytics`` using MDA household GPS points (``mda_households.geom``).
 
-    - Visited grid  = grid cell that contains ≥1 mda_household point (ST_Within)
-    - Completeness  = visited_grids / total_grids × 100
-    - is_visited    = completeness_pct >= VISIT_THRESHOLD_PCT (70%)
-                      The map still renders each grid cell's individual green/red status.
+    - **Visited grid**  = grid cell that contains >=1 mda_household point (``ST_Within``)
+    - **Completeness** = ``visited_grids / total_grids * 100``
+    - **point_count**   = total household points sitting inside the settlement polygon
+    - **is_visited**    = ``completeness_pct >= VISIT_THRESHOLD_PCT (70%)`` OR
+                          any household point falls inside the settlement polygon
+                          (the latter catches settlements with no grids at all).
 
-    If unique_cods is None, recompute ALL settlements.
+    If ``unique_cods`` is ``None``, recompute ALL settlements.
+
+    Invariant this SQL enforces
+    ---------------------------
+    Grid cells are a subset of the settlement polygon, so if any grid inside a
+    settlement is "visited" then at least one household point must also sit
+    inside the settlement polygon. In other words, ``completeness_pct > 0``
+    implies ``point_count > 0``.
+
+    The previous shape violated this in ~1,346 Kano R3 rows (grids visited but
+    ``point_count = 0``). Root cause: the two metrics were computed by two
+    independent subquery paths - one an ``EXISTS`` correlated on ``g.geom``,
+    the other a scalar ``COUNT(*)`` correlated on ``s.geom``. Under bulk
+    ``mda_households`` writes, Postgres's spatial index on ``h.geom`` could
+    return inconsistent row-sets across the two evaluations, leaving grids
+    ticked but ``point_count`` at 0.
+
+    Fix: pre-aggregate both metrics per settlement via two ``LATERAL`` joins
+    that both share the same driving predicate (``h.project_id = s.project_id``).
+    Both come from the same top-level scan of the settlement, so they can no
+    longer disagree.
     """
     params: Dict[str, Any] = {"project_id": project_id,
                                "visit_threshold": VISIT_THRESHOLD_PCT}
@@ -557,64 +679,54 @@ async def compute_settlement_analytics(
                is_visited, point_count, last_computed)
             SELECT
                 s.project_id,
-                s.id                 AS settlement_id,
+                s.id                                     AS settlement_id,
                 s.unique_cod,
                 s.lgacode,
                 s.wardcode,
                 s.settlement_name,
                 s.lga_name,
                 s.ward_name,
-                COUNT(DISTINCT g.id) AS total_grids,
-
-                -- Visited grids: each grid cell that contains ≥1 MDA household GPS point
-                COUNT(DISTINCT CASE
-                    WHEN EXISTS (
-                        SELECT 1 FROM mda_households h
-                        WHERE h.geom IS NOT NULL
-                          AND ST_Within(h.geom, g.geom)
-                    ) THEN g.id END
-                ) AS visited_grids,
-
-                -- Completeness %
-                CASE WHEN COUNT(DISTINCT g.id) > 0
-                     THEN ROUND(100.0 * COUNT(DISTINCT CASE
-                          WHEN EXISTS (
-                              SELECT 1 FROM mda_households h
-                              WHERE h.geom IS NOT NULL
-                                AND ST_Within(h.geom, g.geom)
-                          ) THEN g.id END
-                     ) / NULLIF(COUNT(DISTINCT g.id), 0), 2)
-                     ELSE 0 END AS completeness_pct,
-
-                -- is_visited: completeness >= threshold OR any point within settlement polygon
+                COALESCE(g_agg.total_grids,   0)         AS total_grids,
+                COALESCE(g_agg.visited_grids, 0)         AS visited_grids,
+                CASE WHEN COALESCE(g_agg.total_grids, 0) > 0
+                     THEN ROUND(100.0 * g_agg.visited_grids / g_agg.total_grids, 2)
+                     ELSE 0 END                          AS completeness_pct,
                 CASE
-                    WHEN COUNT(DISTINCT g.id) > 0
-                    THEN (
-                        COUNT(DISTINCT CASE WHEN EXISTS (
-                            SELECT 1 FROM mda_households h
-                            WHERE h.geom IS NOT NULL AND ST_Within(h.geom, g.geom)
-                        ) THEN g.id END) * 100.0
-                        / NULLIF(COUNT(DISTINCT g.id), 0)
-                    ) >= :visit_threshold
-                    ELSE EXISTS (
-                        SELECT 1 FROM mda_households h2
-                        WHERE h2.geom IS NOT NULL AND ST_Within(h2.geom, s.geom)
-                    )
-                END AS is_visited,
-
-                -- Total household GPS points inside the settlement polygon
-                (SELECT COUNT(*) FROM mda_households h3
-                 WHERE h3.geom IS NOT NULL AND ST_Within(h3.geom, s.geom)
-                ) AS point_count,
-
-                NOW() AS last_computed
+                    WHEN COALESCE(g_agg.total_grids, 0) > 0
+                         AND (100.0 * g_agg.visited_grids / g_agg.total_grids) >= :visit_threshold
+                    THEN TRUE
+                    WHEN COALESCE(pt.point_count, 0) > 0 THEN TRUE
+                    ELSE FALSE
+                END                                      AS is_visited,
+                COALESCE(pt.point_count, 0)              AS point_count,
+                NOW()                                    AS last_computed
             FROM settlements s
-            LEFT JOIN grids g
-                   ON g.unique_cod  = s.unique_cod
-                  AND g.project_id  = s.project_id
+            -- Grid roll-up: total grids in the settlement + how many have at
+            -- least one household point. Correlated on s.unique_cod / project_id.
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*)                                                       AS total_grids,
+                    COUNT(*) FILTER (WHERE EXISTS (
+                        SELECT 1 FROM mda_households h
+                        WHERE h.project_id = s.project_id
+                          AND h.geom IS NOT NULL
+                          AND ST_Within(h.geom, g.geom)
+                    ))                                                              AS visited_grids
+                FROM grids g
+                WHERE g.project_id = s.project_id
+                  AND g.unique_cod = s.unique_cod
+            ) g_agg ON TRUE
+            -- Point roll-up: same driving column (s.project_id) and same
+            -- containment predicate (ST_Within against s.geom). One row per
+            -- settlement, evaluated in lock-step with the grid roll-up above.
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS point_count
+                FROM mda_households h3
+                WHERE h3.project_id = s.project_id
+                  AND h3.geom IS NOT NULL
+                  AND ST_Within(h3.geom, s.geom)
+            ) pt ON TRUE
             WHERE s.project_id = :project_id {filter_clause}
-            GROUP BY s.project_id, s.id, s.unique_cod, s.lgacode, s.wardcode,
-                     s.settlement_name, s.lga_name, s.ward_name
             ON CONFLICT (project_id, settlement_id) DO UPDATE SET
                 total_grids      = EXCLUDED.total_grids,
                 visited_grids    = EXCLUDED.visited_grids,

@@ -3838,28 +3838,40 @@ async def geo_settlements_coverage(
     db: AsyncSession = Depends(get_db),
     _u: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Settlement polygons (GeoJSON) coloured visited/not + completeness — the
+    """Settlement polygons (GeoJSON) coloured visited/not + completeness - the
     core coverage mosaic. Public aggregate. Optional ?lgacode= to scope to one
     LGA (lighter payload).
 
-    Only settlements whose LGA is part of THIS campaign (implementing LGAs =
-    LGAs with a baseline row or a submitted household in the current project)
-    are returned. Non-implementing LGAs therefore render blank on the map
-    even if the boundary project's settlement_analytics rows exist for them.
-    Matches how the /geo/lgas-coverage endpoint flags in_campaign.
+    Scope filter is **SPATIAL, not name-based**. A settlement renders only if
+    its centroid falls inside the polygon of an LGA that appears in the
+    campaign planning list (``mda_planned_settlements``). This is deliberate:
+    the Kano-R3 boundary file has ~778 settlement polygons whose ``lga_name``
+    label points at a planned LGA but whose geometry actually sits inside a
+    neighbouring, non-planned LGA (border mislabels in the source GeoJSON).
+    A name-based filter drew those settlements inside "hollow" LGAs on the
+    map. The geometry-based filter cannot leak that way.
+
+    Roll-up endpoints that group by ``lga_name`` are unchanged - a
+    mis-labelled border settlement's forms still count toward its labelled
+    LGA in coverage reports, only the map hides its polygon.
+
+    Fallback: if no planned list is loaded, we widen the filter to include
+    LGAs that appear in ``mda_baseline`` or ``mda_households`` (also
+    matched spatially by polygon).
     """
-    params: dict = {"pid": pid}
+    from app.services.spatial_engine import _resolve_boundary_pid  # local - avoids circular
+    boundary_pid = await _resolve_boundary_pid(pid, db)
+    params: dict = {"pid": pid, "boundary_pid": boundary_pid}
     where = "sa.project_id = :pid"
     if lgacode:
         where += " AND sa.lgacode = :lgacode"
         params["lgacode"] = lgacode
     where += _lga_and(allowed_lgas_of(_u), "sa.lga_name", params)
     res = await db.execute(text(f"""
-        WITH campaign AS (
-          -- Prefer the planned list (mda_planned_settlements) as the
-          -- authoritative set of implementing LGAs; fall back to baseline +
-          -- households on projects without a loaded plan (same fallback
-          -- shape as /geo/lgas-coverage).
+        WITH campaign_names AS (
+          -- Prefer the planned list; fall back to baseline / households
+          -- when no plan is loaded for this project (matches the fallback
+          -- chain used by /geo/lgas-coverage).
           SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_planned_settlements
             WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
           UNION ALL
@@ -3870,6 +3882,15 @@ async def geo_settlements_coverage(
           SELECT DISTINCT upper(trim(lga)) AS lga_u FROM mda_households
             WHERE project_id = :pid AND lga IS NOT NULL AND trim(lga) <> ''
               AND NOT EXISTS (SELECT 1 FROM mda_planned_settlements WHERE project_id = :pid LIMIT 1)
+        ),
+        campaign_polys AS (
+          -- Polygons of every LGA above. Materialising this once (instead
+          -- of joining per settlement) keeps the plan short: ~36 polygons
+          -- for Kano R3.
+          SELECT l.geom FROM lgas l
+          WHERE l.project_id = :boundary_pid
+            AND EXISTS (SELECT 1 FROM campaign_names c
+                        WHERE c.lga_u = upper(trim(l.lga_name)))
         )
         SELECT sa.settlement_name, sa.lga_name, sa.ward_name,
                COALESCE(sa.is_visited, FALSE) AS is_visited,
@@ -3882,7 +3903,10 @@ async def geo_settlements_coverage(
         FROM settlement_analytics sa
         JOIN settlements s ON s.id = sa.settlement_id
         WHERE {where}
-          AND EXISTS (SELECT 1 FROM campaign c WHERE c.lga_u = upper(trim(sa.lga_name)))
+          AND EXISTS (
+            SELECT 1 FROM campaign_polys cp
+            WHERE ST_Within(ST_Centroid(s.geom), cp.geom)
+          )
     """), params)
     import json as _json
     feats = []

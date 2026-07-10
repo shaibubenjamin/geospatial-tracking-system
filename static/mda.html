@@ -5095,8 +5095,14 @@ body.app-mode .kpi-spark-wrap{display:none!important}
 
     // Ward - slim dark lines
     geoMap.addSource('ward-src', { type: 'geojson', data: EMPTY_FC });
+    // Ward boundary: bold purple. Amber was the previous choice but it collided
+    // visually with the LGA choropleth's amber tier (40-70% visitation) - the
+    // ward outlines just disappeared into the LGA fill. Purple is unique on
+    // this map (LGA line = near-black, settlement fill = green/red, grid = red)
+    // so ward borders read cleanly at every zoom. 2.5 px width + 1.0 opacity
+    // for a bolder line that survives the state-wide zoom-out.
     geoMap.addLayer({ id: 'ward-line', type: 'line', source: 'ward-src', minzoom: 8, maxzoom: 13,
-      paint: { 'line-color': '#f59e0b', 'line-width': 1.2, 'line-opacity': 0.9 } });
+      paint: { 'line-color': '#7c3aed', 'line-width': 2.2, 'line-opacity': 1.0 } });
     geoMap.addLayer({ id: 'ward-label', type: 'symbol', source: 'ward-src', minzoom: 9, maxzoom: 12,
       layout: { 'text-field': ['get', 'ward_name'], 'text-size': 9, 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'] },
       paint: { 'text-color': '#78350f', 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 } });
