@@ -532,14 +532,36 @@ async def compute_settlement_analytics(
     db: AsyncSession,
 ) -> int:
     """
-    Recompute settlement_analytics using MDA household GPS points (mda_households.geom).
+    Recompute ``settlement_analytics`` using MDA household GPS points (``mda_households.geom``).
 
-    - Visited grid  = grid cell that contains ≥1 mda_household point (ST_Within)
-    - Completeness  = visited_grids / total_grids × 100
-    - is_visited    = completeness_pct >= VISIT_THRESHOLD_PCT (70%)
-                      The map still renders each grid cell's individual green/red status.
+    - **Visited grid**  = grid cell that contains >=1 mda_household point (``ST_Within``)
+    - **Completeness** = ``visited_grids / total_grids * 100``
+    - **point_count**   = total household points sitting inside the settlement polygon
+    - **is_visited**    = ``completeness_pct >= VISIT_THRESHOLD_PCT (70%)`` OR
+                          any household point falls inside the settlement polygon
+                          (the latter catches settlements with no grids at all).
 
-    If unique_cods is None, recompute ALL settlements.
+    If ``unique_cods`` is ``None``, recompute ALL settlements.
+
+    Invariant this SQL enforces
+    ---------------------------
+    Grid cells are a subset of the settlement polygon, so if any grid inside a
+    settlement is "visited" then at least one household point must also sit
+    inside the settlement polygon. In other words, ``completeness_pct > 0``
+    implies ``point_count > 0``.
+
+    The previous shape violated this in ~1,346 Kano R3 rows (grids visited but
+    ``point_count = 0``). Root cause: the two metrics were computed by two
+    independent subquery paths - one an ``EXISTS`` correlated on ``g.geom``,
+    the other a scalar ``COUNT(*)`` correlated on ``s.geom``. Under bulk
+    ``mda_households`` writes, Postgres's spatial index on ``h.geom`` could
+    return inconsistent row-sets across the two evaluations, leaving grids
+    ticked but ``point_count`` at 0.
+
+    Fix: pre-aggregate both metrics per settlement via two ``LATERAL`` joins
+    that both share the same driving predicate (``h.project_id = s.project_id``).
+    Both come from the same top-level scan of the settlement, so they can no
+    longer disagree.
     """
     params: Dict[str, Any] = {"project_id": project_id,
                                "visit_threshold": VISIT_THRESHOLD_PCT}
@@ -557,64 +579,54 @@ async def compute_settlement_analytics(
                is_visited, point_count, last_computed)
             SELECT
                 s.project_id,
-                s.id                 AS settlement_id,
+                s.id                                     AS settlement_id,
                 s.unique_cod,
                 s.lgacode,
                 s.wardcode,
                 s.settlement_name,
                 s.lga_name,
                 s.ward_name,
-                COUNT(DISTINCT g.id) AS total_grids,
-
-                -- Visited grids: each grid cell that contains ≥1 MDA household GPS point
-                COUNT(DISTINCT CASE
-                    WHEN EXISTS (
-                        SELECT 1 FROM mda_households h
-                        WHERE h.geom IS NOT NULL
-                          AND ST_Within(h.geom, g.geom)
-                    ) THEN g.id END
-                ) AS visited_grids,
-
-                -- Completeness %
-                CASE WHEN COUNT(DISTINCT g.id) > 0
-                     THEN ROUND(100.0 * COUNT(DISTINCT CASE
-                          WHEN EXISTS (
-                              SELECT 1 FROM mda_households h
-                              WHERE h.geom IS NOT NULL
-                                AND ST_Within(h.geom, g.geom)
-                          ) THEN g.id END
-                     ) / NULLIF(COUNT(DISTINCT g.id), 0), 2)
-                     ELSE 0 END AS completeness_pct,
-
-                -- is_visited: completeness >= threshold OR any point within settlement polygon
+                COALESCE(g_agg.total_grids,   0)         AS total_grids,
+                COALESCE(g_agg.visited_grids, 0)         AS visited_grids,
+                CASE WHEN COALESCE(g_agg.total_grids, 0) > 0
+                     THEN ROUND(100.0 * g_agg.visited_grids / g_agg.total_grids, 2)
+                     ELSE 0 END                          AS completeness_pct,
                 CASE
-                    WHEN COUNT(DISTINCT g.id) > 0
-                    THEN (
-                        COUNT(DISTINCT CASE WHEN EXISTS (
-                            SELECT 1 FROM mda_households h
-                            WHERE h.geom IS NOT NULL AND ST_Within(h.geom, g.geom)
-                        ) THEN g.id END) * 100.0
-                        / NULLIF(COUNT(DISTINCT g.id), 0)
-                    ) >= :visit_threshold
-                    ELSE EXISTS (
-                        SELECT 1 FROM mda_households h2
-                        WHERE h2.geom IS NOT NULL AND ST_Within(h2.geom, s.geom)
-                    )
-                END AS is_visited,
-
-                -- Total household GPS points inside the settlement polygon
-                (SELECT COUNT(*) FROM mda_households h3
-                 WHERE h3.geom IS NOT NULL AND ST_Within(h3.geom, s.geom)
-                ) AS point_count,
-
-                NOW() AS last_computed
+                    WHEN COALESCE(g_agg.total_grids, 0) > 0
+                         AND (100.0 * g_agg.visited_grids / g_agg.total_grids) >= :visit_threshold
+                    THEN TRUE
+                    WHEN COALESCE(pt.point_count, 0) > 0 THEN TRUE
+                    ELSE FALSE
+                END                                      AS is_visited,
+                COALESCE(pt.point_count, 0)              AS point_count,
+                NOW()                                    AS last_computed
             FROM settlements s
-            LEFT JOIN grids g
-                   ON g.unique_cod  = s.unique_cod
-                  AND g.project_id  = s.project_id
+            -- Grid roll-up: total grids in the settlement + how many have at
+            -- least one household point. Correlated on s.unique_cod / project_id.
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*)                                                       AS total_grids,
+                    COUNT(*) FILTER (WHERE EXISTS (
+                        SELECT 1 FROM mda_households h
+                        WHERE h.project_id = s.project_id
+                          AND h.geom IS NOT NULL
+                          AND ST_Within(h.geom, g.geom)
+                    ))                                                              AS visited_grids
+                FROM grids g
+                WHERE g.project_id = s.project_id
+                  AND g.unique_cod = s.unique_cod
+            ) g_agg ON TRUE
+            -- Point roll-up: same driving column (s.project_id) and same
+            -- containment predicate (ST_Within against s.geom). One row per
+            -- settlement, evaluated in lock-step with the grid roll-up above.
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS point_count
+                FROM mda_households h3
+                WHERE h3.project_id = s.project_id
+                  AND h3.geom IS NOT NULL
+                  AND ST_Within(h3.geom, s.geom)
+            ) pt ON TRUE
             WHERE s.project_id = :project_id {filter_clause}
-            GROUP BY s.project_id, s.id, s.unique_cod, s.lgacode, s.wardcode,
-                     s.settlement_name, s.lga_name, s.ward_name
             ON CONFLICT (project_id, settlement_id) DO UPDATE SET
                 total_grids      = EXCLUDED.total_grids,
                 visited_grids    = EXCLUDED.visited_grids,
