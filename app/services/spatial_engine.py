@@ -75,7 +75,7 @@ async def _campaign_scope_and(project_id: int, db: AsyncSession, col: str,
     """SQL fragment restricting a boundary query to the round's in-scope campaign
     LGAs (``project_scope``). Returns '' when the project has no in-scope set, so
     states/rounds without a planned-LGA list are unaffected. This keeps
-    non-campaign LGAs completely empty on the map — no stray settlements, wards or
+    non-campaign LGAs completely empty on the map - no stray settlements, wards or
     points rendered inside an LGA that isn't part of the round (e.g. Sumaila for
     Kano R3, which is greyed out at LGA level)."""
     from app.services.project_scope import in_scope_lgas_for
@@ -88,6 +88,48 @@ async def _campaign_scope_and(project_id: int, db: AsyncSession, col: str,
         return ""
     params[key] = [n.strip().lower() for n in scope]
     return f" AND lower(trim({col})) = ANY(:{key})"
+
+
+async def _campaign_scope_spatial_and(
+    project_id: int,
+    db: AsyncSession,
+    geom_col: str,
+    params: Dict[str, Any],
+    key: str = "camp_scope",
+    boundary_pid: Optional[int] = None,
+) -> str:
+    """Same intent as ``_campaign_scope_and`` but SPATIAL: only rows whose
+    ``ST_Centroid(geom_col)`` sits inside an in-scope LGA polygon come through.
+
+    Motivation: the Kano-R3 boundary GeoJSON has ~780 settlement polygons whose
+    ``lga_name`` label points at a planned LGA (e.g. "Rano", "Garko",
+    "Tudun Wada") but whose geometry actually sits inside a neighbouring
+    non-planned LGA (Kibiya, Sumaila, Bagwai, ...). A name-based filter passes
+    those through, and the map draws them inside "hollow" LGAs. A spatial
+    filter refuses them regardless of any label drift in the source GeoJSON.
+
+    Returns '' when the project has no in-scope set.
+    """
+    from app.services.project_scope import in_scope_lgas_for
+    row = (await db.execute(
+        text("SELECT state_name, round_number FROM geo_projects WHERE id = :pid"),
+        {"pid": project_id},
+    )).fetchone()
+    scope = in_scope_lgas_for(row[0], row[1]) if row else None
+    if not scope:
+        return ""
+    params[key] = [n.strip().lower() for n in scope]
+    if boundary_pid is None:
+        boundary_pid = await _resolve_boundary_pid(project_id, db)
+    params["camp_boundary_pid"] = boundary_pid
+    return (
+        f" AND EXISTS ("
+        f"  SELECT 1 FROM lgas _camp_l"
+        f"   WHERE _camp_l.project_id = :camp_boundary_pid"
+        f"     AND lower(trim(_camp_l.lga_name)) = ANY(:{key})"
+        f"     AND ST_Within(ST_Centroid({geom_col}), _camp_l.geom)"
+        f")"
+    )
 
 
 async def get_lga_geojson(project_id: int, db: AsyncSession, allowed_lgas: Optional[set] = None) -> Dict[str, Any]:
@@ -167,7 +209,11 @@ async def get_ward_geojson(
         where_extra = "AND w.lgacode = :lgacode"
         params["lgacode"] = lgacode
     where_extra += _scope_lga_names(allowed_lgas, "w.lga_name", params)
-    where_extra += await _campaign_scope_and(project_id, db, "w.lga_name", params)
+    # Spatial scope for the same reason as get_settlement_geojson: name-based
+    # filtering would let border-mislabelled wards slip inside hollow LGAs.
+    where_extra += await _campaign_scope_spatial_and(
+        project_id, db, "w.geom", params, boundary_pid=boundary_pid,
+    )
 
     # Ward metrics use the same "visited = ≥1 GPS point" rule and per-settlement
     # capped completeness (≥70 → 100). Ward completeness is mean of those caps.
@@ -248,7 +294,13 @@ async def get_settlement_geojson(
 
     where_extra = ("AND " + " AND ".join(filters)) if filters else ""
     where_extra += _scope_lga_names(allowed_lgas, "s.lga_name", params)
-    where_extra += await _campaign_scope_and(project_id, db, "s.lga_name", params)
+    # SPATIAL scope, not name-based: keeps ~780 border-mislabelled settlements
+    # (labelled with a planned LGA name but polygon inside a hollow LGA) from
+    # painting inside supposedly-empty LGAs on the map. See
+    # _campaign_scope_spatial_and for full rationale.
+    where_extra += await _campaign_scope_spatial_and(
+        project_id, db, "s.geom", params, boundary_pid=boundary_pid,
+    )
 
     result = await db.execute(
         text(f"""
