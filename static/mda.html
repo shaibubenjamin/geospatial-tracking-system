@@ -2465,7 +2465,16 @@ body.app-mode .kpi-spark-wrap{display:none!important}
     const calDay = overviewData.current_campaign_day;
     const phase = overviewData.campaign_phase;
     const subEl = document.getElementById('kpi-days-sub');
-    if (phase === 'mop_up') {
+    if (phase === 'ended') {
+      // Admin has explicitly ended the round.
+      setEl('kpi-days', 'Ended');
+      if (subEl) {
+        const span = (overviewData.planned_start_date && overviewData.planned_end_date)
+          ? ' (ran ' + overviewData.planned_start_date + ' to ' + overviewData.planned_end_date + ')'
+          : '';
+        subEl.textContent = 'Campaign has ended' + span;
+      }
+    } else if (phase === 'mop_up') {
       // Planned window is over — show the mop-up phase, not "Day N+1".
       setEl('kpi-days', 'Mop-Up');
       if (subEl) {
