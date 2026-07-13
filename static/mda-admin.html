@@ -2913,8 +2913,11 @@
       // round; admins pick a default round).
       const statusChip = (p) => {
         const s = p.campaign_start_date, e = p.campaign_end_date;
-        if (s && e && e <= today) return '<span class="chip" style="background:#fef3c7;color:#92400e"><i class="fa-solid fa-flag-checkered" style="font-size:9px;margin-right:4px"></i>Ended</span>';
+        // "Ended" is the explicit campaign_ended flag now, NOT a passed end date.
+        // A passed end date with the flag still off means MOP-UP (still live).
+        if (p.campaign_ended)     return '<span class="chip" style="background:#fef3c7;color:#92400e"><i class="fa-solid fa-flag-checkered" style="font-size:9px;margin-right:4px"></i>Ended</span>';
         if (s && s <= today && p.campaign_paused) return '<span class="chip" style="background:#e2e8f0;color:#475569"><i class="fa-solid fa-pause" style="font-size:9px;margin-right:4px"></i>Paused</span>';
+        if (s && s <= today && e && e < today) return '<span class="chip" style="background:#e0f2fe;color:#075985"><i class="fa-solid fa-broom" style="font-size:9px;margin-right:4px"></i>Mop-up</span>';
         if (s && s <= today)      return '<span class="chip good"><i class="fa-solid fa-circle" style="font-size:7px;margin-right:6px"></i>Running</span>';
         if (s && s > today)       return '<span class="chip" style="background:#e0f2fe;color:#075985"><i class="fa-solid fa-clock" style="font-size:9px;margin-right:4px"></i>Scheduled</span>';
         return '<span class="chip" style="background:var(--mist);color:var(--muted)">Not started</span>';
@@ -2925,19 +2928,27 @@
         : '<span class="chip" style="background:var(--mist);color:var(--muted)"><i class="fa-solid fa-lock" style="font-size:9px;margin-right:4px"></i>Private</span>';
       let rows = projects.map(p => {
         const s = p.campaign_start_date, e = p.campaign_end_date;
-        const ended   = s && e && e <= today;
-        const paused  = s && s <= today && !ended && p.campaign_paused;
-        const running = s && s <= today && !ended && !p.campaign_paused;
+        // "Ended" = the explicit campaign_ended flag, NOT a passed end date. A
+        // passed planned end with the flag off is MOP-UP: still live, still
+        // ingesting, and must still offer an End button so the admin can wrap it.
+        const started = s && s <= today;
+        const ended   = !!p.campaign_ended;
+        const paused  = started && !ended && p.campaign_paused;
+        const mopup   = started && !ended && !paused && e && e < today;
+        const running = started && !ended && !paused && !mopup;
         // Lifecycle action(s): Start / Pause / Resume / End / Restart.
         const actions = [];
-        if (running) {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="pauseCampaign(${p.id},'${esc(p.name)}')" title="Pause: temporarily stop the campaign + auto-sync. Resumable - does not end the round"><i class="fa-solid fa-pause"></i> Pause</button>`);
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`);
+        if (ended) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="Restart the campaign: reopens the round and begins auto-sync again"><i class="fa-solid fa-play"></i> Restart</button>`);
+        } else if (!started) {
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="Start the campaign: stamps today as the start date and begins auto-sync"><i class="fa-solid fa-play"></i> Start</button>`);
         } else if (paused) {
           actions.push(`<button class="btn btn-ghost btn-sm" onclick="resumeCampaign(${p.id},'${esc(p.name)}')" title="Resume: campaign runs again and auto-sync picks back up"><i class="fa-solid fa-play"></i> Resume</button>`);
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign: stamps today as the end date and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`);
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign: marks it finished, hides it from the field app, and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`);
         } else {
-          actions.push(`<button class="btn btn-ghost btn-sm" onclick="startCampaign(${p.id},'${esc(p.name)}')" title="${ended ? 'Restart' : 'Start'} the campaign: stamps today as the start date and begins auto-sync"><i class="fa-solid fa-play"></i> ${ended ? 'Restart' : 'Start'}</button>`);
+          // running OR mop-up: allow Pause + End
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="pauseCampaign(${p.id},'${esc(p.name)}')" title="Pause: temporarily stop the campaign + auto-sync. Resumable - does not end the round"><i class="fa-solid fa-pause"></i> Pause</button>`);
+          actions.push(`<button class="btn btn-ghost btn-sm" onclick="endCampaign(${p.id},'${esc(p.name)}')" title="End the campaign${mopup ? ' (mop-up)' : ''}: marks it finished, hides it from the field app, and stops auto-sync"><i class="fa-solid fa-flag-checkered"></i> End</button>`);
         }
         // Icon actions (uniform squares): default-round star, edit, public toggle
         // (superadmin), delete.

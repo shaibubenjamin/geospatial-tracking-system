@@ -75,13 +75,14 @@
     RENDER.overview=function(){ Promise.all([cget('/api/app/overview'+q), cget('/api/app/trends/daily'+q).catch(function(){return[];})])
       .then(function(r){ var d=r[0]||{},daily=r[1]||[]; var cov=+d.coverage_pct||0;
         var day=(d.campaign_phase==='mop_up')?('Mop-Up'+(d.mop_up_day?' d'+d.mop_up_day:'')):(d.campaign_phase==='ended')?'Ended':((d.current_campaign_day!=null)?(d.planned_duration_days!=null?d.current_campaign_day+' / '+d.planned_duration_days:String(d.current_campaign_day)):'-');
+        var phaseNote=(d.campaign_phase==='ended')?'⛔ Campaign has ended':(d.campaign_phase==='mop_up')?('🧹 Mop-up day '+(d.mop_up_day||1)):'';
         var avg=d.teams_active>0?Math.round(d.total_forms/d.teams_active):'-';
         var ks=[['Children treated',fmt(d.total_treated)],['Forms submitted',fmt(d.total_forms)],['Teams active',fmt(d.teams_active)],
           ['LGAs covered',String(d.lgas_covered||0)],['Campaign day',day],['Campaign duration',(d.planned_duration_days!=null?d.planned_duration_days+' days':'-')],
           ['QC flags',fmt(d.total_qc_flags)],['Error rate',pc(d.error_rate_pct)+'%'],['Refusals',fmt(d.refusals)],
           ['Avg forms/team',String(avg)],['GPS outside LGA',fmt(d.gps_outside_lga)],['Fast forms',fmt(d.fast_forms)]];
         W.innerHTML='<div class="hero" style="background:'+covColor(cov)+'"><div class="lbl">Administrative coverage</div><div class="pct">'+cov.toFixed(0)+'%</div>'+
-          '<div class="sub">Children treated ÷ baseline target · 80% is the protective threshold</div></div>'+
+          '<div class="sub">'+(phaseNote?('<b>'+phaseNote+'</b> · '):'')+'Children treated ÷ baseline target · 80% is the protective threshold</div></div>'+
           '<div class="grid">'+ks.map(function(k){return kpi(k[0],k[1]);}).join('')+'</div>'+
           '<div class="card"><h3>Cumulative coverage over campaign days</h3><div class="csub" id="ts"></div><div class="chartbox"><canvas id="c"></canvas></div></div>';
         lineTrend(daily,d.baseline_total||0);
