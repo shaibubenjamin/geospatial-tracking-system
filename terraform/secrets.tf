@@ -100,3 +100,26 @@ resource "aws_secretsmanager_secret_version" "commcare" {
     ignore_changes = [secret_string]
   }
 }
+
+# ── Out-of-band secrets, codified 2026-08-04 ─────────────────────────────────
+#
+# These two were created directly via the AWS CLI (never through Terraform), so
+# a `terraform plan` couldn't see them and a bring-back would have dropped them.
+# Only the containers are managed here — the VALUES are populated by the
+# operator after apply (see terraform/BRING-BACK.md), same as the manual-value
+# secrets above. No secret_version resource, so Terraform never touches / prints
+# the sensitive value.
+
+# app_dev role password — read by the dev-tunnel IAM policy (dev-tunnel.tf).
+resource "aws_secretsmanager_secret" "app_dev_password" {
+  name                    = "${var.project_name}/app-dev-password"
+  description             = "Read-only role password for dev tunnel"
+  recovery_window_in_days = 7
+}
+
+# On-prem Postgres URL for the RDS → on-prem reverse mirror (VPN-reachable only).
+resource "aws_secretsmanager_secret" "onprem_database_url" {
+  name                    = "${var.project_name}/onprem-database-url"
+  description             = "On-prem Postgres URL for the RDS → on-prem reverse mirror. VPN-reachable only."
+  recovery_window_in_days = 7
+}
