@@ -46,6 +46,17 @@ provider "aws" {
       Environment = "prod"
       ManagedBy   = "terraform"
       Repository  = "shaibubenjamin/geospatial-tracking-system"
+
+      # Org-wide billing / ownership tags. These were applied out-of-band to
+      # every resource (via the account tag policy) and were NOT originally in
+      # this block, so a `terraform plan` showed them as drift on all ~40
+      # resources. Codified here 2026-08-04 so a future bring-back reproduces
+      # them and cost allocation (BILLING_ORG / BILLING_PROJECT) keeps working.
+      Application     = "mda-dashboard"
+      Team            = "geospatial-tracking-system"
+      Owner           = "shaibu.benjamin"
+      BILLING_ORG     = "EHA"
+      BILLING_PROJECT = "GTNG2503"
     }
   }
 }
