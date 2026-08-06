@@ -37,6 +37,9 @@ data "aws_iam_policy_document" "github_deploy_assume" {
       variable = "token.actions.githubusercontent.com:sub"
       values = [
         "repo:shaibubenjamin/geospatial-tracking-system:ref:refs/heads/main",
+        # apk_dev builds the Android APK (app-build.yml) and assumes this same
+        # role to publish to the APK S3 bucket — it must be allowed to assume.
+        "repo:shaibubenjamin/geospatial-tracking-system:ref:refs/heads/apk_dev",
         "repo:shaibubenjamin/geospatial-tracking-system:environment:production",
       ]
     }

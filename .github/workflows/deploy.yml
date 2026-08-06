@@ -27,7 +27,9 @@ jobs:
     env:
       AWS_REGION: us-east-1
       ECR_REPO: 387526361725.dkr.ecr.us-east-1.amazonaws.com/mda-dashboard
-      EC2_INSTANCE_ID: i-0f57573ce98580bfc
+      # EC2_INSTANCE_ID is resolved dynamically by tag (see step below). It was
+      # previously hardcoded, which broke after a teardown/bring-back replaced
+      # the instance. Resolving by tag survives instance replacement.
 
     steps:
       - name: Checkout
@@ -41,6 +43,17 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::387526361725:role/mda-dashboard-github-deploy
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve app EC2 instance (by Name tag, via SSM)
+        run: |
+          ID=$(aws ssm describe-instance-information --region "$AWS_REGION" \
+            --filters "Key=tag:Name,Values=mda-dashboard-app" \
+            --query "InstanceInformationList[0].InstanceId" --output text)
+          if [[ -z "$ID" || "$ID" == "None" ]]; then
+            echo "::error::No SSM-managed mda-dashboard-app instance found"; exit 1
+          fi
+          echo "EC2_INSTANCE_ID=$ID" >> "$GITHUB_ENV"
+          echo "Resolved app instance: $ID"
 
       - name: Login to ECR
         run: |
