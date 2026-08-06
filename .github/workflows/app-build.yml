@@ -27,7 +27,8 @@ jobs:
 
     env:
       AWS_REGION: us-east-1
-      EC2_INSTANCE_ID: i-0f57573ce98580bfc
+      # EC2_INSTANCE_ID is resolved dynamically by tag in the publish step (was
+      # hardcoded and broke after a teardown/bring-back replaced the instance).
       # Set this repo/Actions variable to the S3 bucket used to stage the APK
       # before it is pulled onto the EC2 host. (vars.APK_S3_BUCKET)
       APK_S3_BUCKET: ${{ vars.APK_S3_BUCKET }}
@@ -129,6 +130,13 @@ jobs:
           APK_PATH: ${{ steps.apk.outputs.path }}
         run: |
           set -euo pipefail
+          EC2_INSTANCE_ID=$(aws ssm describe-instance-information --region "$AWS_REGION" \
+            --filters "Key=tag:Name,Values=mda-dashboard-app" \
+            --query "InstanceInformationList[0].InstanceId" --output text)
+          if [[ -z "$EC2_INSTANCE_ID" || "$EC2_INSTANCE_ID" == "None" ]]; then
+            echo "::error::No SSM-managed mda-dashboard-app instance found"; exit 1
+          fi
+          echo "Resolved app instance: $EC2_INSTANCE_ID"
           VERSIONED="eritas-${VNAME}-${VCODE}.apk"
           # Stage to S3 (the deploy role has put/get via the bucket policy).
           aws s3 cp "$APK_PATH" "s3://${APK_S3_BUCKET}/${VERSIONED}"
