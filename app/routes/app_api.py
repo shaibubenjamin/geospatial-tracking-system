@@ -65,22 +65,19 @@ async def app_projects(
     allowed = allowed_states_of(_u)
     if allowed is not None:
         projects = [p for p in projects if (p.state_name or "").strip().lower() in allowed]
-    # Non-admins (LGA field logins) only see the IN-WINDOW campaign: started and
-    # not yet ended. Old/not-started/ended rounds (e.g. a pilot / Round 1) are
-    # hidden so the app selector shows only the active campaign. Admins and
-    # superadmins still see every round.
+    # Non-admins (LGA field logins) see every STARTED campaign — running, in
+    # mop-up, OR ended. An ended round is NOT hidden: it's shown read-only with a
+    # "Campaign has ended" banner (see app-dashboard.html) so a field user gets a
+    # clear status instead of a blank/empty selector. Only not-yet-started rounds
+    # (no campaign_start_date, e.g. a future round) stay hidden. Admins and
+    # superadmins still see every round unconditionally.
     if not (bool(getattr(_u, "is_superadmin", False)) or bool(getattr(_u, "is_admin", False))):
         from datetime import date as _date
         _t = _date.today()
-        def _in_window(p):
-            # Visible while running OR in mop-up: started and not explicitly
-            # ended by an admin. A PASSED campaign_end_date only means mop-up
-            # (still collecting) — NOT hidden. Keying off campaign_end_date here
-            # was hiding the live round from field users the day after its planned
-            # end, even though mop-up data was still coming in.
+        def _started(p):
             s = p.campaign_start_date
-            return bool(s and s <= _t and not bool(getattr(p, "campaign_ended", False)))
-        projects = [p for p in projects if _in_window(p)]
+            return bool(s and s <= _t)
+        projects = [p for p in projects if _started(p)]
     return [
         {
             "id": p.id,
