@@ -41,7 +41,10 @@ terraform/*.tfvars
 !terraform/terraform.tfvars.example
 crash.log
 crash.*.log
-docs/
+
+# Sensitive/local-only docs (the docs/ dir itself IS committed — only these are ignored)
+docs/AWS-RESOURCES.md
+docs/CREDENTIALS.md
 
 # Android companion app — build outputs, local SDK config, signing material.
 android/.gradle/
