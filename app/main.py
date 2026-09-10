@@ -145,6 +145,12 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_states TEXT",
             # LGA-level access (Phase 2): which LGA(s) a user is restricted to (CSV).
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_lgas TEXT",
+            # created_at had only SQLAlchemy's Python-side default, so accounts
+            # created by direct INSERT (how per-LGA logins are provisioned) landed
+            # with NULL and broke the users list. A DB-level default fixes it at
+            # the source for every future raw insert. Existing NULLs are left
+            # alone rather than backfilled with a fabricated timestamp.
+            "ALTER TABLE users ALTER COLUMN created_at SET DEFAULT now()",
             # Per-project public-dashboard opt-in (used by Phase 1b).
             "ALTER TABLE geo_projects ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE",
             # Dashboard switcher multi-select. Nullable so the one-time backfill

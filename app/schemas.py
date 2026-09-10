@@ -48,7 +48,14 @@ class UserOut(BaseModel):
     is_active: bool
     allowed_states: Optional[str] = None
     allowed_lgas: Optional[str] = None
-    created_at: datetime
+    # Nullable on purpose. Accounts inserted straight into Postgres (the
+    # documented way to create per-LGA logins — there's no admin token) never
+    # run SQLAlchemy's Python-side `default=utcnow`, so their created_at is
+    # NULL. With a required datetime here ONE such row failed response
+    # validation and 500'd the whole GET /api/auth/users list, making every
+    # account invisible in the admin panel. Absent, not invented — the UI
+    # already renders "-" for a missing date.
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
