@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Generate docs/sarmaan-mda-architecture.excalidraw.
 
-The layer stack comes from the ASCII diagram in
-.planning/codebase/ARCHITECTURE.md; each layer is FILLED with the technology
-and versions from .planning/codebase/STACK.md + INTEGRATIONS.md (not
-filenames or route paths).
+The diagram is a DATA-FLOW STACK, read top to bottom in the direction the data
+actually travels:
 
-This platform has TWO flows, so the diagram is read in two directions:
-  * the read path flows DOWN   (steps 1-5): browser -> API -> services -> stores
-  * the ingest path flows UP   (steps 6-8): CommCare/files -> worker -> stores
-The stores sit in the middle where the two meet.
+    field sources -> ingestion -> stores -> data access -> services -> API
+    -> web + Android clients
+
+Each band is one stage of that flow: a numbered badge, the stage title, a
+one-line explanation, and colour-coded cards. Every card carries a 20x20 icon,
+the component name, what it does, and its technology WITH VERSIONS from
+.planning/codebase/STACK.md + INTEGRATIONS.md - never filenames or route paths.
+A legend at the top maps each colour to a kind of stage.
+
+Runtime & Infrastructure is drawn last and is deliberately NOT wired into the
+flow: it is where the stack runs, not a stage the data passes through.
 
 Re-run after editing either doc:  python3 scripts/build-architecture-diagram.py
 
@@ -17,27 +22,34 @@ NOTE ON TEXT WIDTH: Excalidraw draws a text element clipped to the `width`
 stored in the file and only re-measures when you edit that element by hand.
 An underestimate therefore truncates the label ("SARMAAN MDA" -> "SARMAAN MD").
 So widths come from the real Helvetica advance-width table below plus a safety
-margin, and every centred label is emitted as a full-width box with
-textAlign=center so its position never depends on the estimate at all.
+margin, every centred label is emitted as a full-width box with
+textAlign=center, and the build fails loudly if any line overflows its card.
 """
 import json
 import random
+import sys
 
-random.seed(20260909)
+random.seed(20260910)
 OUT = "docs/sarmaan-mda-architecture.excalidraw"
 
-# ------------------------------------------------------- palette (indigo)
-# Deliberately a different theme from the AMR platform diagram (slate/teal).
-TITLE = "#241f3d"      # main title + column headings
-LAYER = "#4c3a8c"      # layer band titles + icons (the single accent)
-BODY = "#443f5c"       # body lines
-MUTED = "#6f6a89"      # secondary / captions
-EDGE = "#a09ac0"       # every band + store border, one weight
-RULE = "#dad6ea"       # internal divider lines
-BG_A = "#f8f7fc"       # alternating band fills separate the layers
-BG_B = "#efecf9"
-BG_EXT = "#fbfaff"     # external / dashed blocks
-BG_INFRA = "#f4f3f8"
+# ------------------------------------------------------------- base palette
+TITLE = "#241f3d"      # main title + card headings
+BODY = "#443f5c"       # body / stack lines
+MUTED = "#6f6a89"      # captions, notes, flow labels
+PILL_BG = "#f1f0f7"    # flow-label pill fill
+PILL_EDGE = "#dad6ea"
+PAGE_EDGE = "#c9c4de"  # band border when a band has no accent of its own
+
+# Per-stage accents: (line/heading colour, card fill). The legend below maps
+# each of these to the kind of stage it marks.
+A_SOURCE = ("#b91c1c", "#fee2e2")   # external systems, outside our control
+A_INGEST = ("#b45309", "#fef3c7")   # ingestion + scheduling
+A_STORE = ("#1e293b", "#e6ebf2")    # durable stores (source of truth)
+A_DATA = ("#6b21a8", "#f3e8ff")     # data access tier
+A_SVC = ("#0e7490", "#cffafe")      # business logic
+A_API = ("#047857", "#d1fae5")      # HTTP surface
+A_CLIENT = ("#86198f", "#fae8ff")   # what people actually look at
+A_INFRA = ("#3730a3", "#eef2ff")    # where it all runs (off-flow)
 
 # ------------------------------------------------- Helvetica advance widths
 # units per 1000 em, from the standard Helvetica AFM. Arial (what browsers
@@ -68,14 +80,12 @@ def tw(s, fs):
 
 
 # ---------------------------------------------------------------- geometry
-X0, W = 40, 1080                 # content rail: x 40 .. 1120
-ICOL = (60, 420, 780)            # icon gutter, one per column
-COLS = (90, 450, 810)            # text rail (icon gutter + 30), every layer
-DIVS = (400, 760)                # column divider x positions
-CCX = (220, 580, 940)            # column centres (arrow anchors)
-TITLE_ROW = 56                   # band top -> header divider (title + note)
-PAD = 18                         # content bottom -> band bottom
-GAP = 30                         # band -> band arrow gap
+X0, W = 40, 1140                 # content rail: x 40 .. 1180
+PADX = 18                        # band edge -> card
+GAPC = 14                        # card -> card
+HEAD = 54                        # band top -> first card
+FOOT = 18                        # last card -> band bottom
+HOP = 56                         # band -> band, holds the pill + arrow
 
 els = []
 _seq = [0]
@@ -95,22 +105,21 @@ BASE = dict(angle=0, fillStyle="solid", strokeStyle="solid", roughness=0,
             boundElements=[], updated=1, link=None, locked=False)
 
 
-def box(x, y, w, h, bg="transparent", dashed=False):
+def box(x, y, w, h, bg="transparent", stroke=PAGE_EDGE, dashed=False,
+        sw=1, round_=True):
     els.append(dict(BASE, id=eid(), type="rectangle", x=x, y=y,
-                    width=w, height=h, strokeColor=EDGE, backgroundColor=bg,
-                    strokeWidth=1, strokeStyle="dashed" if dashed else "solid",
-                    roundness=None, seed=nonce(), version=1,
-                    versionNonce=nonce()))
+                    width=w, height=h, strokeColor=stroke, backgroundColor=bg,
+                    strokeWidth=sw, strokeStyle="dashed" if dashed else "solid",
+                    roundness={"type": 3} if round_ else None,
+                    seed=nonce(), version=1, versionNonce=nonce()))
 
 
-def seg(x, y, dx, dy, color=RULE, sw=1, arrow=False, up=False):
-    """A line or arrow. `up` draws bottom-to-top so the head lands at `y`."""
-    pts = [[0, abs(dy)], [0, 0]] if up else [[0, 0], [dx, dy]]
+def seg(x, y, dx, dy, color=PILL_EDGE, sw=1, arrow=False):
     els.append(dict(BASE, id=eid(), type="arrow" if arrow else "line",
                     x=x, y=y, width=abs(dx), height=abs(dy),
                     strokeColor=color, backgroundColor="transparent",
                     strokeWidth=sw, roundness=None, seed=nonce(), version=1,
-                    versionNonce=nonce(), points=pts,
+                    versionNonce=nonce(), points=[[0, 0], [dx, dy]],
                     lastCommittedPoint=None, startBinding=None, endBinding=None,
                     startArrowhead=None, endArrowhead="arrow" if arrow else None))
 
@@ -128,7 +137,7 @@ def _text(x, y, s, fs, color, width, align):
 
 def txt(x, y, s, fs=11, color=BODY):
     """Left-aligned label; box is sized from real metrics + headroom."""
-    _text(x, y, s, fs, color, max(tw(l, fs) for l in s.split("\n")), "left")
+    _text(x, y, s, fs, color, max(tw(ln, fs) for ln in s.split("\n")), "left")
 
 
 def ctxt(y, s, fs, color, x=X0, w=W):
@@ -137,36 +146,40 @@ def ctxt(y, s, fs, color, x=X0, w=W):
 
 
 # ---------------------------------------------------------------- icons
-# 20x20 line glyphs from excalidraw primitives, one per component.
+# 20x20 line glyphs from excalidraw primitives, one per component. They are
+# drawn in the accent colour of whichever band is being emitted.
+_ACC = [TITLE]
+
+
 def _r(x, y, w, h, fill="transparent"):
     els.append(dict(BASE, id=eid(), type="rectangle", x=x, y=y, width=w,
-                    height=h, strokeColor=LAYER, backgroundColor=fill,
+                    height=h, strokeColor=_ACC[0], backgroundColor=fill,
                     strokeWidth=1, roundness=None, seed=nonce(), version=1,
                     versionNonce=nonce()))
 
 
 def _e(x, y, w, h, fill="transparent"):
     els.append(dict(BASE, id=eid(), type="ellipse", x=x, y=y, width=w, height=h,
-                    strokeColor=LAYER, backgroundColor=fill, strokeWidth=1,
+                    strokeColor=_ACC[0], backgroundColor=fill, strokeWidth=1,
                     roundness=None, seed=nonce(), version=1, versionNonce=nonce()))
 
 
 def _l(x, y, dx, dy):
-    seg(x, y, dx, dy, LAYER, 1)
+    seg(x, y, dx, dy, _ACC[0], 1)
 
 
 def ic_browser(x, y):          # web dashboard
     _r(x, y + 2, 20, 16)
     _l(x, y + 7, 20, 0)
-    _e(x + 2, y + 3.5, 2.5, 2.5, LAYER)
-    _e(x + 6, y + 3.5, 2.5, 2.5, LAYER)
+    _e(x + 2, y + 3.5, 2.5, 2.5, _ACC[0])
+    _e(x + 6, y + 3.5, 2.5, 2.5, _ACC[0])
 
 
 def ic_map(x, y):              # map views
     _r(x + 1, y + 3, 18, 14)
     _l(x + 7, y + 3, 0, 14)
     _l(x + 13, y + 3, 0, 14)
-    _e(x + 8, y + 7, 4, 4, LAYER)
+    _e(x + 8, y + 7, 4, 4, _ACC[0])
 
 
 def ic_phone(x, y):            # android app
@@ -205,7 +218,7 @@ def ic_chart(x, y):            # aggregation
 
 def ic_pin(x, y):              # spatial
     _e(x + 4, y + 1, 12, 12)
-    _e(x + 8, y + 5, 4, 4, LAYER)
+    _e(x + 8, y + 5, 4, 4, _ACC[0])
     _l(x + 6, y + 11, 4, 8)
     _l(x + 14, y + 11, -4, 8)
 
@@ -213,12 +226,6 @@ def ic_pin(x, y):              # spatial
 def ic_flag(x, y):             # quality control
     _l(x + 4, y, 0, 20)
     _r(x + 4, y + 2, 12, 8)
-
-
-def ic_sync(x, y):             # sync / ingestion
-    _e(x + 2, y + 2, 16, 16)
-    _l(x + 11, y, 4, 3)
-    _l(x + 15, y + 3, -4, 3)
 
 
 def ic_layers(x, y):           # ORM / models
@@ -279,9 +286,9 @@ def ic_cloud_ext(x, y):        # commcare HQ (external service)
     _e(x + 6, y + 1, 8, 18)
 
 
-def ic_forms(x, y, fill=BG_EXT):   # other survey platforms
+def ic_forms(x, y):            # other survey platforms
     _r(x + 5, y, 13, 17)
-    _r(x + 1, y + 3, 13, 17, fill)
+    _r(x + 1, y + 3, 13, 17, "#ffffff")
     for i in range(3):
         _l(x + 4, y + 8 + i * 4, 7, 0)
 
@@ -303,8 +310,8 @@ def ic_rack(x, y):             # AWS platform
     _r(x + 1, y + 2, 18, 5)
     _r(x + 1, y + 9, 18, 5)
     _r(x + 1, y + 16, 18, 4)
-    _e(x + 3, y + 3.5, 2, 2, LAYER)
-    _e(x + 3, y + 10.5, 2, 2, LAYER)
+    _e(x + 3, y + 3.5, 2, 2, _ACC[0])
+    _e(x + 3, y + 10.5, 2, 2, _ACC[0])
 
 
 def ic_pipeline(x, y):         # delivery / CI
@@ -313,145 +320,142 @@ def ic_pipeline(x, y):         # delivery / CI
     _l(x + 7, y + 10, 6, 0)
 
 
-# ================================================================ header
-txt(X0, 36, "SARMAAN MDA", 30, TITLE)
-txt(X0, 80, "Architecture · technology stack by layer", 15, BODY)
-txt(X0, 106, "Python 3.11 · JavaScript / HTML / CSS · Kotlin · SQL (PostGIS) "
-             "· HCL", 11, BODY)
-txt(X0, 126, "Read path flows DOWN (1-5) · ingest path flows UP (6-8) · "
-             "the stores sit where they meet", 10, MUTED)
-txt(X0, 144, "Generated from .planning/codebase/ARCHITECTURE.md + STACK.md · "
-             "2026-09-09", 10, MUTED)
+# ------------------------------------------------------------- band drawing
+_overflow = []
 
 
-def band(y, title, note, rows, bg=BG_A, dashed=False):
-    """One layer band.
+def _fits(line, fs, avail, where):
+    if tw(line, fs) > avail:
+        _overflow.append(f"{where}: {line!r} needs {tw(line, fs):.0f}px "
+                         f"of {avail:.0f}px")
 
-    title/note give the architecture layer + a brief explanation of it.
-    `rows` = (icon, heading, what-it-does, *stack lines) per column, so each
-    column carries the component, its explanation, and its technology.
+
+def band(y, num, title, note, cards, accent, dashed=False, weights=None,
+         flow=True):
+    """One stage of the flow.
+
+    `cards` = (icon, heading, what-it-does, *stack lines). The band is sized
+    from its content, so no stage carries dead space.
     """
-    top = y
-    ty = top + TITLE_ROW
-    head_y = ty + 12
-    line_ys = [head_y + 26 + 16 * i for i in range(max(len(r) for r in rows) - 2)]
-    bottom = (line_ys[-1] if line_ys else head_y + 14) + 14 + PAD
-    box(X0, top, W, bottom - top, bg, dashed)
-    ctxt(top + 10, title, 15, LAYER)
-    ctxt(top + 32, note, 11, MUTED)
-    seg(X0, ty, W, 0)
-    for dx in DIVS:
-        seg(dx, ty, 0, bottom - ty)
-    for ix, cx, row in zip(ICOL, COLS, rows):
-        row[0](ix, head_y - 2)
-        txt(cx, head_y, row[1], 13, TITLE)
-        for i, ln in enumerate(row[2:]):
-            if ln:                       # blank entries pad a short column
-                txt(cx, line_ys[i], ln, 11, BODY if i == 0 else MUTED)
+    acc, tint = accent
+    _ACC[0] = acc
+    n = len(cards)
+    weights = weights or [1] * n
+    lines = max(len(c) - 3 for c in cards)
+    card_h = 52 + lines * 16 + 12
+    height = HEAD + card_h + FOOT
+
+    box(X0, y, W, height, "#ffffff", PAGE_EDGE, dashed)
+    seg(X0 + 2, y + 2, W - 4, 0, acc, 4)              # accent rule on top
+    tx = X0 + PADX
+    if num is not None:                               # off-flow bands get none
+        box(tx, y + 17, 24, 22, acc, acc, sw=1)       # number badge
+        ctxt(y + 21, str(num), 13, "#ffffff", x=tx, w=24)
+        tx += 36
+    txt(tx, y + 19, title, 16, acc)
+    if note:
+        txt(tx + 8 + tw(title, 16), y + 23, note, 11, MUTED)
+
+    avail = W - 2 * PADX - (n - 1) * GAPC
+    unit = avail / sum(weights)
+    cx = X0 + PADX
+    for card, wt in zip(cards, weights):
+        cw = unit * wt
+        icon, head, desc = card[0], card[1], card[2]
+        box(cx, y + HEAD, cw, card_h, tint, acc)
+        icon(cx + 12, y + HEAD + 11)
+        inner = cw - 24
+        _fits(head, 13, cw - 52, f"{title}/{head}")
+        _fits(desc, 10.5, inner, f"{title}/{head}")
+        txt(cx + 40, y + HEAD + 10, head, 13, acc)
+        txt(cx + 12, y + HEAD + 34, desc, 10.5, MUTED)
+        for i, ln in enumerate(card[3:]):
+            if not ln:
+                continue
+            _fits(ln, 11, inner, f"{title}/{head}")
+            txt(cx + 12, y + HEAD + 54 + i * 16, ln, 11, BODY)
+        cx += cw + GAPC
+
+    bottom = y + height
+    if not flow:
+        return bottom
     return bottom
 
 
-def flow(y, xs, step, label, lx=None, up=False):
-    """A numbered flow hop between two layers, with a brief explanation."""
-    for x in xs:
-        seg(x, y, 0, GAP, MUTED, 1.5, arrow=True, up=up)
-    txt((lx or xs[len(xs) // 2]) + 16, y + 4, f"{step} · {label}", 10, MUTED)
-    return y + GAP
+def hop(y, step, label):
+    """A numbered flow hop drawn between two bands: pill label + arrow."""
+    text = f"{step} · {label}"
+    pw = tw(text, 11) + 26
+    px = X0 + (W - pw) / 2
+    box(px, y + 6, pw, 22, PILL_BG, PILL_EDGE)
+    ctxt(y + 11, text, 11, MUTED, x=px, w=pw)
+    seg(X0 + W / 2, y + 34, 0, 16, MUTED, 1.5, arrow=True)
+    return y + HOP
 
 
-# ==================================== read path, flowing down =============
-y = band(188, "Static Frontend Layer",
-         "dashboards and field views · every call carries a bearer token", [
-    (ic_browser, "Web Dashboard", "campaign KPIs and coverage maps",
-     "MapLibre GL JS 3.6.2", "Chart.js 4.4.1 + datalabels",
-     "Inter · Font Awesome 6.5.0"),
-    (ic_map, "Mobile Web Views", "field map + dashboard in a WebView",
-     "MapLibre GL JS (blob: workers)", "HTML + CSS + JS, no framework",
-     "served directly by FastAPI"),
-    (ic_phone, "Android App", "native shell around the web views",
-     "Kotlin · Jetpack Compose", "Retrofit 2.11.0 · Moshi 1.15.1",
-     "version-gated (426 upgrade)"),
-], bg=BG_A)
-y = flow(y, CCX, 1, "HTTPS request with a JWT, scoped to the user's states/LGAs")
+# ================================================================ header
+txt(X0, 34, "SARMAAN MDA", 30, TITLE)
+txt(X0, 78, "Architecture · data flow and technology stack, stage by stage",
+    15, BODY)
+txt(X0, 102, "Field sources → ingestion → stores → data access → services "
+             "→ API → web + Android clients", 12, BODY)
+txt(X0, 124, "Python 3.11 · JavaScript / HTML / CSS · Kotlin · SQL (PostGIS) "
+             "· HCL", 11, MUTED)
+txt(X0, 142, "Generated by scripts/build-architecture-diagram.py from "
+             ".planning/codebase/ARCHITECTURE.md + STACK.md · 2026-09-10",
+    10, MUTED)
 
-y = band(y, "FastAPI Application Layer",
-         "one async uvicorn process · 10 route modules by domain", [
-    (ic_hub, "Routing & schemas", "endpoint handlers and validation",
-     "FastAPI 0.111.0", "Uvicorn 0.29.0 (port 8080)",
-     "pydantic request/response"),
-    (ic_shield, "Guards & middleware", "auth, scope, throttle, version gate",
-     "pyjwt 2.8.1 · python-jose", "bcrypt 4.2.1",
-     "slowapi 0.1.9 (120 req/min)"),
-    (ic_bolt, "Caching", "TTL cache for expensive aggregates",
-     "geo_cache (in-process)", "Redis-backed response cache",
-     "flushed after every sync"),
-], bg=BG_B)
-y = flow(y, CCX, 2, "the route handler calls a stateless service")
+# ---------------------------------------------------------------- legend
+LEG_Y = 168
+box(X0, LEG_Y, W, 56, "#fbfaff", PILL_EDGE)
+_legend = [
+    (A_SOURCE, "external source"),
+    (A_INGEST, "ingestion & scheduling"),
+    (A_STORE, "data store · source of truth"),
+    (A_DATA, "data access tier"),
+    (A_SVC, "service logic"),
+    (A_API, "API surface"),
+    (A_CLIENT, "client / frontend"),
+    (A_INFRA, "runtime (not in the flow)"),
+]
+# every entry sits on the same 5-column rail, so the row reads as one even
+# list instead of a packed left half and two notes stranded on the right.
+_LEG_COLS = 5
+_leg_w = (W - 2 * PADX) / _LEG_COLS
+_entries = [(a, lbl) for a, lbl in _legend] + [("arrow", "numbered flow hop"),
+                                              ("dash", "dashed · off the flow")]
+for i, (mark, lbl) in enumerate(_entries):
+    lx = X0 + PADX + (i % _LEG_COLS) * _leg_w
+    ly = LEG_Y + 12 + (i // _LEG_COLS) * 20
+    if mark == "arrow":
+        seg(lx, ly + 6, 14, 0, MUTED, 1.5, arrow=True)
+    elif mark == "dash":
+        seg(lx, ly + 6, 14, 0, MUTED, 1.5)
+        els[-1]["strokeStyle"] = "dashed"
+    else:
+        acc, tint = mark
+        box(lx, ly, 12, 12, tint, acc, round_=False)
+    txt(lx + 19, ly, lbl, 10.5, BODY)
+    _fits(lbl, 10.5, _leg_w - 24, "legend")
 
-y = band(y, "Service Layer",
-         "12 stateless async modules · business logic and integrations", [
-    (ic_chart, "Aggregation", "LGA / ward / settlement rollups",
-     "pandas 2.2.2 · numpy 1.26.4", "pre-computed settlement analytics",
-     "recomputed after each sync"),
-    (ic_pin, "Spatial engine", "coverage, geometry, grid visits",
-     "GeoAlchemy2 0.15.1", "shapely 2.0.4 · pyproj 3.6.1",
-     "PostGIS ST_Intersects / ST_DWithin"),
-    (ic_flag, "Quality control", "GPS, duplicate and fast-form flags",
-     "SQL window functions", "operator-tuned thresholds",
-     "flags stored on the household row"),
-], bg=BG_A)
-y = flow(y, CCX, 3, "services open an async session and query PostGIS")
+# ============================================ 1. where the data comes from
+y = 250
+y = band(y, 1, "Field Data Sources",
+         "external systems · CommCare HQ is the primary feed", [
+    (ic_cloud_ext, "CommCare HQ", "primary MDA form source",
+     "OData feed over httpx 0.27.0", "Basic auth, Fernet-encrypted",
+     "incremental by watermark"),
+    (ic_forms, "Other platforms", "secondary and historical feeds",
+     "Kobo · ODK · DHIS2", "SurveyCTO · Google Sheets",
+     "imported rather than polled"),
+    (ic_file, "File drops", "operator-supplied files",
+     "CSV · Excel (.xlsx)", "Shapefile boundary imports",
+     "stored on the EBS upload volume"),
+], A_SOURCE, dashed=True)
+y = hop(y, "1", "watermarked pull · only rows modified since the last run")
 
-y = band(y, "Data Access Layer",
-         "async SQLAlchemy · the only tier that touches Postgres and Redis", [
-    (ic_layers, "Async ORM", "models, sessions, transactions",
-     "SQLAlchemy 2.0.30 (asyncio)", "pool 10 + 20 overflow",
-     "45s statement timeout"),
-    (ic_plug, "Drivers", "async for the API, sync for the worker",
-     "asyncpg 0.29.0 (API)", "psycopg2-binary 2.9.9 (worker)",
-     "all geometry in EPSG:4326"),
-    (ic_lock, "Migrations & config", "schema and environment",
-     "Alembic 1.13.1", "python-dotenv 1.0.1",
-     "AWS Secrets Manager (prod)"),
-], bg=BG_B)
-
-# ==================================== the stores, where both paths meet ===
-flow(y, [360], 4, "reads and writes over the pool")
-flow(y, [950], 5, "job queue and cache", lx=950)
-sy = y + GAP
-
-STORE_H = 162
-box(X0, sy, 640, STORE_H, "#ffffff")
-ic_db(ICOL[0], sy + 15)
-txt(COLS[0], sy + 14, "PostgreSQL + PostGIS", 15, TITLE)
-txt(COLS[0], sy + 40, "engine · PostgreSQL 14+ with PostGIS", 11, MUTED)
-for i, s in enumerate([
-    "AWS RDS · encrypted · automated backups",
-    "boundaries · lgas, wards, settlements, grids",
-    "MDA data · households, individuals, baseline",
-    "analytics · settlement_analytics rollups",
-    "sync metadata · config, history, watermarks",
-]):
-    txt(COLS[0], sy + 66 + i * 16, s, 11, BODY)
-
-box(780, sy, 340, STORE_H, "#ffffff")
-ic_queue(ICOL[2], sy + 15)
-txt(COLS[2], sy + 14, "Redis", 15, TITLE)
-txt(COLS[2], sy + 40, "engine · Redis 7-alpine", 11, MUTED)
-for i, s in enumerate([
-    "sync job queue (BLPOP)",
-    "TTL cache for aggregates",
-    "redis 5.0.7 · sync + async",
-    "pending sync signals",
-]):
-    txt(COLS[2], sy + 66 + i * 16, s, 11, BODY)
-
-# ==================================== ingest path, flowing up =============
-y = sy + STORE_H + GAP
-flow(y - GAP, [360], 6, "worker writes rows, then recomputes analytics", up=True)
-flow(y - GAP, [950], 7, "dequeue · cache flush", lx=950, up=True)
-
-y = band(y, "Background Worker & Ingestion",
+# ============================================ 2. how it gets in
+y = band(y, 2, "Ingestion & Scheduling",
          "a separate container on the same image · decoupled from the API", [
     (ic_worker, "Sync Worker", "long-running CommCare pulls",
      "Redis BLPOP loop (5s)", "30 min job cap · retry",
@@ -462,30 +466,86 @@ y = band(y, "Background Worker & Ingestion",
     (ic_upload, "Manual uploads", "operator-driven imports",
      "openpyxl 3.1.2 · pyshp 2.3.1", "python-multipart 0.0.9",
      "aiofiles 23.2.1"),
-], bg=BG_A)
+], A_INGEST)
+y = hop(y, "2", "worker writes rows, then recomputes settlement analytics")
 
-y = flow(y, [220, 940], 8,
-         "watermarked pull · only rows modified since the last run", lx=220,
-         up=True)
+# ============================================ 3. where it lands
+y = band(y, 3, "Data Stores",
+         "PostgreSQL is the source of truth · Redis carries queue and cache", [
+    (ic_db, "PostgreSQL + PostGIS", "every row and every geometry",
+     "PostgreSQL 14+ with PostGIS", "AWS RDS · encrypted · backups",
+     "boundaries · lgas, wards, settlements, grids",
+     "MDA data · households, individuals, baseline",
+     "analytics · settlement_analytics rollups",
+     "sync metadata · config, history, watermarks"),
+    (ic_queue, "Redis", "queue and hot reads",
+     "Redis 7-alpine · redis 5.0.7", "sync job queue (BLPOP)",
+     "TTL cache for aggregates", "pending sync signals", ""),
+], A_STORE, weights=[2, 1])
+y = hop(y, "3", "the only tier that opens a connection to either store")
 
-y = band(y, "Field Data Sources",
-     "external systems · CommCare HQ is the primary feed", [
-    (ic_cloud_ext, "CommCare HQ", "primary MDA form source",
-     "OData feed over httpx 0.27.0", "Basic auth, Fernet-encrypted",
-     "incremental by watermark"),
-    (ic_forms, "Other platforms", "secondary and historical feeds",
-     "Kobo · ODK · DHIS2", "SurveyCTO · Google Sheets",
-     "imported rather than polled"),
-    (ic_file, "File drops", "operator-supplied files",
-     "CSV · Excel (.xlsx)", "Shapefile boundary imports",
-     "stored on the EBS upload volume"),
-], bg=BG_EXT, dashed=True)
+# ============================================ 4. how the code reaches it
+y = band(y, 4, "Data Access Layer",
+         "async SQLAlchemy · sessions, pooling and migrations", [
+    (ic_layers, "Async ORM", "models, sessions, transactions",
+     "SQLAlchemy 2.0.30 (asyncio)", "pool 10 + 20 overflow",
+     "45s statement timeout"),
+    (ic_plug, "Drivers", "async for the API, sync for the worker",
+     "asyncpg 0.29.0 (API)", "psycopg2-binary 2.9.9 (worker)",
+     "all geometry in EPSG:4326"),
+    (ic_lock, "Migrations & config", "schema and environment",
+     "Alembic 1.13.1", "python-dotenv 1.0.1",
+     "AWS Secrets Manager (prod)"),
+], A_DATA)
+y = hop(y, "4", "typed rows and geometries handed to the stateless services")
 
-# ==================================== runtime, outside both paths =========
-# deliberately NOT wired into either flow: it is where the stack runs, not a
-# tier that requests or data pass through.
-band(y + 40, "Runtime & Infrastructure",
-     "where the stack runs · not a tier requests pass through", [
+# ============================================ 5. what turns rows into answers
+y = band(y, 5, "Service Layer",
+         "12 stateless async modules · business logic and integrations", [
+    (ic_chart, "Aggregation", "LGA / ward / settlement rollups",
+     "pandas 2.2.2 · numpy 1.26.4", "pre-computed settlement analytics",
+     "recomputed after each sync"),
+    (ic_pin, "Spatial engine", "coverage, geometry, grid visits",
+     "GeoAlchemy2 0.15.1", "shapely 2.0.4 · pyproj 3.6.1",
+     "PostGIS ST_Intersects / ST_DWithin"),
+    (ic_flag, "Quality control", "GPS, duplicate and fast-form flags",
+     "SQL window functions", "operator-tuned thresholds",
+     "flags stored on the household row"),
+], A_SVC)
+y = hop(y, "5", "route handlers call a service and shape the response")
+
+# ============================================ 6. the HTTP surface
+y = band(y, 6, "FastAPI Application Layer",
+         "one async uvicorn process · 10 route modules by domain", [
+    (ic_hub, "Routing & schemas", "endpoint handlers and validation",
+     "FastAPI 0.111.0", "Uvicorn 0.29.0 (port 8080)",
+     "pydantic request/response"),
+    (ic_shield, "Guards & middleware", "auth, scope, throttle, version gate",
+     "pyjwt 2.8.1 · python-jose", "bcrypt 4.2.1",
+     "slowapi 0.1.9 (120 req/min)"),
+    (ic_bolt, "Caching", "TTL cache for expensive aggregates",
+     "geo_cache (in-process)", "Redis-backed response cache",
+     "flushed after every sync"),
+], A_API)
+y = hop(y, "6", "served over HTTPS · JWT scoped to the user's states / LGAs")
+
+# ============================================ 7. who reads it
+y = band(y, 7, "Client Layer",
+         "dashboards and field views · every call carries a bearer token", [
+    (ic_browser, "Web Dashboard", "campaign KPIs and coverage maps",
+     "MapLibre GL JS 3.6.2", "Chart.js 4.4.1 + datalabels",
+     "Inter · Font Awesome 6.5.0"),
+    (ic_map, "Mobile Web Views", "field map + dashboard in a WebView",
+     "MapLibre GL JS (blob: workers)", "HTML + CSS + JS, no framework",
+     "served directly by FastAPI"),
+    (ic_phone, "Android App", "native shell around the web views",
+     "Kotlin · Jetpack Compose", "Retrofit 2.11.0 · Moshi 1.15.1",
+     "version-gated (426 upgrade)"),
+], A_CLIENT)
+
+# ==================================== runtime, deliberately outside the flow
+band(y + 34, None, "Runtime & Infrastructure",
+     "where every stage above runs · not a stage the data passes through", [
     (ic_cube, "Container runtime", "one image, three services",
      "Docker · python:3.11-slim", "Compose · api, redis, sync_worker",
      "ECR registry · tagged per commit"),
@@ -495,7 +555,20 @@ band(y + 40, "Runtime & Infrastructure",
     (ic_pipeline, "Delivery & ops", "OIDC deploys, no stored keys",
      "GitHub Actions · SSM Run Command", "Terraform · Secrets Manager",
      "CloudWatch logs · Sentry 2.18.0"),
-], bg=BG_INFRA)
+], A_INFRA, dashed=True)
+
+if _overflow:
+    print("TEXT OVERFLOW:", *_overflow, sep="\n  ")
+    sys.exit(1)
+
+# nothing may spill past the page rail (this is how the legend used to get
+# clipped: an estimate that looked fine in the JSON but ran off the edge)
+_spill = [e for e in els if e["x"] + e["width"] > X0 + W + 1]
+if _spill:
+    print("SPILLS PAST THE RAIL:",
+          *[f'{e.get("text", e["type"])} -> {e["x"] + e["width"]:.0f}'
+            for e in _spill], sep="\n  ")
+    sys.exit(1)
 
 doc = {"type": "excalidraw", "version": 2, "source": "https://excalidraw.com",
        "elements": els,
