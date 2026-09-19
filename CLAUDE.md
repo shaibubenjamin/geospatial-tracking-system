@@ -33,18 +33,28 @@ Two long-lived dev lines, both PR'd into `main`:
 | `origin` | `shaibubenjamin/geospatial-tracking-system` | Primary; PR target |
 | `eha` | `eHealthAfrica/sarmaan_mda_geospatial_tracking_system` | Upstream where **QA runs** (`eha/main`) |
 
-`origin` and `eha` are **NOT linked as GitHub forks** (different repo names), so a cross-fork PR fails. They share history, so mirror via a direct fast-forward push:
+`origin` and `eha` are **NOT linked as GitHub forks** (different repo names), so a cross-fork PR fails. They share history, but the two `main`s have **permanently diverged**: `eha/main` carries `e72cb41` "ci: run CI on the eha-dev self-hosted runners", pinning `.github/workflows/ci.yml` to `runs-on: eha-dev-runners`. That change stays on `eha` only — `origin` has no such runners, so merging it there would stall origin's CI.
+
+So `git merge-base --is-ancestor eha/main origin/main` fails by design, and the old fast-forward mirror (`git push eha origin/main:main`) would **clobber their runner config — never force it.** Sync with a merge instead, always in the `origin → eha` direction:
 
 ```bash
-# verify first
-git merge-base --is-ancestor eha/main origin/main
-# then mirror
-git push eha origin/main:main
+git fetch origin main && git fetch eha main
+git branch -f _eha_sync eha/main && git switch _eha_sync
+git merge --no-ff origin/main -m "Merge origin/main into eha/main"
+
+# verify before pushing
+grep -n "runs-on" .github/workflows/ci.yml   # must still be eha-dev-runners
+git diff --stat origin/main HEAD             # must list ci.yml and nothing else
+
+git push eha _eha_sync:main
+git switch dev && git branch -D _eha_sync
 ```
+
+`ci.yml` is the sole conflict point — the merge is clean as long as `origin` doesn't touch it. If a change to CI genuinely needs to reach both sides, edit it on `dev` and expect to resolve that file by hand on the next sync, keeping eha's `runs-on` lines.
 
 There is **no `eha/dev`** branch and the user does not want one.
 
-**Full release flow:** commit on `dev` → PR `dev → origin/main` → merge → mirror `origin/main → eha/main` so QA covers the update.
+**Full release flow:** commit on `dev` → PR `dev → origin/main` → merge → sync `origin/main → eha/main` (above) so QA covers the update.
 
 ---
 
