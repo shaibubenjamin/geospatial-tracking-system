@@ -47,7 +47,7 @@ grep -n "runs-on" .github/workflows/ci.yml   # must still be eha-dev-runners
 git diff --stat origin/main HEAD             # must list ci.yml and nothing else
 
 git push eha _eha_sync:main
-git switch dev && git branch -D _eha_sync
+git switch - && git branch -D _eha_sync   # back to whichever branch you started on
 ```
 
 `ci.yml` is the sole conflict point — the merge is clean as long as `origin` doesn't touch it. If a change to CI genuinely needs to reach both sides, edit it on `dev` and expect to resolve that file by hand on the next sync, keeping eha's `runs-on` lines.
